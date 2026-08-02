@@ -1,0 +1,16 @@
+[project]
+name = "ghackathon"
+version = "0.1.0"
+requires-python = ">=3.12"
+dependencies = []
+
+[project.optional-dependencies]
+full = ["lightgbm>=4.0", "pyarrow>=15.0"]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+packages = ["cs2_sim", "cs2_sim.models", "training"]
+package-dir = {"cs2_sim" = "src/cs2_sim", "training" = "training"}

@@ -1,0 +1,70 @@
+# Model profiles
+
+The analyser has two interchangeable profiles. Both expose the existing
+`ActionPolicy` interface, so the simulator and future API do not need to know
+which model is selected.
+
+The matching data layout is:
+
+```text
+data/
+├── small/metadata/     # compact Parquet metadata
+└── full/               # selected raw demos and processed replay rows
+```
+
+## Small profile
+
+`SmallStatisticalModel` is dependency-free and is the default for the current
+small metadata and simulator-generated examples. It combines:
+
+- Dirichlet-smoothed action counts;
+- Beta-smoothed action outcomes; and
+- normalized Shannon entropy for uncertainty.
+
+It is saved as one small JSON file and works even when LightGBM cannot be
+installed.
+
+## Full profile
+
+`FullLightGBMModel` uses the same features and blends a LightGBM action-value
+prediction with the small statistical model. It is intended for parsed replay
+snapshots and larger labelled datasets. LightGBM is an optional dependency:
+
+```powershell
+pip install -e ".[full]"
+```
+
+The model is trained on one row per `(state, candidate_action)` and a binary
+success label. Training examples are represented by
+`cs2_sim.models.TrainingExample`. The native LightGBM dependency is imported
+only when `fit()` or `load()` is called. Pass a separately trained
+`SmallStatisticalModel` into the constructor so the two dataset tiers remain
+independent; the full model then combines both predictions at inference time.
+
+## Selecting a profile
+
+```python
+from cs2_sim.models import create_model
+
+model = create_model("small")  # current compact data
+model = create_model("full")   # larger replay dataset after parsing
+```
+
+Both models return only a legal action when passed the simulator's legal-action
+list. The full profile falls back to the small profile before training, which
+makes incremental development possible.
+
+## Bootstrap training
+
+Until raw replay parsing supplies action labels, train a monitored bootstrap
+pair from simulator outcomes:
+
+```powershell
+$env:PYTHONPATH = "src"
+python -m training.train_models --states 500
+```
+
+This writes `models/small_statistical.json`, `models/full_lightgbm.txt`, and
+`models/bootstrap_metrics.json`. These artifacts are useful for testing the
+tool interface, but should be retrained after full replay-derived examples are
+available.

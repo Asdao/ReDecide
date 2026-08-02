@@ -1,0 +1,7 @@
+__pycache__/
+*.py[cod]
+*.part
+*.egg-info/
+data/
+models/*.json
+models/*.txt
