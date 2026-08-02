@@ -69,6 +69,24 @@ class ModelTests(unittest.TestCase):
         self.assertEqual(model.sample_count(snapshot), 1)
         self.assertGreater(model.predict_ct_win(snapshot), 0.5)
 
+    def test_snapshot_model_backs_off_for_an_unseen_exact_state(self) -> None:
+        model = SnapshotValueModel()
+        observed = {
+            "map_name": "de_mirage",
+            "event_type": "kill",
+            "ct_alive": 5,
+            "t_alive": 4,
+            "bomb_planted": False,
+            "elapsed_seconds": 40,
+            "kills_seen": 1,
+            "label_round_winner": "ct",
+        }
+        for _ in range(20):
+            model.observe(observed)
+        unseen = dict(observed, event_type="bomb_plant", bomb_site="bombsite_a")
+        self.assertEqual(model.sample_count(unseen), 0)
+        self.assertGreater(model.predict_ct_win(unseen), 0.5)
+
     def test_small_decision_metrics_compare_with_simulator_labels(self) -> None:
         model = SmallStatisticalModel()
         model.observe(self.state, "t1", self.legal[0], success=False)

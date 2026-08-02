@@ -4,12 +4,12 @@ from __future__ import annotations
 
 import argparse
 import json
-import math
 import random
 from pathlib import Path
 from typing import Any
 
 from cs2_sim.models import SnapshotValueModel
+from training.metrics import binary_probability_metrics
 
 
 def _read_rows(path: Path) -> list[dict[str, Any]]:
@@ -17,23 +17,34 @@ def _read_rows(path: Path) -> list[dict[str, Any]]:
         return [json.loads(line) for line in source if line.strip()]
 
 
-def _metrics(model: SnapshotValueModel, rows: list[dict[str, Any]]) -> dict[str, float]:
+def _metrics(
+    model: SnapshotValueModel,
+    rows: list[dict[str, Any]],
+    *,
+    baseline_probability: float,
+) -> dict[str, Any]:
     labelled = [row for row in rows if row.get("label_round_winner") in {"ct", "t"}]
     if not labelled:
         raise ValueError("snapshot file contains no round outcome labels")
     probabilities = [model.predict_ct_win(row) for row in labelled]
     labels = [float(row["label_round_winner"] == "ct") for row in labelled]
-    eps = 1e-7
-    log_loss = -sum(
-        label * math.log(max(eps, probability))
-        + (1.0 - label) * math.log(max(eps, 1.0 - probability))
-        for probability, label in zip(probabilities, labels, strict=True)
-    ) / len(labels)
-    brier = sum(
-        (probability - label) ** 2
-        for probability, label in zip(probabilities, labels, strict=True)
-    ) / len(labels)
-    return {"log_loss": log_loss, "brier": brier}
+    return binary_probability_metrics(
+        probabilities,
+        labels,
+        baseline_probability=baseline_probability,
+    )
+
+
+def _one_snapshot_per_round(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Use the earliest decision state so long fights do not dominate metrics."""
+
+    first: dict[tuple[str, int], dict[str, Any]] = {}
+    for row in rows:
+        key = (str(row.get("source") or "unknown"), int(row.get("round_num") or 0))
+        current = first.get(key)
+        if current is None or int(row.get("tick") or 0) < int(current.get("tick") or 0):
+            first[key] = row
+    return list(first.values())
 
 
 def train(input_path: Path, output_path: Path, metrics_path: Path, seed: int) -> None:
@@ -55,10 +66,24 @@ def train(input_path: Path, output_path: Path, metrics_path: Path, seed: int) ->
     model = SnapshotValueModel()
     for row in train_rows:
         model.observe(row)
+    baseline_probability = sum(row["label_round_winner"] == "ct" for row in train_rows) / len(train_rows)
+    metrics = _metrics(model, validation_rows, baseline_probability=baseline_probability)
+    round_metrics = _metrics(
+        model,
+        _one_snapshot_per_round(validation_rows),
+        baseline_probability=baseline_probability,
+    )
+    evaluation_bucket_count = sum(key.startswith("exact|") for key in model._counts)
+    evaluation_sample_count = model.global_sample_count()
+
+    # Save the deployment artifact trained on every row only after computing
+    # untouched validation metrics with the split model above.
+    final_model = SnapshotValueModel()
+    for row in labelled:
+        final_model.observe(row)
     output_path.parent.mkdir(parents=True, exist_ok=True)
     metrics_path.parent.mkdir(parents=True, exist_ok=True)
-    model.save(output_path)
-    metrics = _metrics(model, validation_rows)
+    final_model.save(output_path)
     metrics_path.write_text(
         json.dumps(
             {
@@ -66,8 +91,11 @@ def train(input_path: Path, output_path: Path, metrics_path: Path, seed: int) ->
                 "train_rows": len(train_rows),
                 "validation_rows": len(validation_rows),
                 "validation_sources": sorted(validation_sources),
-                "unique_state_buckets": len(model._counts),
-                "metrics": metrics,
+                "evaluation_exact_state_buckets": evaluation_bucket_count,
+                "evaluation_training_samples": evaluation_sample_count,
+                "artifact_training_samples": final_model.global_sample_count(),
+                "snapshot_metrics": metrics,
+                "round_metrics": round_metrics,
             },
             indent=2,
         ),
@@ -80,7 +108,7 @@ def train(input_path: Path, output_path: Path, metrics_path: Path, seed: int) ->
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--input", type=Path, default=Path("data/full/processed/analysis_snapshots.jsonl"))
+    parser.add_argument("--input", type=Path, default=Path("data/small/processed/analysis_snapshots.jsonl"))
     parser.add_argument("--output", type=Path, default=Path("models/small_snapshot_value.json"))
     parser.add_argument("--metrics", type=Path, default=Path("models/small_snapshot_metrics.json"))
     parser.add_argument("--seed", type=int, default=7)
@@ -91,4 +119,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

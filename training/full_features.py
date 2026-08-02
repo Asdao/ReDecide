@@ -8,7 +8,6 @@ from typing import Any
 
 from training.extract_features import extract_snapshots
 
-
 FULL_FEATURE_NAMES = (
     "map_code",
     "time_seconds",
@@ -54,7 +53,18 @@ def _real_kill(kill: dict[str, Any]) -> bool:
     return kill.get("weapon") != "world" and kill.get("attacker_steamid") != kill.get("victim_steamid")
 
 
-def record_to_rows(record: dict[str, Any], *, sample_every: int = 1) -> list[dict[str, Any]]:
+def _average(players: list[dict[str, Any]], field: str) -> float:
+    values = [_number(player.get(field)) for player in players]
+    return sum(values) / len(values) if values else 0.0
+
+
+def record_to_rows(
+    record: dict[str, Any],
+    *,
+    sample_every: int = 1,
+    decision_window_seconds: float | None = None,
+    include_terminal: bool = True,
+) -> list[dict[str, Any]]:
     """Convert one parsed replay record into labelled round-state rows."""
 
     ticks = record.get("ticks") or []
@@ -62,6 +72,8 @@ def record_to_rows(record: dict[str, Any], *, sample_every: int = 1) -> list[dic
         return []
     if sample_every <= 0:
         raise ValueError("sample_every must be positive")
+    if decision_window_seconds is not None and decision_window_seconds <= 0:
+        raise ValueError("decision_window_seconds must be positive")
     header = record.get("header") or {}
     tick_rate = _number(header.get("tick_rate") or record.get("tick_rate"), 128.0)
     map_name = header.get("map_name") or "unknown"
@@ -80,10 +92,20 @@ def record_to_rows(record: dict[str, Any], *, sample_every: int = 1) -> list[dic
         if winner is None:
             continue
         start_tick = int(_number(round_info.get("start")))
-        selected_ticks = list(ticks_by_round.get(round_num, {}))[::sample_every]
+        selected_ticks = sorted(ticks_by_round.get(round_num, {}))[::sample_every]
         round_kills = [kill for kill in kills if int(_number(kill.get("round_num"))) == round_num]
         round_bombs = [event for event in bomb_events if int(_number(event.get("round_num"))) == round_num]
+        first_contact_tick = min(
+            (int(_number(kill.get("tick"))) for kill in round_kills),
+            default=None,
+        )
         for tick in selected_ticks:
+            if decision_window_seconds is not None:
+                if first_contact_tick is None:
+                    continue
+                window_end = first_contact_tick + decision_window_seconds * tick_rate
+                if tick < first_contact_tick or tick > window_end:
+                    continue
             player_rows = ticks_by_round[round_num][tick]
             sides: dict[str, list[dict[str, Any]]] = {"ct": [], "t": []}
             for player in player_rows:
@@ -94,10 +116,8 @@ def record_to_rows(record: dict[str, Any], *, sample_every: int = 1) -> list[dic
                 continue
             ct_alive = sum(_number(player.get("health"), 100.0) > 0 for player in sides["ct"])
             t_alive = sum(_number(player.get("health"), 100.0) > 0 for player in sides["t"])
-
-            def average(side: str, field: str) -> float:
-                values = [_number(player.get(field)) for player in sides[side]]
-                return sum(values) / len(values) if values else 0.0
+            if not include_terminal and (ct_alive <= 0 or t_alive <= 0):
+                continue
 
             prior_bombs = [event for event in round_bombs if int(_number(event.get("tick"))) <= tick]
             bomb_planted = any("plant" in str(event.get("event") or "").lower() for event in prior_bombs)
@@ -128,22 +148,27 @@ def record_to_rows(record: dict[str, Any], *, sample_every: int = 1) -> list[dic
                         "ct_alive": float(ct_alive),
                         "t_alive": float(t_alive),
                         "alive_difference": float(ct_alive - t_alive),
-                        "ct_avg_health": average("ct", "health"),
-                        "t_avg_health": average("t", "health"),
+                        "ct_avg_health": _average(sides["ct"], "health"),
+                        "t_avg_health": _average(sides["t"], "health"),
                         "kills_seen": float(kills_seen),
                         "bomb_planted": float(bomb_planted),
                         "bomb_site_code": _code(bomb_site),
-                        "ct_avg_x": average("ct", "X"),
-                        "ct_avg_y": average("ct", "Y"),
-                        "t_avg_x": average("t", "X"),
-                        "t_avg_y": average("t", "Y"),
+                        "ct_avg_x": _average(sides["ct"], "X"),
+                        "ct_avg_y": _average(sides["ct"], "Y"),
+                        "t_avg_x": _average(sides["t"], "X"),
+                        "t_avg_y": _average(sides["t"], "Y"),
                     },
                 }
             )
     return rows
 
 
-def record_to_event_rows(record: dict[str, Any]) -> list[dict[str, Any]]:
+def record_to_event_rows(
+    record: dict[str, Any],
+    *,
+    decision_window_seconds: float | None = None,
+    include_terminal: bool = True,
+) -> list[dict[str, Any]]:
     """Build event-only rows when positional tick parsing is unavailable.
 
     These rows are useful for a provisional round-value model, but their
@@ -152,11 +177,34 @@ def record_to_event_rows(record: dict[str, Any]) -> list[dict[str, Any]]:
     """
 
     rows: list[dict[str, Any]] = []
-    for snapshot in extract_snapshots(record, str(record.get("demo_file") or "unknown")):
+    for snapshot in extract_snapshots(
+        record,
+        str(record.get("demo_file") or "unknown"),
+        decision_window_seconds=decision_window_seconds,
+        include_round_start=decision_window_seconds is None,
+        include_round_end=decision_window_seconds is None,
+        include_terminal=include_terminal,
+    ):
         winner = snapshot.get("label_round_winner")
         if winner not in {"ct", "t"}:
             continue
-        features = {
+        rows.append(snapshot_to_event_row(snapshot))
+    return rows
+
+
+def snapshot_to_event_row(snapshot: dict[str, Any]) -> dict[str, Any]:
+    """Convert one already-extracted lightweight snapshot for LightGBM."""
+
+    winner = snapshot.get("label_round_winner")
+    if winner not in {"ct", "t"}:
+        raise ValueError("snapshot has no valid round winner label")
+    return {
+        "source": snapshot.get("source") or "unknown",
+        "round_num": snapshot.get("round_num"),
+        "tick": snapshot.get("tick"),
+        "label_ct_win": int(winner == "ct"),
+        "snapshot": snapshot,
+        "features": {
             "map_code": _code(snapshot.get("map_name")),
             "time_seconds": _number(snapshot.get("elapsed_seconds")),
             "ct_alive": float(snapshot.get("ct_alive") or 0),
@@ -171,15 +219,5 @@ def record_to_event_rows(record: dict[str, Any]) -> list[dict[str, Any]]:
             "ct_avg_y": 0.0,
             "t_avg_x": 0.0,
             "t_avg_y": 0.0,
-        }
-        rows.append(
-            {
-                "source": snapshot.get("source") or record.get("demo_file") or "unknown",
-                "round_num": snapshot.get("round_num"),
-                "tick": snapshot.get("tick"),
-                "label_ct_win": int(winner == "ct"),
-                "snapshot": snapshot,
-                "features": features,
-            }
-        )
-    return rows
+        },
+    }

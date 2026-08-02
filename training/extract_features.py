@@ -20,7 +20,7 @@ import json
 import sys
 from collections import defaultdict
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any
 
 
 def _side(value: Any) -> str | None:
@@ -43,8 +43,26 @@ def _kill_is_real(kill: dict[str, Any]) -> bool:
     return kill.get("weapon") != "world" and attacker != victim
 
 
-def extract_snapshots(document: dict[str, Any], source: str) -> list[dict[str, Any]]:
-    """Extract round-start, kill, bomb-plant, and round-end snapshots."""
+def extract_snapshots(
+    document: dict[str, Any],
+    source: str,
+    *,
+    decision_window_seconds: float | None = None,
+    include_round_start: bool = True,
+    include_round_end: bool = True,
+    include_terminal: bool = True,
+) -> list[dict[str, Any]]:
+    """Extract labelled replay snapshots.
+
+    When ``decision_window_seconds`` is set, only states from the first real
+    kill through that many seconds afterward are retained.  This approximates
+    a short tactical decision window with the information available in the
+    lightweight sidecars.  Damage events are not present in this format, so
+    the first kill is the earliest reliable contact marker.
+    """
+
+    if decision_window_seconds is not None and decision_window_seconds <= 0:
+        raise ValueError("decision_window_seconds must be positive")
 
     match = document.get("match") or {}
     tick_rate = float(match.get("tick_rate") or 128.0)
@@ -64,16 +82,22 @@ def extract_snapshots(document: dict[str, Any], source: str) -> list[dict[str, A
         bomb_tick = int(bomb_tick) if bomb_tick is not None else None
         bomb_site = round_info.get("bomb_site")
         bomb_site = bomb_site if bomb_site not in (None, "not_planted") else None
-        events: list[tuple[int, int, str, dict[str, Any] | None]] = [
-            (start_tick, 0, "round_start", None)
-        ]
-        for kill in kills_by_round.get(round_num, []):
+        round_kills = kills_by_round.get(round_num, [])
+        first_contact_tick = min(
+            (int(kill.get("tick") or start_tick) for kill in round_kills),
+            default=None,
+        )
+        events: list[tuple[int, int, str, dict[str, Any] | None]] = []
+        if include_round_start:
+            events.append((start_tick, 0, "round_start", None))
+        for kill in round_kills:
             tick = int(kill.get("tick") or start_tick)
             events.append((tick, 1, "kill", kill))
         if bomb_tick is not None:
             events.append((bomb_tick, 2, "bomb_plant", None))
         end_tick = int(round_info.get("end") or round_info.get("official_end") or start_tick)
-        events.append((end_tick, 3, "round_end", None))
+        if include_round_end:
+            events.append((end_tick, 3, "round_end", None))
         events.sort(key=lambda event: (event[0], event[1]))
 
         kills_seen = 0
@@ -89,9 +113,19 @@ def extract_snapshots(document: dict[str, Any], source: str) -> list[dict[str, A
                 kills_seen += 1
             elif event_type == "bomb_plant":
                 bomb_planted = True
+
+            if decision_window_seconds is not None:
+                if first_contact_tick is None:
+                    continue
+                window_end = first_contact_tick + decision_window_seconds * tick_rate
+                if tick < first_contact_tick or tick > window_end:
+                    continue
+            if not include_terminal and (ct_alive <= 0 or t_alive <= 0):
+                continue
+
             elapsed_seconds = max(0.0, (tick - start_tick) / tick_rate)
             snapshot: dict[str, Any] = {
-                "schema_version": 1,
+                "schema_version": 2,
                 "source": source,
                 "demo_file": document.get("demo_file"),
                 "map_name": match.get("map_name") or (document.get("header") or {}).get("map_name"),
@@ -107,6 +141,12 @@ def extract_snapshots(document: dict[str, Any], source: str) -> list[dict[str, A
                 "kills_seen": kills_seen,
                 "bomb_planted": bomb_planted,
                 "bomb_site": bomb_site,
+                "contact_basis": "first_kill" if first_contact_tick is not None else None,
+                "seconds_since_contact": (
+                    max(0.0, (tick - first_contact_tick) / tick_rate)
+                    if first_contact_tick is not None
+                    else None
+                ),
                 # Keep the outcome explicitly named as a label so it is not
                 # accidentally included as an input feature.
                 "label_round_winner": winner,
@@ -126,7 +166,15 @@ def extract_snapshots(document: dict[str, Any], source: str) -> list[dict[str, A
     return snapshots
 
 
-def extract_directory(input_dir: Path, output_path: Path, limit: int | None = None) -> tuple[int, int]:
+def extract_directory(
+    input_dir: Path,
+    output_path: Path,
+    limit: int | None = None,
+    *,
+    decision_window_seconds: float = 5.0,
+) -> tuple[int, int]:
+    """Extract leakage-safe decision snapshots from every sidecar in a tree."""
+
     files = sorted(input_dir.rglob("*.analysis.json"))
     if limit is not None:
         files = files[:limit]
@@ -138,15 +186,23 @@ def extract_directory(input_dir: Path, output_path: Path, limit: int | None = No
             for path in files:
                 document = json.loads(path.read_text(encoding="utf-8"))
                 relative = path.relative_to(input_dir).as_posix()
-                rows = extract_snapshots(document, relative)
+                rows = extract_snapshots(
+                    document,
+                    relative,
+                    decision_window_seconds=decision_window_seconds,
+                    include_round_start=False,
+                    include_round_end=False,
+                    include_terminal=False,
+                )
                 for row in rows:
                     output.write(json.dumps(row, separators=(",", ":")) + "\n")
                 demos += 1
                 snapshots += len(rows)
-                print(
-                    f"[extract] {demos}/{len(files)} demos, {snapshots} snapshots",
-                    flush=True,
-                )
+                if demos == len(files) or demos % 25 == 0:
+                    print(
+                        f"[extract] {demos}/{len(files)} demos, {snapshots} snapshots",
+                        flush=True,
+                    )
         partial.replace(output_path)
     except Exception:
         partial.unlink(missing_ok=True)
@@ -163,12 +219,25 @@ def main() -> int:
         default=Path("data/full/processed/analysis_snapshots.jsonl"),
     )
     parser.add_argument("--limit", type=int, default=None)
+    parser.add_argument(
+        "--decision-window-seconds",
+        type=float,
+        default=5.0,
+        help="keep states from first kill through this short decision window",
+    )
     args = parser.parse_args()
     if not args.input.exists():
         raise FileNotFoundError(args.input)
     if args.limit is not None and args.limit <= 0:
         raise ValueError("--limit must be positive")
-    demos, snapshots = extract_directory(args.input, args.output, args.limit)
+    if args.decision_window_seconds <= 0:
+        raise ValueError("--decision-window-seconds must be positive")
+    demos, snapshots = extract_directory(
+        args.input,
+        args.output,
+        args.limit,
+        decision_window_seconds=args.decision_window_seconds,
+    )
     print(f"[extract] complete: {demos} demos, {snapshots} snapshots -> {args.output}")
     return 0
 

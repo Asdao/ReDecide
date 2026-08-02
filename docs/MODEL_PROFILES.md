@@ -21,6 +21,10 @@ small metadata and simulator-generated examples. It combines:
 - Beta-smoothed action outcomes; and
 - normalized Shannon entropy for uncertainty.
 
+The replay-value variant (`SnapshotValueModel`) adds hierarchical Bayesian
+backoff from exact states to broader state, map, and global evidence. This is
+important because an exact CS2 state may never have appeared in training.
+
 It is saved as one small JSON file and works even when LightGBM cannot be
 installed.
 
@@ -80,6 +84,10 @@ $env:PYTHONPATH = "src"
 python -m training.train_snapshot_model
 ```
 
+The default input is now
+`data/small/processed/analysis_snapshots.jsonl`. See `docs/TRAINING.md` for the
+quality-filtered download, leakage-safe extraction, and both training commands.
+
 The full parser is launched with:
 
 ```powershell
@@ -100,3 +108,11 @@ python -m training.train_full_replay
 The trainer requires at least two parsed demos so validation can be separated
 by whole demo. It blends the LightGBM prediction with the small snapshot model
 when `models/small_snapshot_value.json` exists.
+
+While native positional parsing is unavailable, a provisional event-only
+LightGBM model can use the same leakage-safe snapshot dataset:
+
+```powershell
+python -m training.train_full_replay `
+  --snapshot-input data/small/processed/analysis_snapshots.jsonl
+```

@@ -1,6 +1,11 @@
 import unittest
 
-from training.full_features import FULL_FEATURE_NAMES, record_to_event_rows, record_to_rows
+from training.full_features import (
+    FULL_FEATURE_NAMES,
+    record_to_event_rows,
+    record_to_rows,
+    snapshot_to_event_row,
+)
 
 
 class FullFeatureTests(unittest.TestCase):
@@ -45,3 +50,22 @@ class FullFeatureTests(unittest.TestCase):
         self.assertEqual(len(rows), 2)
         self.assertEqual(rows[0]["label_ct_win"], 1)
         self.assertEqual(rows[0]["features"]["ct_avg_x"], 0.0)
+
+    def test_extracted_snapshot_can_feed_lightgbm_features(self) -> None:
+        row = snapshot_to_event_row(
+            {
+                "source": "sample.analysis.json",
+                "round_num": 2,
+                "tick": 42,
+                "map_name": "de_nuke",
+                "elapsed_seconds": 30,
+                "ct_alive": 4,
+                "t_alive": 3,
+                "alive_difference": 1,
+                "kills_seen": 3,
+                "bomb_planted": False,
+                "label_round_winner": "t",
+            }
+        )
+        self.assertEqual(row["label_ct_win"], 0)
+        self.assertEqual(tuple(row["features"]), FULL_FEATURE_NAMES)

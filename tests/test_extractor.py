@@ -54,3 +54,39 @@ class ExtractorTests(unittest.TestCase):
         self.assertEqual(rows[1]["ct_alive"], 4)
         self.assertTrue(rows[2]["bomb_planted"])
         self.assertEqual(rows[-1]["label_round_winner"], "ct")
+
+    def test_decision_window_removes_round_end_and_terminal_states(self) -> None:
+        document = {
+            "match": {"map_name": "de_mirage", "tick_rate": 10, "teams": []},
+            "rounds": [{"round_num": 1, "start": 0, "end": 100, "winner": "ct"}],
+            "kills": [
+                {
+                    "tick": 20,
+                    "round_num": 1,
+                    "attacker_steamid": "ct1",
+                    "victim_steamid": "t1",
+                    "attacker_side": "ct",
+                    "victim_side": "t",
+                    "weapon": "m4a1",
+                },
+                {
+                    "tick": 80,
+                    "round_num": 1,
+                    "attacker_steamid": "ct2",
+                    "victim_steamid": "t2",
+                    "attacker_side": "ct",
+                    "victim_side": "t",
+                    "weapon": "m4a1",
+                },
+            ],
+        }
+        rows = extract_snapshots(
+            document,
+            "sample.analysis.json",
+            decision_window_seconds=5,
+            include_round_start=False,
+            include_round_end=False,
+            include_terminal=False,
+        )
+        self.assertEqual([row["tick"] for row in rows], [20])
+        self.assertEqual(rows[0]["seconds_since_contact"], 0.0)

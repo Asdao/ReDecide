@@ -7,6 +7,7 @@ Examples:
     python -m training.download_dataset files \
         --file demos/shard-example/match/map.dem \
         --output data/full --max-gb 1
+    python -m training.download_dataset sidecars --max-files 500
 
 The raw demo files are mirrored by the dataset maintainer from public tournament
 sources. Check the source and tournament terms before redistributing them.
@@ -21,9 +22,9 @@ import sys
 import urllib.error
 import urllib.parse
 import urllib.request
+from collections.abc import Iterable
 from pathlib import Path, PurePosixPath
-from typing import BinaryIO, Iterable
-
+from typing import BinaryIO
 
 DATASET_ID = "blanchon/cs2_dataset_demo"
 DATASET_API = "https://huggingface.co/api/datasets"
@@ -65,7 +66,7 @@ def list_dataset_files(
             raise RuntimeError(f"could not list dataset files: {exc}") from exc
 
         if not isinstance(payload, list):
-            raise RuntimeError("dataset listing returned an unexpected response")
+            raise TypeError("dataset listing returned an unexpected response")
         files.extend(
             entry["path"]
             for entry in payload
@@ -159,11 +160,18 @@ def download_files(
     *,
     dataset_id: str = DATASET_ID,
     max_bytes: int = DEFAULT_MAX_BYTES,
+    skip_existing: bool = False,
 ) -> list[Path]:
     """Download files sequentially, stopping before the cumulative limit."""
     downloaded = 0
     destinations: list[Path] = []
     for repo_path in repo_paths:
+        relative_path = _validate_repo_path(repo_path)
+        destination = Path(output_dir).resolve() / Path(*relative_path.parts)
+        if skip_existing and destination.exists():
+            print(f"already present: {repo_path}")
+            destinations.append(destination)
+            continue
         destination, size = download_file(
             repo_path,
             output_dir,
@@ -204,6 +212,19 @@ def _parse_args() -> argparse.Namespace:
     )
     files_parser.add_argument("--max-gb", type=float, default=1.0)
     files_parser.set_defaults(action="files")
+
+    sidecars_parser = subparsers.add_parser(
+        "sidecars",
+        help="download map-balanced, quality-filtered analysis JSON files",
+    )
+    sidecars_parser.add_argument("--metadata", type=Path, default=Path("data/small/metadata"))
+    sidecars_parser.add_argument("--output", default="data/small/sidecars")
+    sidecars_parser.add_argument("--max-gb", type=float, default=0.25)
+    sidecars_parser.add_argument("--max-files", type=int, default=500)
+    sidecars_parser.add_argument("--min-rounds", type=int, default=16)
+    sidecars_parser.add_argument("--min-kills", type=int, default=80)
+    sidecars_parser.add_argument("--min-stars", type=int, default=0)
+    sidecars_parser.set_defaults(action="sidecars")
     return parser.parse_args()
 
 
@@ -221,8 +242,39 @@ def main() -> int:
     if args.command == "metadata":
         files = [path for path in list_dataset_files(args.dataset) if path.endswith(".parquet")]
         download_files(files, args.output, dataset_id=args.dataset, max_bytes=max_bytes)
-    else:
+    elif args.command == "files":
         download_files(args.files, args.output, dataset_id=args.dataset, max_bytes=max_bytes)
+    else:
+        from training.sidecar_catalog import load_candidates, select_balanced_candidates
+
+        candidates = load_candidates(
+            args.metadata,
+            min_rounds=args.min_rounds,
+            min_kills=args.min_kills,
+            min_stars=args.min_stars,
+        )
+        selected = select_balanced_candidates(
+            candidates,
+            max_files=args.max_files,
+            max_bytes=max_bytes,
+        )
+        if not selected:
+            raise ValueError("no sidecars matched the requested quality filters")
+        selected_bytes = sum(candidate.size for candidate in selected)
+        map_counts: dict[str, int] = {}
+        for candidate in selected:
+            map_counts[candidate.map_name] = map_counts.get(candidate.map_name, 0) + 1
+        print(
+            f"selected {len(selected):,} sidecars ({selected_bytes:,} estimated bytes) "
+            f"across maps: {json.dumps(map_counts, sort_keys=True)}"
+        )
+        download_files(
+            [candidate.repo_path for candidate in selected],
+            args.output,
+            dataset_id=args.dataset,
+            max_bytes=max_bytes,
+            skip_existing=True,
+        )
     return 0
 
 
