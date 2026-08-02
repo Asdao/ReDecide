@@ -129,13 +129,56 @@ def _metrics(model: FullLightGBMModel, examples: list[TrainingExample]) -> dict[
     return {"log_loss": log_loss, "brier": brier, "accuracy": accuracy}
 
 
+def small_decision_metrics(
+    model: SmallStatisticalModel,
+    groups: list[list[TrainingExample]],
+    *,
+    seed: int,
+) -> dict[str, float]:
+    """Compare small-model calls with rules, baseline policy, and simulator outcomes."""
+
+    legal_calls = 0
+    baseline_matches = 0
+    chosen_successes = 0
+    opportunities = 0
+    successful_opportunities = 0
+    for index, group in enumerate(groups):
+        if not group:
+            continue
+        state = group[0].state
+        player_id = group[0].player_id
+        legal = tuple(example.action for example in group)
+        chosen = model.choose_action(state, player_id, legal)
+        legal_calls += int(chosen in legal)
+        baseline = BaselinePolicy(seed=seed + index).choose_action(state, player_id, legal)
+        baseline_matches += int(chosen == baseline)
+        chosen_example = next(example for example in group if example.action == chosen)
+        chosen_successes += int(chosen_example.success)
+        if any(example.success for example in group):
+            opportunities += 1
+            successful_opportunities += int(chosen_example.success)
+    total = len(groups)
+    return {
+        "legal_action_rate": legal_calls / total if total else 0.0,
+        "baseline_agreement": baseline_matches / total if total else 0.0,
+        "chosen_action_success_rate": chosen_successes / total if total else 0.0,
+        "oracle_opportunity_accuracy": (
+            successful_opportunities / opportunities if opportunities else 0.0
+        ),
+        "evaluated_states": float(total),
+        "states_with_winning_action": float(opportunities),
+    }
+
+
 def train(state_count: int, seed: int, output_dir: Path) -> None:
     groups = generate_examples(state_count, seed)
     rng = random.Random(seed)
     rng.shuffle(groups)
     split = max(1, int(len(groups) * 0.8))
-    train_examples = [example for group in groups[:split] for example in group]
-    validation_examples = [example for group in groups[split:] for example in group]
+    train_groups = groups[:split]
+    validation_groups = groups[split:]
+    train_examples = [example for group in train_groups for example in group]
+    validation_examples = [example for group in validation_groups for example in group]
     print(
         f"[split] train={len(train_examples)} validation={len(validation_examples)}",
         flush=True,
@@ -152,7 +195,9 @@ def train(state_count: int, seed: int, output_dir: Path) -> None:
     output_dir.mkdir(parents=True, exist_ok=True)
     small_path = output_dir / "small_statistical.json"
     small.save(small_path)
+    small_metrics = small_decision_metrics(small, validation_groups, seed=seed)
     print(f"[small] saved {small_path}", flush=True)
+    print(f"[small] validation {json.dumps(small_metrics, sort_keys=True)}", flush=True)
 
     full = FullLightGBMModel(small_model=small)
     started = time.perf_counter()
@@ -170,7 +215,8 @@ def train(state_count: int, seed: int, output_dir: Path) -> None:
                 "states": state_count,
                 "train_examples": len(train_examples),
                 "validation_examples": len(validation_examples),
-                "metrics": metrics,
+                "small_decision_metrics": small_metrics,
+                "full_candidate_metrics": metrics,
             },
             indent=2,
         ),
@@ -192,4 +238,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

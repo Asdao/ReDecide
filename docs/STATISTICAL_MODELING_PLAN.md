@@ -25,6 +25,11 @@ The full profile still needs replay parsing and labelled `TrainingExample` rows
 before it can produce a trained artifact. This keeps model code separate from
 the dataset-specific parser.
 
+The snapshot path is now available through `training/train_snapshot_model.py`.
+It trains `SnapshotValueModel` from `analysis_snapshots.jsonl`; this is a round-
+value model, not yet a movement-action policy. Full action training remains
+blocked until positional `.dem` parsing succeeds.
+
 ## Available data and limits
 
 The current metadata provides round outcomes, kill events, player sides, bomb

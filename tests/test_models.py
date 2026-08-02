@@ -2,8 +2,14 @@ import unittest
 from tempfile import TemporaryDirectory
 
 from cs2_sim.actions import Action, ActionType
-from cs2_sim.models import FullLightGBMModel, SmallStatisticalModel
+from cs2_sim.models import (
+    FullLightGBMModel,
+    SmallStatisticalModel,
+    SnapshotValueModel,
+    TrainingExample,
+)
 from cs2_sim.state import BombState, GameState, PlayerState, Team
+from training.train_models import small_decision_metrics
 
 
 class ModelTests(unittest.TestCase):
@@ -46,3 +52,31 @@ class ModelTests(unittest.TestCase):
         self.assertFalse(model.is_fitted)
         self.assertIn(model.choose_action(self.state, "t1", self.legal), self.legal)
 
+    def test_snapshot_value_model_uses_ct_and_t_labels(self) -> None:
+        model = SnapshotValueModel()
+        snapshot = {
+            "map_name": "de_mirage",
+            "event_type": "kill",
+            "ct_alive": 3,
+            "t_alive": 2,
+            "bomb_planted": False,
+            "bomb_site": None,
+            "elapsed_seconds": 30,
+            "kills_seen": 3,
+            "label_round_winner": "ct",
+        }
+        model.observe(snapshot)
+        self.assertEqual(model.sample_count(snapshot), 1)
+        self.assertGreater(model.predict_ct_win(snapshot), 0.5)
+
+    def test_small_decision_metrics_compare_with_simulator_labels(self) -> None:
+        model = SmallStatisticalModel()
+        model.observe(self.state, "t1", self.legal[0], success=False)
+        model.observe(self.state, "t1", self.legal[1], success=True)
+        group = [
+            TrainingExample(self.state, "t1", self.legal[0], False),
+            TrainingExample(self.state, "t1", self.legal[1], True),
+        ]
+        metrics = small_decision_metrics(model, [group], seed=7)
+        self.assertEqual(metrics["legal_action_rate"], 1.0)
+        self.assertEqual(metrics["oracle_opportunity_accuracy"], 1.0)

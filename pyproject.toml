@@ -5,7 +5,7 @@ requires-python = ">=3.12"
 dependencies = []
 
 [project.optional-dependencies]
-full = ["lightgbm>=4.0", "pyarrow>=15.0"]
+full = ["awpy>=2.0.2", "lightgbm>=4.0", "pyarrow>=15.0"]
 
 [build-system]
 requires = ["setuptools>=68"]

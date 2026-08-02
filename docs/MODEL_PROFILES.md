@@ -68,3 +68,35 @@ This writes `models/small_statistical.json`, `models/full_lightgbm.txt`, and
 `models/bootstrap_metrics.json`. These artifacts are useful for testing the
 tool interface, but should be retrained after full replay-derived examples are
 available.
+
+The replay extractor writes event snapshots with the future outcome stored as
+`label_round_winner`. Treat that field as a label only; do not include it in
+the model input features.
+
+Train the small snapshot model with:
+
+```powershell
+$env:PYTHONPATH = "src"
+python -m training.train_snapshot_model
+```
+
+The full parser is launched with:
+
+```powershell
+python -m training.parse_demos
+```
+
+It uses Awpy/demoparser2 when PyArrow is available. If native PyArrow loading
+is blocked, it records the existing analysis sidecar as a fallback and marks
+the record with `parser: "analysis_sidecar"`; those fallback records do not
+contain positional ticks.
+
+When positional ticks are present, train the full replay-value model with:
+
+```powershell
+python -m training.train_full_replay
+```
+
+The trainer requires at least two parsed demos so validation can be separated
+by whole demo. It blends the LightGBM prediction with the small snapshot model
+when `models/small_snapshot_value.json` exists.
