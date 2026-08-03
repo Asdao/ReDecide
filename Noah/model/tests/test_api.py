@@ -69,6 +69,7 @@ class ReplayModelApiTests(unittest.TestCase):
             self.assertTrue(model.status.has_transition_model)
             self.assertFalse(model.status.has_engagement_model)
             self.assertFalse(model.status.has_engagement_booster)
+            self.assertFalse(model.status.has_candidate_model)
 
             report = model.analyse_match(
                 {
@@ -86,6 +87,24 @@ class ReplayModelApiTests(unittest.TestCase):
                 max_timeline_points=2,
             )
             self.assertEqual(report["report_type"], "full_match_timeline")
+
+            combined = model.analyse_replay(
+                {
+                    "demo_file": "fixture.dem",
+                    "header": {"map_name": "de_mirage", "tick_rate": 10},
+                    "rounds": [{"round_num": 1, "start": 0, "end": 10, "winner": "ct"}],
+                    "ticks": [
+                        {"round_num": 1, "tick": 0, "steamid": "ct1", "team_name": "CT", "health": 100},
+                        {"round_num": 1, "tick": 10, "steamid": "ct1", "team_name": "CT", "health": 100},
+                    ],
+                    "kills": [],
+                    "damages": [],
+                    "bomb": [],
+                },
+                sample_every=1,
+                max_moments=2,
+            )
+            self.assertEqual(combined["report_type"], "combined_replay_analysis")
 
             engagement_report = model.analyse_engagement(
                 {

@@ -17,6 +17,21 @@
       "bytes": 171667,
       "sha256": "c2aa7aa6bba3ec9f0de66f8997326448bad1844fb890edc81a7e8e4d6651165d"
     },
+    "candidate_action_value": {
+      "path": "candidate_action_value.txt",
+      "bytes": 141460,
+      "sha256": "181fa90d89a4950c7330dcac08ff686aa42a1bb088a653c0a2db98b0a505c95d"
+    },
+    "candidate_action_metadata": {
+      "path": "candidate_action_value.txt.json",
+      "bytes": 8088,
+      "sha256": "8994ad9b022a9a34fe9980c533734d0aebd016d8299b57ed3951e2113bf45c73"
+    },
+    "statistical_action_prior": {
+      "path": "small_statistical.json",
+      "bytes": 6872,
+      "sha256": "8c4921996d4adc1047e116bd20820837315ad26469ca4e7ceed47a3f98defb4b"
+    },
     "engagement_metrics": {
       "path": "engagement_metrics.json",
       "bytes": 3310,

@@ -12,8 +12,10 @@ from .core.model import (
     ActionFrequencyModel,
     EngagementLightGBMBundle,
     EngagementModel,
+    FullLightGBMModel,
     ReplayValueEnsemble,
     ReplayValuePrediction,
+    SmallStatisticalModel,
     ZoneTransitionModel,
 )
 
@@ -33,6 +35,7 @@ class ModelConfig:
     transition_model_path: Path | None = None
     engagement_model_path: Path | None = None
     engagement_lightgbm_path: Path | None = None
+    candidate_model_path: Path | None = None
     allow_fallback: bool = False
 
     def __post_init__(self) -> None:
@@ -43,6 +46,7 @@ class ModelConfig:
             "transition_model_path",
             "engagement_model_path",
             "engagement_lightgbm_path",
+            "candidate_model_path",
         ):
             value = getattr(self, field_name)
             if value is not None:
@@ -62,6 +66,7 @@ class ModelStatus:
     has_transition_model: bool
     has_engagement_model: bool
     has_engagement_booster: bool
+    has_candidate_model: bool
 
 
 class ReplayModel:
@@ -77,12 +82,14 @@ class ReplayModel:
         transition_model: ZoneTransitionModel | None = None,
         engagement_model: EngagementModel | None = None,
         engagement_booster: EngagementLightGBMBundle | None = None,
+        candidate_model: FullLightGBMModel | SmallStatisticalModel | None = None,
     ) -> None:
         self._ensemble = ensemble
         self._action_model = action_model
         self._transition_model = transition_model
         self._engagement_model = engagement_model
         self._engagement_booster = engagement_booster
+        self._candidate_model = candidate_model
         self._release_path = release_path
         self._manifest_path = manifest_path
 
@@ -98,6 +105,7 @@ class ReplayModel:
             transition_path = selected.transition_model_path or (release / "zone_transitions.json")
             engagement_path = selected.engagement_model_path or (release / "engagement_model.json")
             engagement_lightgbm_path = selected.engagement_lightgbm_path or (release / "engagement_lightgbm.json")
+            candidate_path = selected.candidate_model_path or (release / "candidate_action_value.txt")
             release_manifest_path = release / "release_manifest.json"
             if release_manifest_path.is_file():
                 from Noah.training.contracts import ModelReleaseManifest
@@ -118,6 +126,16 @@ class ReplayModel:
                     # The native LightGBM dependency is optional at runtime;
                     # the statistical artifact remains fully usable.
                     engagement_booster = None
+            candidate_model = None
+            if candidate_path.is_file():
+                from Noah.training.analysis_harness import load_candidate_model
+
+                try:
+                    candidate_model = load_candidate_model(candidate_path)
+                except (ImportError, RuntimeError, ValueError):
+                    candidate_model = None
+            elif (release / "small_statistical.json").is_file():
+                candidate_model = SmallStatisticalModel.load(release / "small_statistical.json")
             return cls(
                 ensemble,
                 release_path=release,
@@ -126,6 +144,7 @@ class ReplayModel:
                 transition_model=transition_model,
                 engagement_model=engagement_model,
                 engagement_booster=engagement_booster,
+                candidate_model=candidate_model,
             )
         except Exception as exc:
             raise ModelError(f"could not load replay model: {exc}") from exc
@@ -142,6 +161,7 @@ class ReplayModel:
             has_transition_model=self._transition_model is not None,
             has_engagement_model=self._engagement_model is not None,
             has_engagement_booster=self._engagement_booster is not None,
+            has_candidate_model=self._candidate_model is not None,
         )
 
     def predict(self, snapshot: Mapping[str, Any]) -> ReplayValuePrediction:
@@ -189,6 +209,39 @@ class ReplayModel:
             )
         except Exception as exc:
             raise ModelError(f"could not analyse replay match: {exc}") from exc
+
+    def analyse_replay(
+        self,
+        replay: Mapping[str, Any],
+        *,
+        moment_threshold: float = 0.08,
+        max_moments: int = 25,
+        min_support: int = 5,
+        recommendation_margin: float = 0.05,
+        sample_every: int = 8,
+    ) -> dict[str, Any]:
+        """Run key-moment detection and legal-alternative analysis together."""
+
+        try:
+            from Noah.training.analysis_harness import (
+                HarnessConfig,
+                build_replay_analysis,
+            )
+
+            return build_replay_analysis(
+                replay,
+                self,
+                candidate_model=self._candidate_model,
+                config=HarnessConfig(
+                    moment_threshold=moment_threshold,
+                    max_moments=max_moments,
+                    min_support=min_support,
+                    recommendation_margin=recommendation_margin,
+                    sample_every=sample_every,
+                ),
+            )
+        except Exception as exc:
+            raise ModelError(f"could not analyse replay decisions: {exc}") from exc
 
     def action_probabilities(
         self,

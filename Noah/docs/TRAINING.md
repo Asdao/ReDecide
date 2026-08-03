@@ -361,3 +361,38 @@ The event-only full model estimates round win probability. It is not yet a
 movement/action model because sidecars contain no player positions, health,
 utility inventory, visibility, or velocity. For that model, parse native demos
 successfully and run `training.train_full_replay` without `--snapshot-input`.
+
+## Combined replay analysis
+
+The deployable runtime can produce one report that combines factual replay
+evidence with estimated alternatives:
+
+```powershell
+python -m training.analysis_harness `
+  --input data/private/processed/full_replays.jsonl `
+  --record-index 0 `
+  --release-dir model/artifacts/releases `
+  --version v2 `
+  --max-moments 25 `
+  --output data/private/processed/replay_analysis.json
+```
+
+The report first selects key moments from round-value swings and kill/death/
+bomb events. It then reconstructs the nearest legal simulator state, scores
+only actions accepted by `cs2_sim.rules.legal_actions`, and stores the complete
+ranked `candidate_actions` list. `best_estimated_alternative` is therefore a
+simulator action-value estimate, not a proven counterfactual. A moment is
+classified as `good`, `bad`, or `neutral` only when both the observed action
+and the best candidate have at least `--min-support` observations; otherwise
+the harness emits `insufficient_evidence` or `no_observed_action`.
+
+The current reconstructed state uses the simulator's default topology. Replay
+nav-area labels are retained, but a map-specific navigation adapter is still
+needed before movement alternatives can be treated as authoritative CS2-legal
+routes; the report records this scope in `candidate_legality`.
+
+This keeps the two evaluation questions separate: full-match metrics measure
+round-value prediction, while candidate quality is evaluated later against a
+held-out tactical benchmark or human-reviewed labels. The harness does not
+claim that an estimated alternative was objectively better when the replay
+does not contain enough state or outcome support.
