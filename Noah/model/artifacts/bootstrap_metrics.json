@@ -1,0 +1,19 @@
+{
+  "source": "simulator_bootstrap",
+  "states": 500,
+  "train_examples": 2966,
+  "validation_examples": 741,
+  "small_decision_metrics": {
+    "legal_action_rate": 1.0,
+    "baseline_agreement": 0.64,
+    "chosen_action_success_rate": 0.52,
+    "oracle_opportunity_accuracy": 0.8125,
+    "evaluated_states": 100.0,
+    "states_with_winning_action": 64.0
+  },
+  "full_candidate_metrics": {
+    "log_loss": 0.33113109609130104,
+    "brier": 0.11329605534722051,
+    "accuracy": 0.8137651821862348
+  }
+}

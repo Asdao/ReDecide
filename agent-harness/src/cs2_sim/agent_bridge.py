@@ -57,7 +57,7 @@ _ensure_simulator_importable()
 
 from cs2_sim.baseline_policy import BaselinePolicy  # noqa: E402
 from cs2_sim.bayesian_policy import BayesianPolicy  # noqa: E402
-from cs2_sim.config import SimConfig  # noqa: E402
+from cs2_sim import SimConfig  # noqa: E402
 from cs2_sim.simulator import Simulator  # noqa: E402
 from cs2_sim.state import BombState, GameState, PlayerState, Team  # noqa: E402
 

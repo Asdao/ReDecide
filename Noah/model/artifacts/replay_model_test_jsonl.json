@@ -1,0 +1,140 @@
+{
+  "source": "data\\full\\processed\\full_replays.jsonl",
+  "snapshot_rows": 100,
+  "model_has_booster": true,
+  "replay_metrics": {
+    "log_loss": 0.5391931817952114,
+    "brier": 0.18038589271609407,
+    "accuracy": 0.74,
+    "balanced_accuracy": 0.74,
+    "expected_calibration_error": 0.18056370997791912,
+    "ct_win_rate": 0.5,
+    "training_prior_baseline": {
+      "probability": 0.5,
+      "log_loss": 0.6931471805599453,
+      "brier": 0.25,
+      "accuracy": 0.5
+    },
+    "log_loss_improvement": 0.15395399876473392,
+    "brier_improvement": 0.06961410728390593
+  },
+  "action_rows": 60392,
+  "action_counts": {
+    "hold": 17936,
+    "move": 42456
+  },
+  "top_regions": [
+    [
+      "nav_area_1281",
+      3788
+    ],
+    [
+      "nav_area_2625",
+      3210
+    ],
+    [
+      "nav_area_1350",
+      1286
+    ],
+    [
+      "nav_area_1366",
+      1244
+    ],
+    [
+      "nav_area_2744",
+      1228
+    ],
+    [
+      "nav_area_2622",
+      1127
+    ],
+    [
+      "nav_area_2711",
+      1100
+    ],
+    [
+      "nav_area_1752",
+      586
+    ],
+    [
+      "nav_area_1614",
+      459
+    ],
+    [
+      "nav_area_2126",
+      450
+    ]
+  ],
+  "action_examples": [
+    {
+      "state": "ct|nav_area_2625",
+      "scores": {
+        "hold": 0.5,
+        "move": 0.5
+      }
+    },
+    {
+      "state": "ct|nav_area_2625",
+      "scores": {
+        "hold": 0.5,
+        "move": 0.5
+      }
+    },
+    {
+      "state": "ct|nav_area_2625",
+      "scores": {
+        "hold": 0.5,
+        "move": 0.5
+      }
+    },
+    {
+      "state": "ct|nav_area_2625",
+      "scores": {
+        "hold": 0.5,
+        "move": 0.5
+      }
+    },
+    {
+      "state": "ct|nav_area_2625",
+      "scores": {
+        "hold": 0.5,
+        "move": 0.5
+      }
+    },
+    {
+      "state": "ct|nav_area_2625",
+      "scores": {
+        "hold": 0.5,
+        "move": 0.5
+      }
+    },
+    {
+      "state": "ct|nav_area_2625",
+      "scores": {
+        "hold": 0.5,
+        "move": 0.5
+      }
+    },
+    {
+      "state": "ct|nav_area_2625",
+      "scores": {
+        "hold": 0.5,
+        "move": 0.5
+      }
+    },
+    {
+      "state": "ct|nav_area_2625",
+      "scores": {
+        "hold": 0.5,
+        "move": 0.5
+      }
+    },
+    {
+      "state": "ct|nav_area_2625",
+      "scores": {
+        "hold": 0.5,
+        "move": 0.5
+      }
+    }
+  ]
+}

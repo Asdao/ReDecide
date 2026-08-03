@@ -7,8 +7,8 @@ model/artifacts/*.json
 model/artifacts/*.txt
 
 # Keep the deployable replay-value model bundle available to users after clone.
-!model/artifacts/full_replay_value.txt
-!model/artifacts/full_replay_value.txt.json
-!model/artifacts/full_replay_value.manifest.json
-!model/artifacts/full_replay_calibrator.json
-!model/artifacts/small_snapshot_value.json
+!Noah/model/artifacts/full_replay_value.txt
+!Noah/model/artifacts/full_replay_value.txt.json
+!Noah/model/artifacts/full_replay_value.manifest.json
+!Noah/model/artifacts/full_replay_calibrator.json
+!Noah/model/artifacts/small_snapshot_value.json

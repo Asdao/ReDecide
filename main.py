@@ -1,5 +1,5 @@
 from cs2_sim.baseline_policy import BaselinePolicy
-from cs2_sim.config import SimConfig
+from cs2_sim import SimConfig
 from cs2_sim.simulator import Simulator
 from cs2_sim.state import BombState, GameState, PlayerState, Team
 

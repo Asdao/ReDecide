@@ -1,0 +1,127 @@
+{
+  "source": "data\\full\\processed\\cs2_replays.sqlite",
+  "snapshot_rows": 100,
+  "model_has_booster": true,
+  "replay_metrics": {
+    "log_loss": 0.4003388950646643,
+    "brier": 0.1185289937788614,
+    "accuracy": 0.88,
+    "balanced_accuracy": 0.8799999999999999,
+    "expected_calibration_error": 0.2083290555712782,
+    "ct_win_rate": 0.5,
+    "training_prior_baseline": {
+      "probability": 0.5,
+      "log_loss": 0.6931471805599453,
+      "brier": 0.25,
+      "accuracy": 0.5
+    },
+    "log_loss_improvement": 0.292808285495281,
+    "brier_improvement": 0.1314710062211386
+  },
+  "action_rows": 100,
+  "action_counts": {
+    "hold": 100
+  },
+  "top_regions": [
+    [
+      "nav_area_1281",
+      30
+    ],
+    [
+      "nav_area_2625",
+      20
+    ],
+    [
+      "nav_area_2711",
+      10
+    ],
+    [
+      "nav_area_2622",
+      10
+    ],
+    [
+      "nav_area_2744",
+      10
+    ],
+    [
+      "nav_area_1350",
+      10
+    ],
+    [
+      "nav_area_1366",
+      10
+    ]
+  ],
+  "action_examples": [
+    {
+      "state": "ct|nav_area_2625",
+      "scores": {
+        "hold": 0.7889235283330277,
+        "move": 0.2110764716669723
+      }
+    },
+    {
+      "state": "t|nav_area_1281",
+      "scores": {
+        "hold": 0.7969081539860564,
+        "move": 0.20309184601394362
+      }
+    },
+    {
+      "state": "ct|nav_area_2711",
+      "scores": {
+        "hold": 0.7474120082815735,
+        "move": 0.2525879917184265
+      }
+    },
+    {
+      "state": "ct|nav_area_2622",
+      "scores": {
+        "hold": 0.6764091858037579,
+        "move": 0.3235908141962422
+      }
+    },
+    {
+      "state": "t|nav_area_1281",
+      "scores": {
+        "hold": 0.7969081539860564,
+        "move": 0.20309184601394362
+      }
+    },
+    {
+      "state": "ct|nav_area_2744",
+      "scores": {
+        "hold": 0.8032454361054767,
+        "move": 0.19675456389452334
+      }
+    },
+    {
+      "state": "t|nav_area_1350",
+      "scores": {
+        "hold": 0.7731958762886598,
+        "move": 0.2268041237113402
+      }
+    },
+    {
+      "state": "t|nav_area_1281",
+      "scores": {
+        "hold": 0.7969081539860564,
+        "move": 0.20309184601394362
+      }
+    },
+    {
+      "state": "ct|nav_area_2625",
+      "scores": {
+        "hold": 0.7889235283330277,
+        "move": 0.2110764716669723
+      }
+    },
+    {
+      "state": "t|nav_area_1366",
+      "scores": {
+        "hold": 0.7746102449888641,
+        "move": 0.22538975501113587
+      }
+    }
+  ]
+}

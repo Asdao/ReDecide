@@ -1,0 +1,68 @@
+{
+  "release_version": "v2",
+  "created_at": "2026-08-03T03:37:08.604506+00:00",
+  "python": "3.12.13",
+  "platform": "Windows-11-10.0.26200-SP0",
+  "files": [
+    {
+      "path": "data/full/processed/full_replays.jsonl",
+      "bytes": 381136742,
+      "sha256": "ebdfd1946b06a2aaf30dcff78f745fa5c4ccbf7252e886662fe8fa49697816a5"
+    },
+    {
+      "path": "data/full/processed/cs2_replays_v2.sqlite",
+      "bytes": 1155141632,
+      "sha256": "a250aefc1b7336ad10e05f66eccee11314cdd6c9c2ad5c28fb7cdb682eceb8dd"
+    },
+    {
+      "path": "model/artifacts/releases/v2/full_replay_value.txt",
+      "bytes": 88468,
+      "sha256": "ad8f1d265b5d6463c899a271156d5d75ebcedbc77a4dff6339c4d1f7747a80b5"
+    },
+    {
+      "path": "model/artifacts/releases/v2/full_replay_value.txt.json",
+      "bytes": 1252,
+      "sha256": "466caaa78c1837e80ff8676120670a8a6bfc09df3af22d69bb86b6a324b57f55"
+    },
+    {
+      "path": "model/artifacts/releases/v2/full_replay_value.manifest.json",
+      "bytes": 2034,
+      "sha256": "54e7916698f8c7cdd5d4b3bebe309b5501a4e58543d8a14e61b8c87e8b1ea979"
+    },
+    {
+      "path": "model/artifacts/releases/v2/full_replay_calibrator.json",
+      "bytes": 142,
+      "sha256": "f21d36bc204fbad139ba2838ca87919c36468e48c7d1329458e6f41ce402fe19"
+    },
+    {
+      "path": "model/artifacts/releases/v2/small_snapshot_value.json",
+      "bytes": 20347,
+      "sha256": "dbdeb2dd4ac5afe7e875e5505a5c6947c4a208057d4850ccd702e36306c017f9"
+    },
+    {
+      "path": "model/artifacts/releases/v2/action_frequency.json",
+      "bytes": 1307425,
+      "sha256": "82bb735e6f65b80ee0e90a1608d67256b18fa90cac4e51a6677d08be4f6546a6"
+    },
+    {
+      "path": "model/artifacts/releases/v2/zone_transitions.json",
+      "bytes": 5500779,
+      "sha256": "f6a6f66edad7ed08531937897da8f7a0b24941a168d5fbecbcdf0bfca5f3ef83"
+    },
+    {
+      "path": "model/artifacts/releases/v2/statistical_baselines.json",
+      "bytes": 9322,
+      "sha256": "46ba87b56b1d1f097d7229e2f40a71312e4911399e6478c9c5db18ba73e3b721"
+    },
+    {
+      "path": "model/artifacts/releases/v2/model_comparison.json",
+      "bytes": 3489,
+      "sha256": "5e063f0710197dcc490ed341c6e99a2f15829077a8408c44833d11d30159cf6d"
+    },
+    {
+      "path": "model/artifacts/releases/v2/action_evaluation.json",
+      "bytes": 1973,
+      "sha256": "75a882cef74d3e20f7f577be391fe644e49cae79c858776ff745ce0f040a301c"
+    }
+  ]
+}

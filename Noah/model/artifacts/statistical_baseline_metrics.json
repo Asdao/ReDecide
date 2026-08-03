@@ -1,0 +1,122 @@
+{
+  "source": "data\\full\\processed\\cs2_replays.sqlite",
+  "feature_names": [
+    "map_code",
+    "time_seconds",
+    "ct_alive",
+    "t_alive",
+    "alive_difference",
+    "ct_avg_health",
+    "t_avg_health",
+    "kills_seen",
+    "bomb_planted",
+    "bomb_site_code",
+    "ct_avg_x",
+    "ct_avg_y",
+    "t_avg_x",
+    "t_avg_y",
+    "ct_total_health",
+    "t_total_health",
+    "ct_avg_armor",
+    "t_avg_armor",
+    "damage_events_seen",
+    "shots_seen",
+    "utility_events_seen",
+    "bomb_time_remaining",
+    "ct_avg_z",
+    "t_avg_z",
+    "ct_norm_x",
+    "ct_norm_y",
+    "t_norm_x",
+    "t_norm_y",
+    "map_is_de_ancient",
+    "map_is_de_anubis",
+    "map_is_de_dust2",
+    "map_is_de_inferno",
+    "map_is_de_mirage",
+    "map_is_de_nuke",
+    "map_is_de_overpass",
+    "map_is_de_vertigo",
+    "bomb_site_is_none",
+    "bomb_site_is_a",
+    "bomb_site_is_b"
+  ],
+  "train_rows": 2044,
+  "validation_rows": 469,
+  "validation_sources": [
+    "astralis-vs-b8-m1-mirage.dem",
+    "big-vs-luminous-m2-mirage.dem",
+    "fut-vs-b8-m2-overpass.dem",
+    "g2-vs-spirit-m2-dust2.dem"
+  ],
+  "models": {
+    "gaussian_naive_bayes": {
+      "snapshot": {
+        "log_loss": 6.93099123215215,
+        "brier": 0.43281354775788433,
+        "accuracy": 0.5671641791044776,
+        "balanced_accuracy": 0.5120192307692307,
+        "expected_calibration_error": 0.4328246152748036,
+        "ct_win_rate": 0.5565031982942431,
+        "training_prior_baseline": {
+          "probability": 0.5371819960861057,
+          "log_loss": 0.687500706711817,
+          "brier": 0.24718069743728918,
+          "accuracy": 0.5565031982942431
+        },
+        "log_loss_improvement": -6.243490525440333,
+        "brier_improvement": -0.18563285032059515
+      },
+      "round": {
+        "log_loss": 7.125894975393228,
+        "brier": 0.4421051747368521,
+        "accuracy": 0.5578947368421052,
+        "balanced_accuracy": 0.5,
+        "expected_calibration_error": 0.44210516315789483,
+        "ct_win_rate": 0.5578947368421052,
+        "training_prior_baseline": {
+          "probability": 0.5371819960861057,
+          "log_loss": 0.6872933632197938,
+          "brier": 0.24707721707560862,
+          "accuracy": 0.5578947368421052
+        },
+        "log_loss_improvement": -6.438601612173434,
+        "brier_improvement": -0.1950279576612435
+      }
+    },
+    "logistic_regression": {
+      "snapshot": {
+        "log_loss": 0.5534737291227839,
+        "brier": 0.1902297243879912,
+        "accuracy": 0.6865671641791045,
+        "balanced_accuracy": 0.6798279546124374,
+        "expected_calibration_error": 0.08813767534423571,
+        "ct_win_rate": 0.5565031982942431,
+        "training_prior_baseline": {
+          "probability": 0.5371819960861057,
+          "log_loss": 0.687500706711817,
+          "brier": 0.24718069743728918,
+          "accuracy": 0.5565031982942431
+        },
+        "log_loss_improvement": 0.13402697758903304,
+        "brier_improvement": 0.05695097304929797
+      },
+      "round": {
+        "log_loss": 0.5990410849057533,
+        "brier": 0.20655422992047195,
+        "accuracy": 0.6736842105263158,
+        "balanced_accuracy": 0.6630727762803235,
+        "expected_calibration_error": 0.09155998859620262,
+        "ct_win_rate": 0.5578947368421052,
+        "training_prior_baseline": {
+          "probability": 0.5371819960861057,
+          "log_loss": 0.6872933632197938,
+          "brier": 0.24707721707560862,
+          "accuracy": 0.5578947368421052
+        },
+        "log_loss_improvement": 0.08825227831404059,
+        "brier_improvement": 0.040522987155136664
+      }
+    }
+  }
+}
