@@ -5,6 +5,8 @@
       <sourceFolder url="file://$MODULE_DIR$/Noah/extractor/src" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/Noah/model/src" isTestSource="false" />
       <excludeFolder url="file://$MODULE_DIR$/.venv" />
+      <excludeFolder url="file://$MODULE_DIR$/data" />
+      <excludeFolder url="file://$MODULE_DIR$/ghackathon.egg-info" />
     </content>
     <orderEntry type="jdk" jdkName="uv (GHackathon) (2)" jdkType="Python SDK" />
     <orderEntry type="sourceFolder" forTests="false" />
