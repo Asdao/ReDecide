@@ -465,6 +465,7 @@ def _least_death_risk_candidate(
         action = str(candidate.get("action") or "")
         if not action or candidate.get("legal") is False:
             continue
+        direct_death_head = candidate.get("death_probability_source") == "engagement_death_head"
         successes = candidate.get("posterior_successes")
         failures = candidate.get("posterior_failures")
         try:
@@ -472,7 +473,16 @@ def _least_death_risk_candidate(
             failures_value = float(failures)
         except (TypeError, ValueError):
             successes_value = failures_value = -1.0
-        if (
+        if direct_death_head:
+            mean = min(1.0, max(0.0, _number(candidate.get("death_probability"), 0.5)))
+            support = max(0.0, _number(candidate.get("sample_count"), 0.0))
+            alpha = mean * support + 1.0
+            beta = (1.0 - mean) * support + 1.0
+            total = alpha + beta
+            variance = alpha * beta / (total * total * (total + 1.0))
+            source = "engagement_death_head"
+            outcome_evidence = support > 0
+        elif (
             successes_value >= 0
             and failures_value >= 0
             and math.isfinite(successes_value)
@@ -501,7 +511,7 @@ def _least_death_risk_candidate(
             variance = alpha * beta / (total * total * (total + 1.0))
             source = "round_loss_proxy_support_prior"
             outcome_evidence = False
-        if (
+        if not direct_death_head and (
             successes_value >= 0
             and failures_value >= 0
             and math.isfinite(successes_value)
@@ -524,8 +534,8 @@ def _least_death_risk_candidate(
             {
                 "action": action,
                 "death_probability": mean,
-                "round_loss_probability_proxy": mean,
-                "is_proxy": True,
+                "round_loss_probability_proxy": mean if not direct_death_head else None,
+                "is_proxy": not direct_death_head,
                 "risk_upper_bound": upper,
                 "risk_interval_level": 0.90,
                 "risk_interval_method": "beta_normal_approximation_upper_bound",
@@ -596,6 +606,151 @@ def _event_actor(event: Mapping[str, Any]) -> str | None:
         if event.get(key) not in (None, ""):
             return str(event[key])
     return None
+
+
+def _coached_player(event: Mapping[str, Any]) -> str | None:
+    """Coach the player who died at a kill moment; fall back for other events."""
+
+    if str(event.get("category") or "") == "kill" and event.get("victim_id") not in (None, ""):
+        return str(event["victim_id"])
+    return _event_actor(event)
+
+
+def _engagement_window_for_kill(
+    windows: Iterable[Mapping[str, Any]],
+    *,
+    round_num: int,
+    tick: int,
+    player_id: str | None,
+) -> dict[str, Any] | None:
+    if player_id is None:
+        return None
+    candidates = [
+        dict(row)
+        for row in windows
+        if _int(row.get("round_num")) == round_num
+        and str(row.get("player_id")) == player_id
+        and _int(row.get("death_tick")) == tick
+    ]
+    if not candidates:
+        return None
+    return min(candidates, key=lambda row: abs(tick - _int(row.get("contact_tick"), tick)))
+
+
+def _movement_action(action: str) -> str:
+    return "move" if action.startswith("move") else "hold" if action == "hold" else action
+
+
+def _augment_candidates_with_engagement(
+    model: Any,
+    candidates: list[dict[str, Any]],
+    window: Mapping[str, Any] | None,
+    *,
+    min_support: int,
+) -> list[dict[str, Any]]:
+    """Rank legal actions with observational multi-head engagement utility."""
+
+    score = getattr(model, "score_engagement", None)
+    if not callable(score) or window is None:
+        return candidates
+    candidates = [dict(candidate) for candidate in candidates]
+    simulator_values = [
+        _number(candidate.get("candidate_success_probability"), 0.5)
+        for candidate in candidates
+    ]
+    default_simulator_value = sum(simulator_values) / len(simulator_values) if simulator_values else 0.5
+    existing_movements = {_movement_action(str(candidate.get("action") or "")) for candidate in candidates}
+    for action in ("hold", "move"):
+        if action in existing_movements:
+            continue
+        candidates.append(
+            {
+                "action": action,
+                "candidate_success_probability": default_simulator_value,
+                "round_value_delta": default_simulator_value,
+                "death_probability": 1.0 - default_simulator_value,
+                "sample_count": 0,
+                "confidence": 0.0,
+                "entropy": 1.0,
+                "legal": True,
+                "legality_scope": "abstract_movement_choice",
+                "support_level": "engagement_state",
+            }
+        )
+    augmented: list[dict[str, Any]] = []
+    utilities: list[float] = []
+    for original in candidates:
+        candidate = dict(original)
+        row = dict(window)
+        row["observed_action"] = _movement_action(str(candidate.get("action") or ""))
+        prediction = dict(score(row))
+        death = min(1.0, max(0.0, _number(prediction.get("death_probability"), 0.5)))
+        survival = min(1.0, max(0.0, _number(prediction.get("survival_probability"), 1.0 - death)))
+        kill = min(1.0, max(0.0, _number(prediction.get("kill_probability"), 0.0)))
+        trade = min(1.0, max(0.0, _number(prediction.get("trade_probability"), 0.0)))
+        damage = min(1.0, max(0.0, _number(prediction.get("damage_probability"), kill)))
+        simulator_value = min(1.0, max(0.0, _number(candidate.get("candidate_success_probability"), 0.5)))
+        round_win_raw = prediction.get("round_win_probability")
+        round_win = (
+            simulator_value
+            if round_win_raw is None
+            else min(1.0, max(0.0, _number(round_win_raw, simulator_value)))
+        )
+        utility = (
+            0.35 * round_win
+            + 0.25 * survival
+            + 0.15 * kill
+            + 0.10 * trade
+            + 0.10 * damage
+            + 0.05 * simulator_value
+        )
+        support = max(0, _int(prediction.get("sample_count"), 0))
+        confidence = min(1.0, max(0.0, _number(prediction.get("confidence"), 0.0)))
+        candidate.update(
+            {
+                "candidate_success_probability": utility,
+                "round_value_delta": utility,
+                "death_probability": death,
+                "death_probability_source": "engagement_death_head",
+                "survival_probability": survival,
+                "kill_probability": kill,
+                "trade_probability": trade,
+                "damage_probability": damage,
+                "round_win_probability": round_win,
+                "simulator_value_probability": simulator_value,
+                "coaching_utility": utility,
+                "utility_weights": {
+                    "round_win": 0.35,
+                    "survival": 0.25,
+                    "kill": 0.15,
+                    "trade": 0.10,
+                    "damage": 0.10,
+                    "simulator": 0.05,
+                },
+                "sample_count": support,
+                "support_level": prediction.get("support_level", "engagement_state"),
+                "confidence": confidence,
+                "entropy": _number(prediction.get("entropy"), 1.0),
+                "outcome_support": support,
+                "outcome_evidence": support > 0,
+                "supported": bool(prediction.get("supported")) and support >= min_support,
+                "engagement_state_key": prediction.get("state_key"),
+                "engagement_lightgbm_blend_weight": prediction.get("lightgbm_blend_weight", 0.0),
+                "estimate_type": "observational_action_conditioned_multi_head_estimate",
+                # The utility is a weighted probability, so these are
+                # effective posterior counts rather than raw win/loss rows.
+                "posterior_successes": utility * support,
+                "posterior_failures": (1.0 - utility) * support,
+                "posterior_count_semantics": "effective_weighted_utility_counts",
+            }
+        )
+        augmented.append(candidate)
+        utilities.append(utility)
+    has_variance = bool(utilities and max(utilities) - min(utilities) > 1e-9)
+    for candidate in augmented:
+        candidate["outcome_variance"] = has_variance
+        candidate["rollout_quality"] = "observed_action_outcomes" if has_variance else "no_action_outcome_variance"
+    return rank_candidate_actions(augmented, min_support=min_support)
 
 
 def _find_moments(
@@ -691,6 +846,10 @@ def _kill_analysis_rows(moments: Iterable[Mapping[str, Any]]) -> list[dict[str, 
                 {
                     "round_num": _int(event.get("round_num"), _int(moment.get("round_num"))),
                     "tick": _int(event.get("tick"), _int(moment.get("tick"))),
+                    "decision_tick": _int(moment.get("decision_tick"), _int(moment.get("tick"))),
+                    "decision_lead_seconds": _number(moment.get("decision_lead_seconds"), 0.0),
+                    "coached_player_id": moment.get("actor_id"),
+                    "coached_player_role": moment.get("coached_player_role"),
                     "time_seconds": _number(snapshot.get("elapsed_seconds"), 0.0),
                     "event_id": event.get("event_id"),
                     "attacker_id": event.get("attacker_id"),
@@ -765,6 +924,12 @@ def _kill_analysis_rows(moments: Iterable[Mapping[str, Any]]) -> list[dict[str, 
                         least_risk.get("risk_source") if isinstance(least_risk, Mapping) else None
                     ),
                     "round_win_probability": best.get("candidate_success_probability"),
+                    "engagement_round_win_probability": best.get("round_win_probability"),
+                    "survival_probability": best.get("survival_probability"),
+                    "kill_probability": best.get("kill_probability"),
+                    "trade_probability": best.get("trade_probability"),
+                    "damage_probability": best.get("damage_probability"),
+                    "coaching_utility": best.get("coaching_utility"),
                     "round_loss_probability_proxy": best.get("death_probability"),
                     "probability_of_improvement": moment.get("probability_of_improvement"),
                     "expected_regret": moment.get("expected_regret"),
@@ -804,6 +969,18 @@ def build_replay_analysis(
     )
     feature_rows = record_to_rows(normalized, sample_every=settings.sample_every, include_terminal=True)
     action_rows = infer_actions(normalized, window_seconds=2.0)
+    tick_index = _build_tick_index(normalized)
+    engagement_windows: list[dict[str, Any]] = []
+    if callable(getattr(model, "score_engagement", None)):
+        from Noah.training.engagement_windows import extract_engagement_windows
+
+        engagement_windows = extract_engagement_windows(
+            normalized,
+            horizon_seconds=5.0,
+            lookback_seconds=3.0,
+            decision_lead_seconds=1.0,
+            action_window_seconds=1.0,
+        )
     moments = _find_moments(report, threshold=settings.moment_threshold, max_moments=settings.max_moments)
     output_moments: list[dict[str, Any]] = []
     for moment in moments:
@@ -812,15 +989,37 @@ def build_replay_analysis(
         snapshot_row = _snapshot_for_event(feature_rows, round_num=round_num, tick=tick)
         event = moment["events"][0] if moment["events"] else {}
         event_ticks = [_int(item.get("tick")) for item in moment["events"] if _int(item.get("tick")) >= 0]
-        decision_tick = min(event_ticks) if event_ticks else tick
+        event_tick = min(event_ticks) if event_ticks else tick
+        actor = _coached_player(event)
+        engagement_window = _engagement_window_for_kill(
+            engagement_windows,
+            round_num=round_num,
+            tick=event_tick,
+            player_id=actor,
+        )
+        decision_tick = (
+            _int(engagement_window.get("anchor_tick"))
+            if engagement_window is not None
+            else event_tick
+        )
         state = reconstruct_game_state(
             normalized,
             round_num=round_num,
             tick=decision_tick,
             before_event=True,
+            tick_index=tick_index,
         )
-        actor = _event_actor(event)
         observed_action = _observed_action(action_rows, actor=actor, round_num=round_num, tick=decision_tick)
+        if engagement_window is not None and engagement_window.get("observed_action"):
+            action_name = str(engagement_window["observed_action"])
+            destination = engagement_window.get("observed_action_destination")
+            if action_name == "move" and destination not in (None, "", "unknown"):
+                action_name = f"move_to_adjacent_zone:{destination}"
+            observed_action = {
+                "action": action_name,
+                "tick": decision_tick,
+                "source": "engagement_decision_window",
+            }
         candidates, candidate_source = _candidate_rows(
             candidate_model,
             state,
@@ -830,6 +1029,15 @@ def build_replay_analysis(
         ranked = rank_candidate_actions(candidates, min_support=settings.min_support) if candidates else []
         for candidate in ranked:
             candidate["estimate_type"] = "simulator_action_value_estimate"
+        engagement_ranked = _augment_candidates_with_engagement(
+            model,
+            ranked,
+            engagement_window,
+            min_support=settings.min_support,
+        )
+        if engagement_ranked is not ranked:
+            ranked = engagement_ranked
+            candidate_source = f"{candidate_source}+observational_engagement"
         best = ranked[0] if ranked else None
         least_risk = _least_death_risk_candidate(ranked)
         observed_candidate: dict[str, Any] | None = None
@@ -843,6 +1051,16 @@ def build_replay_analysis(
             if observed_candidate is None and observed_action is not None:
                 observed_candidate = next(
                     (row for row in ranked if row["action"] == observed_action["action"]),
+                    None,
+                )
+            if observed_candidate is None and observed_action is not None:
+                observed_movement = _movement_action(str(observed_action["action"]))
+                observed_candidate = next(
+                    (
+                        row
+                        for row in ranked
+                        if _movement_action(str(row.get("action") or "")) == observed_movement
+                    ),
                     None,
                 )
             if observed_candidate is None or not observed_candidate["supported"] or not best["supported"]:
@@ -860,7 +1078,14 @@ def build_replay_analysis(
             {
                 **moment,
                 "actor_id": actor,
+                "coached_player_role": "victim" if str(event.get("category") or "") == "kill" else "actor",
                 "decision_tick": decision_tick,
+                "decision_lead_seconds": (
+                    engagement_window.get("decision_lead_seconds")
+                    if engagement_window is not None
+                    else 0.0
+                ),
+                "engagement_window": engagement_window,
                 "snapshot": snapshot_row.get("snapshot") if snapshot_row else None,
                 "candidate_source": candidate_source,
                 "candidate_model_type": _candidate_model_type(candidate_model),
@@ -980,7 +1205,7 @@ def main() -> int:
     parser.add_argument("--input", type=Path, required=True, help="normalized replay JSONL")
     parser.add_argument("--record-index", type=int, default=0)
     parser.add_argument("--release-dir", type=Path, default=Path("model/artifacts/releases"))
-    parser.add_argument("--version", default="v2")
+    parser.add_argument("--version", default="v3")
     parser.add_argument("--candidate-model", type=Path, default=None)
     parser.add_argument("--moment-threshold", type=float, default=0.08)
     parser.add_argument("--max-moments", type=int, default=25)

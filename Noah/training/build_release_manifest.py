@@ -49,9 +49,15 @@ def build_release_manifest(release_dir: str | Path, *, version: str | None = Non
                 "fields": [field.to_dict() for field in ENGAGEMENT_FIELD_SPECS],
             },
         }
+    # Refresh evolving schemas even when cloning a previous release. This
+    # prevents a v2 engagement artifact from being packaged with the v1
+    # feature contract copied from its base release.
+    payload["engagement"] = {
+        "schema_version": ENGAGEMENT_FEATURE_SCHEMA_VERSION,
+        "fields": [field.to_dict() for field in ENGAGEMENT_FIELD_SPECS],
+    }
     # Candidate-action probabilities are consumed by the replay harness and
-    # must be versioned alongside replay/engagement inputs.  Preserve any
-    # existing schema sections while adding this deterministic section.
+    # must be versioned alongside replay/engagement inputs.
     payload["candidate_action"] = {
         "schema_version": CANDIDATE_ACTION_FEATURE_SCHEMA_VERSION,
         "fields": [field.to_dict() for field in CANDIDATE_ACTION_FIELD_SPECS],
@@ -66,6 +72,7 @@ def build_release_manifest(release_dir: str | Path, *, version: str | None = Non
         "candidate_action_metadata": "candidate_action_value.txt.json",
         "statistical_action_prior": "small_statistical.json",
         "engagement_metrics": "engagement_metrics.json",
+        "engagement_lightgbm_metrics": "engagement_lightgbm_metrics.json",
         "action_model": "action_frequency.json",
         "transition_model": "zone_transitions.json",
         "feature_schema": "feature_schema.json",

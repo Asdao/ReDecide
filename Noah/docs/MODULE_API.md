@@ -123,19 +123,53 @@ replay_analysis = model.analyse_replay(
     posterior_seed=7,
 )
 engagement_report = model.analyse_engagement(replay, tick=1234, player_id="steam-id")
+one_window_score = model.score_engagement(leakage_safe_engagement_window)
 ranked = model.rank_candidate_actions([
     {"action": "hold", "death_probability": 0.31, "round_value_delta": 0.03, "sample_count": 20, "entropy": 0.4},
 ])
 print(prediction.probability, action_scores, next_zone)
 ```
 
-`analyse_replay` combines a deterministic key-moment report with legal,
-support-aware candidate ranking. It labels `good`/`bad` only when observed and
-candidate actions have enough support; otherwise it abstains. The candidate
-model is simulator-trained, so the report marks alternatives as estimates and
-records the current default-topology legality scope. `analyse_engagement` and
-`rank_candidate_actions` are likewise observational: a ranked alternative is
-not proof that a player should have made that move.
+`analyse_replay` combines a deterministic key-moment report with support-aware
+candidate ranking. For kills, release v3 coaches the victim from a decision
+cutoff one second before contact using three seconds of prior history. Abstract
+`hold` and `move` candidates are scored by round-win, survival, kill, trade,
+damage, and simulator-value heads. It labels `good`/`bad` only when observed
+and candidate actions have enough support; otherwise it abstains. Detailed
+simulator actions still record their default-topology legality scope.
+`analyse_engagement`, `score_engagement`, and `rank_candidate_actions` remain
+observational: a ranked alternative is not proof that a player should have
+made that move.
+
+For application code that already has one normalized extracted replay, the
+complete analysis call is simply:
+
+```python
+from cs2_sim import ModelConfig, ReplayModel
+
+model = ReplayModel.load(ModelConfig(allow_fallback=True))
+analysis = model.analyse_replay(replay_record, max_moments=None)
+print(analysis["kill_analysis"])
+```
+
+For a file-based entry point that also parses a native `.dem` or normalizes
+canonical replacement-extractor JSON/JSONL, use the user-facing wrapper:
+
+```python
+from Noah.training.test_harness import run_replay_test
+
+analysis = run_replay_test("match.dem", max_moments=None, sample_every=1)
+analysis_from_json = run_replay_test(
+    "data/private/processed/extractor_record.json",
+    max_moments=None,
+)
+```
+
+Both calls return the same combined report shape. The `kill_analysis` array
+contains one enriched row per kill, including `decision_tick`, coached player,
+the selected action's probability heads, and coaching utility; `moments` contains the detailed candidate
+state and `full_match` retains the deterministic timeline. No database rebuild
+or retraining occurs during either analysis call.
 
 The small statistical candidate model uses hierarchical support: it first
 looks for an exact state, then backs off to zone/bomb, side/bomb, side, and

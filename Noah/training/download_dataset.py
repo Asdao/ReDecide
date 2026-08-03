@@ -25,7 +25,7 @@ import sys
 import urllib.error
 import urllib.parse
 import urllib.request
-from collections.abc import Iterable
+from collections.abc import Iterable, Iterator
 from pathlib import Path, PurePosixPath
 from typing import BinaryIO
 
@@ -294,6 +294,40 @@ def download_file(
     return destination, size
 
 
+def iter_remote_file_chunks(
+    repo_path: str,
+    *,
+    dataset_id: str = DATASET_ID,
+    revision: str = "main",
+    max_bytes: int = DEFAULT_MAX_BYTES,
+    already_downloaded: int = 0,
+) -> Iterator[bytes]:
+    """Yield one remote file in bounded chunks without writing it to disk."""
+
+    if max_bytes <= 0 or already_downloaded < 0:
+        raise ValueError("byte limits must be non-negative and max_bytes must be positive")
+    relative_path = _validate_repo_path(repo_path)
+    encoded_id = urllib.parse.quote(dataset_id, safe="/")
+    encoded_path = "/".join(urllib.parse.quote(part) for part in relative_path.parts)
+    encoded_revision = urllib.parse.quote(revision, safe="")
+    url = f"{DATASET_RESOLVE}/{encoded_id}/resolve/{encoded_revision}/{encoded_path}"
+    try:
+        with urllib.request.urlopen(_request(url), timeout=120) as response:
+            content_length = response.headers.get("Content-Length")
+            if content_length is not None and already_downloaded + int(content_length) > max_bytes:
+                raise DownloadLimitError(f"{repo_path} is larger than the remaining byte budget")
+            downloaded = 0
+            while chunk := response.read(CHUNK_SIZE):
+                downloaded += len(chunk)
+                if already_downloaded + downloaded > max_bytes:
+                    raise DownloadLimitError(
+                        f"download budget exceeded while streaming {repo_path}"
+                    )
+                yield chunk
+    except urllib.error.URLError as exc:
+        raise RuntimeError(f"could not download {repo_path}: {exc}") from exc
+
+
 def download_files(
     repo_paths: Iterable[str],
     output_dir: str | Path,
@@ -476,7 +510,10 @@ def main() -> int:
     elif args.command == "locked":
         download_manifest(args.manifest, args.output, max_bytes=max_bytes)
     else:
-        from Noah.training.sidecar_catalog import load_candidates, select_balanced_candidates
+        from Noah.training.sidecar_catalog import (
+            load_candidates,
+            select_balanced_candidates,
+        )
 
         candidates = load_candidates(
             args.metadata,

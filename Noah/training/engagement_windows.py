@@ -16,14 +16,16 @@ from __future__ import annotations
 import argparse
 import json
 import math
+from bisect import bisect_left, bisect_right
 from collections import defaultdict
 from collections.abc import Callable, Iterator
+from itertools import pairwise
 from pathlib import Path
 from typing import Any
 
 from Noah.training.data_paths import DATA_PATHS
 
-SCHEMA_VERSION = "engagement_windows_v1"
+SCHEMA_VERSION = "engagement_windows_v2"
 DEFAULT_TICK_RATE = 64.0
 
 
@@ -145,6 +147,18 @@ def _round_end_ticks(record: dict[str, Any]) -> dict[int, int]:
     return result
 
 
+def _round_start_ticks(record: dict[str, Any]) -> dict[int, int]:
+    result: dict[int, int] = {}
+    for round_info in record.get("rounds") or []:
+        if not isinstance(round_info, dict):
+            continue
+        number = _int(round_info.get("round_num"), -1)
+        value = _int(round_info.get("start"), -1)
+        if number >= 0 and value >= 0:
+            result[number] = value
+    return result
+
+
 def _round_winners(record: dict[str, Any]) -> dict[int, str | None]:
     result: dict[int, str | None] = {}
     for round_info in record.get("rounds") or []:
@@ -184,6 +198,176 @@ def _anchor_feature(event: dict[str, Any], anchor_kind: str) -> dict[str, Any]:
     }
 
 
+def _tick_player(row: dict[str, Any], ordinal: int = 0) -> str | None:
+    for key in ("steamid", "steam_id", "player_steamid", "name", "player_name"):
+        value = row.get(key)
+        if value not in (None, ""):
+            return str(value)
+    return None if ordinal < 0 else f"anonymous:{ordinal}"
+
+
+def _tick_side(row: dict[str, Any]) -> str | None:
+    return _side(row.get("side") or row.get("team") or row.get("team_name"))
+
+
+def _tick_position(row: dict[str, Any]) -> tuple[float, float, float]:
+    return (
+        _number(row.get("X", row.get("x"))),
+        _number(row.get("Y", row.get("y"))),
+        _number(row.get("Z", row.get("z"))),
+    )
+
+
+def _tick_zone(row: dict[str, Any]) -> str:
+    return str(row.get("place") or row.get("last_place_name") or row.get("zone") or "unknown")
+
+
+def _tick_alive(row: dict[str, Any]) -> bool:
+    if row.get("alive") is not None:
+        return str(row.get("alive")).strip().lower() not in {"0", "false", "dead", "no", "none"}
+    return _number(row.get("health"), 100.0) > 0
+
+
+def _tick_index(record: dict[str, Any]) -> dict[tuple[int, str], list[dict[str, Any]]]:
+    grouped: dict[tuple[int, str], list[dict[str, Any]]] = defaultdict(list)
+    for ordinal, row in enumerate(record.get("ticks") or []):
+        if not isinstance(row, dict):
+            continue
+        round_num = _int(row.get("round_num"), -1)
+        tick = _int(row.get("tick"), -1)
+        player = _tick_player(row, ordinal)
+        if round_num >= 0 and tick >= 0 and player:
+            grouped[(round_num, player)].append(row)
+    for series in grouped.values():
+        series.sort(key=lambda row: _event_tick(row))
+    return grouped
+
+
+def _row_at_or_before(series: list[dict[str, Any]], tick: int) -> dict[str, Any] | None:
+    if not series:
+        return None
+    ticks = [_event_tick(row) for row in series]
+    index = bisect_right(ticks, tick) - 1
+    return series[index] if index >= 0 else None
+
+
+def _history_features(
+    *,
+    focal_player: str,
+    focal_side: str | None,
+    round_num: int,
+    decision_tick: int,
+    lookback_ticks: int,
+    rate: float,
+    tick_rows: dict[tuple[int, str], list[dict[str, Any]]],
+    round_damages: list[dict[str, Any]],
+) -> dict[str, Any]:
+    """Build player-centric features using ticks/events no later than cutoff."""
+
+    series = tick_rows.get((round_num, focal_player), [])
+    ticks = [_event_tick(row) for row in series]
+    start_index = bisect_left(ticks, decision_tick - lookback_ticks)
+    end_index = bisect_right(ticks, decision_tick)
+    history = series[start_index:end_index]
+    current = history[-1] if history else _row_at_or_before(series, decision_tick)
+    distance_moved = 0.0
+    zone_changes = 0
+    for previous, following in pairwise(history):
+        p1 = _tick_position(previous)
+        p2 = _tick_position(following)
+        distance_moved += math.dist(p1, p2)
+        zone_changes += int(_tick_zone(previous) != _tick_zone(following))
+    elapsed = (
+        max(0.0, (_event_tick(history[-1]) - _event_tick(history[0])) / rate)
+        if len(history) >= 2
+        else 0.0
+    )
+    recent_damage_dealt = 0.0
+    recent_damage_taken = 0.0
+    for event in round_damages:
+        event_tick = _event_tick(event)
+        if not decision_tick - lookback_ticks <= event_tick <= decision_tick:
+            continue
+        amount = _number(event.get("dmg_health_real", event.get("dmg_health")))
+        if _event_player(event, "attacker") == focal_player:
+            recent_damage_dealt += amount
+        if _event_player(event, "victim") == focal_player:
+            recent_damage_taken += amount
+
+    nearest_teammate = math.inf
+    nearest_enemy = math.inf
+    alive_teammates = 0
+    alive_enemies = 0
+    if current is not None:
+        focal_position = _tick_position(current)
+        for (candidate_round, player), candidate_series in tick_rows.items():
+            if candidate_round != round_num or player == focal_player:
+                continue
+            candidate = _row_at_or_before(candidate_series, decision_tick)
+            if candidate is None or not _tick_alive(candidate):
+                continue
+            distance = math.dist(focal_position, _tick_position(candidate))
+            if focal_side is not None and _tick_side(candidate) == focal_side:
+                alive_teammates += 1
+                nearest_teammate = min(nearest_teammate, distance)
+            else:
+                alive_enemies += 1
+                nearest_enemy = min(nearest_enemy, distance)
+
+    first = history[0] if history else current
+    inventory = list(current.get("inventory") or []) if current is not None else []
+    return {
+        "history_available": current is not None,
+        "history_sample_count": len(history),
+        "lookback_seconds": lookback_ticks / rate,
+        "distance_moved": distance_moved,
+        "average_speed": distance_moved / elapsed if elapsed > 0 else 0.0,
+        "displacement": math.dist(_tick_position(first), _tick_position(current)) if first and current else 0.0,
+        "zone_changes": zone_changes,
+        "health": _number(current.get("health")) if current else 0.0,
+        "armor": _number(current.get("armor_value", current.get("armor"))) if current else 0.0,
+        "health_delta": (_number(current.get("health")) - _number(first.get("health"))) if first and current else 0.0,
+        "armor_delta": (
+            _number(current.get("armor_value", current.get("armor")))
+            - _number(first.get("armor_value", first.get("armor")))
+        ) if first and current else 0.0,
+        "zone": _tick_zone(current) if current else "unknown",
+        "inventory_size": len(inventory),
+        "has_defuser": bool(current.get("has_defuser")) if current else False,
+        "recent_damage_dealt": recent_damage_dealt,
+        "recent_damage_taken": recent_damage_taken,
+        "alive_teammates": alive_teammates,
+        "alive_enemies": alive_enemies,
+        "nearest_teammate_distance": 0.0 if math.isinf(nearest_teammate) else nearest_teammate,
+        "nearest_enemy_distance": 0.0 if math.isinf(nearest_enemy) else nearest_enemy,
+    }
+
+
+def _observed_action_after_cutoff(
+    *,
+    series: list[dict[str, Any]],
+    decision_tick: int,
+    action_end_tick: int,
+    rate: float,
+    movement_threshold_per_second: float,
+) -> tuple[str | None, str | None, float]:
+    """Measure the observed movement after the decision; never use it as history."""
+
+    if not series or action_end_tick <= decision_tick:
+        return None, None, 0.0
+    ticks = [_event_tick(row) for row in series]
+    start_index = bisect_right(ticks, decision_tick) - 1
+    end_index = bisect_left(ticks, action_end_tick)
+    if start_index < 0 or end_index >= len(series) or end_index <= start_index:
+        return None, None, 0.0
+    start = series[start_index]
+    end = series[end_index]
+    seconds = max((_event_tick(end) - _event_tick(start)) / rate, 1.0 / rate)
+    displacement = math.dist(_tick_position(start), _tick_position(end))
+    action = "move" if displacement >= movement_threshold_per_second * seconds else "hold"
+    return action, _tick_zone(end), displacement
+
+
 def _label_for_player(
     focal_player: str,
     focal_side: str | None,
@@ -191,6 +375,7 @@ def _label_for_player(
     anchor_tick: int,
     label_end_tick: int,
     round_kills: list[dict[str, Any]],
+    round_damages: list[dict[str, Any]],
     trade_window_ticks: int,
 ) -> dict[str, Any]:
     future_kills = [
@@ -219,10 +404,29 @@ def _label_for_player(
                 if _side_for(event, "attacker") == focal_side:
                     trade_event = event
                     break
+    future_damages = [
+        event
+        for event in round_damages
+        if anchor_tick < _event_tick(event) <= label_end_tick
+    ]
+    damage_dealt = sum(
+        _number(event.get("dmg_health_real", event.get("dmg_health")))
+        for event in future_damages
+        if _event_player(event, "attacker") == focal_player
+    )
+    damage_taken = sum(
+        _number(event.get("dmg_health_real", event.get("dmg_health")))
+        for event in future_damages
+        if _event_player(event, "victim") == focal_player
+    )
     return {
         "label_kill": focal_kill is not None,
         "label_death": focal_death is not None,
         "label_trade": trade_event is not None,
+        "label_survival": focal_death is None,
+        "label_damage": damage_dealt > 0.0,
+        "future_damage_dealt": damage_dealt,
+        "future_damage_taken": damage_taken,
         "kill_tick": _event_tick(focal_kill) if focal_kill is not None else None,
         "death_tick": _event_tick(focal_death) if focal_death is not None else None,
         "trade_tick": _event_tick(trade_event) if trade_event is not None else None,
@@ -243,14 +447,20 @@ def extract_engagement_windows(
     *,
     horizon_seconds: float = 5.0,
     trade_window_seconds: float = 3.0,
+    lookback_seconds: float = 3.0,
+    decision_lead_seconds: float = 1.0,
+    action_window_seconds: float = 1.0,
+    movement_threshold_per_second: float = 20.0,
     tick_rate: float | None = None,
     max_windows: int | None = None,
     round_value_predictor: Callable[[dict[str, Any]], float | None] | None = None,
 ) -> list[dict[str, Any]]:
     """Extract player-centric combat windows with strict future-only labels."""
 
-    if horizon_seconds <= 0 or trade_window_seconds <= 0:
-        raise ValueError("horizon_seconds and trade_window_seconds must be positive")
+    if horizon_seconds <= 0 or trade_window_seconds <= 0 or lookback_seconds <= 0:
+        raise ValueError("horizon_seconds, trade_window_seconds, and lookback_seconds must be positive")
+    if decision_lead_seconds < 0 or action_window_seconds <= 0 or movement_threshold_per_second < 0:
+        raise ValueError("decision lead cannot be negative; action window and movement threshold must be valid")
     if max_windows is not None and max_windows <= 0:
         raise ValueError("max_windows must be positive")
     header = record.get("header") or {}
@@ -260,8 +470,13 @@ def extract_engagement_windows(
         raise ValueError("tick_rate must be positive")
     horizon_ticks = max(1, round(horizon_seconds * rate))
     trade_ticks = max(1, round(trade_window_seconds * rate))
+    lookback_ticks = max(1, round(lookback_seconds * rate))
+    lead_ticks = max(0, round(decision_lead_seconds * rate))
+    action_ticks = max(1, round(action_window_seconds * rate))
+    start_ticks = _round_start_ticks(record)
     end_ticks = _round_end_ticks(record)
     winners = _round_winners(record)
+    tick_rows = _tick_index(record)
     events = sorted(_iter_events(record), key=lambda item: (_event_round(item[1]), _event_tick(item[1]), item[0]))
     if not events:
         return []
@@ -291,7 +506,8 @@ def extract_engagement_windows(
     output: list[dict[str, Any]] = []
     for anchor_kind, anchor in anchors:
         round_num = _event_round(anchor)
-        anchor_tick = _event_tick(anchor)
+        contact_tick = _event_tick(anchor)
+        anchor_tick = max(start_ticks.get(round_num, 0), contact_tick - lead_ticks)
         round_end = end_ticks.get(round_num)
         label_end = anchor_tick + horizon_ticks
         if round_end is not None:
@@ -299,6 +515,7 @@ def extract_engagement_windows(
         if label_end <= anchor_tick:
             continue
         round_kills = [event for kind, event in by_round[round_num] if kind == "kill"]
+        round_damages = [event for kind, event in by_round[round_num] if kind == "damage"]
         attacker = _event_player(anchor, "attacker")
         victim = _event_player(anchor, "victim")
         participants = (
@@ -314,6 +531,7 @@ def extract_engagement_windows(
                 anchor_tick=anchor_tick,
                 label_end_tick=label_end,
                 round_kills=round_kills,
+                round_damages=round_damages,
                 trade_window_ticks=trade_ticks,
             )
             survived_after_kill = (
@@ -326,6 +544,32 @@ def extract_engagement_windows(
                 if winners.get(round_num) in {"ct", "t"} and focal_side in {"ct", "t"}
                 else None
             )
+            history = _history_features(
+                focal_player=focal_player,
+                focal_side=focal_side,
+                round_num=round_num,
+                decision_tick=anchor_tick,
+                lookback_ticks=lookback_ticks,
+                rate=rate,
+                tick_rows=tick_rows,
+                round_damages=round_damages,
+            )
+            observed_action, action_destination, action_displacement = _observed_action_after_cutoff(
+                series=tick_rows.get((round_num, focal_player), []),
+                decision_tick=anchor_tick,
+                action_end_tick=min(contact_tick, anchor_tick + action_ticks),
+                rate=rate,
+                movement_threshold_per_second=movement_threshold_per_second,
+            )
+            # Contact fields are safe at a zero-lead cutoff (the historical
+            # compatibility mode), but must not leak a future hit when the
+            # coaching decision is intentionally placed before contact.
+            features = (
+                _anchor_feature(anchor, anchor_kind)
+                if anchor_tick >= contact_tick
+                else {"anchor_kind": f"pre_{anchor_kind}", "weapon": None}
+            )
+            features.update(history)
             row = {
                 "schema_version": SCHEMA_VERSION,
                 "source": record.get("source_path") or record.get("demo_file") or "unknown",
@@ -337,6 +581,8 @@ def extract_engagement_windows(
                 "opponent_id": opponent,
                 "role": role,
                 "anchor_tick": anchor_tick,
+                "contact_tick": contact_tick,
+                "decision_lead_seconds": (contact_tick - anchor_tick) / rate,
                 "label_end_tick": label_end,
                 "horizon_ticks": label_end - anchor_tick,
                 "horizon_seconds": (label_end - anchor_tick) / rate,
@@ -350,9 +596,13 @@ def extract_engagement_windows(
                     "ticks": label_end - anchor_tick,
                     "seconds": (label_end - anchor_tick) / rate,
                 },
-                "features": _anchor_feature(anchor, anchor_kind),
+                "features": features,
+                "observed_action": observed_action,
+                "observed_action_destination": action_destination,
+                "observed_action_displacement": action_displacement,
                 "survived_after_kill": survived_after_kill,
                 "round_won": round_won,
+                "label_round_win": round_won,
                 "round_value_delta": None,
                 **labels,
             }
@@ -369,6 +619,11 @@ def extract_engagement_windows(
                         "kill_tick",
                         "death_tick",
                         "trade_tick",
+                        "contact_tick",
+                        "future_damage_dealt",
+                        "future_damage_taken",
+                        "observed_action_destination",
+                        "observed_action_displacement",
                         "outcome",
                         "survived_after_kill",
                         "round_won",
@@ -389,6 +644,9 @@ def extract_file(
     *,
     horizon_seconds: float = 5.0,
     trade_window_seconds: float = 3.0,
+    lookback_seconds: float = 3.0,
+    decision_lead_seconds: float = 1.0,
+    action_window_seconds: float = 1.0,
     limit: int | None = None,
 ) -> int:
     """Stream replay JSONL into engagement-window JSONL atomically."""
@@ -412,6 +670,9 @@ def extract_file(
                     record,
                     horizon_seconds=horizon_seconds,
                     trade_window_seconds=trade_window_seconds,
+                    lookback_seconds=lookback_seconds,
+                    decision_lead_seconds=decision_lead_seconds,
+                    action_window_seconds=action_window_seconds,
                 ):
                     target.write(json.dumps(row, separators=(",", ":")) + "\n")
                     count += 1
@@ -476,6 +737,9 @@ def extract_database(
     *,
     horizon_seconds: float = 5.0,
     trade_window_seconds: float = 3.0,
+    lookback_seconds: float = 3.0,
+    decision_lead_seconds: float = 1.0,
+    action_window_seconds: float = 1.0,
 ) -> int:
     """Extract windows from canonical SQLite events without rebuilding it."""
 
@@ -489,6 +753,9 @@ def extract_database(
                     record,
                     horizon_seconds=horizon_seconds,
                     trade_window_seconds=trade_window_seconds,
+                    lookback_seconds=lookback_seconds,
+                    decision_lead_seconds=decision_lead_seconds,
+                    action_window_seconds=action_window_seconds,
                 ):
                     target.write(json.dumps(row, separators=(",", ":")) + "\n")
                     count += 1
@@ -512,6 +779,9 @@ def main() -> int:
         help="one or more label horizons in seconds (for example: --horizon-seconds 1 2 5)",
     )
     parser.add_argument("--trade-window-seconds", type=float, default=3.0)
+    parser.add_argument("--lookback-seconds", type=float, default=3.0)
+    parser.add_argument("--decision-lead-seconds", type=float, default=1.0)
+    parser.add_argument("--action-window-seconds", type=float, default=1.0)
     parser.add_argument("--limit", type=int, default=None)
     args = parser.parse_args()
     horizons = [float(value) for value in args.horizon_seconds]
@@ -528,6 +798,9 @@ def main() -> int:
                 output,
                 horizon_seconds=horizon,
                 trade_window_seconds=args.trade_window_seconds,
+                lookback_seconds=args.lookback_seconds,
+                decision_lead_seconds=args.decision_lead_seconds,
+                action_window_seconds=args.action_window_seconds,
             )
         else:
             count = extract_file(
@@ -535,6 +808,9 @@ def main() -> int:
                 output,
                 horizon_seconds=horizon,
                 trade_window_seconds=args.trade_window_seconds,
+                lookback_seconds=args.lookback_seconds,
+                decision_lead_seconds=args.decision_lead_seconds,
+                action_window_seconds=args.action_window_seconds,
                 limit=args.limit,
             )
         totals.append((horizon, count, output))

@@ -362,7 +362,7 @@ class ReplayModel:
                     if self._engagement_booster is not None:
                         booster_prediction = self._engagement_booster.predict_dict(window)
                         blend_weight = (
-                            min(0.75, max(0.0, float(prediction.get("confidence", 0.0))))
+                            min(0.90, max(0.0, float(prediction.get("confidence", 0.0))))
                             if bool(prediction.get("supported"))
                             else 0.0
                         )
@@ -410,6 +410,36 @@ class ReplayModel:
             }
         except Exception as exc:
             raise ModelError(f"could not analyse engagement: {exc}") from exc
+
+    def score_engagement(self, row: Mapping[str, Any]) -> dict[str, Any]:
+        """Score one pre-built decision window, including counterfactual action rows.
+
+        The caller is responsible for supplying leakage-safe history fields.
+        Statistical support gates the optional LightGBM blend so an unseen
+        action/state cannot be presented as a confident recommendation.
+        """
+
+        try:
+            scorer = self._engagement_model or EngagementModel()
+            prediction = scorer.predict_dict(row)
+            if self._engagement_booster is not None:
+                booster_prediction = self._engagement_booster.predict_dict(row)
+                blend_weight = (
+                    min(0.90, max(0.0, float(prediction.get("confidence", 0.0))))
+                    if bool(prediction.get("supported"))
+                    else 0.0
+                )
+                for target, value in booster_prediction.items():
+                    field = f"{target}_probability"
+                    if field in prediction:
+                        prediction[field] = (
+                            (1.0 - blend_weight) * float(prediction[field])
+                            + blend_weight * float(value)
+                        )
+                prediction["lightgbm_blend_weight"] = blend_weight
+            return prediction
+        except Exception as exc:
+            raise ModelError(f"could not score engagement: {exc}") from exc
 
     def choose_action(
         self,

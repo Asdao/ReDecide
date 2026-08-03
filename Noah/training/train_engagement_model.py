@@ -22,8 +22,8 @@ from cs2_sim.core.model import EngagementModel
 from Noah.training.data_paths import DATA_PATHS
 from Noah.training.metrics import binary_probability_metrics
 
-TRAINING_SCHEMA_VERSION = "engagement_training_v1"
-TARGETS = ("kill", "death", "trade")
+TRAINING_SCHEMA_VERSION = "engagement_training_v2"
+TARGETS = ("kill", "death", "trade", "survival", "damage", "round_win")
 
 
 def _rows(path: Path) -> Iterator[dict[str, Any]]:

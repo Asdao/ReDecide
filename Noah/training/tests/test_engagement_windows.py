@@ -76,7 +76,12 @@ class EngagementWindowTests(unittest.TestCase):
         }
 
     def test_labels_are_future_only_and_trade_is_detected(self):
-        rows = extract_engagement_windows(self._record(), horizon_seconds=5, trade_window_seconds=3)
+        rows = extract_engagement_windows(
+            self._record(),
+            horizon_seconds=5,
+            trade_window_seconds=3,
+            decision_lead_seconds=0,
+        )
         self.assertEqual(len(rows), 2)
         by_player = {row["player_id"]: row for row in rows}
         attacker = by_player["t1"]
@@ -105,10 +110,19 @@ class EngagementWindowTests(unittest.TestCase):
     def test_same_cutoff_kill_does_not_create_positive_label(self):
         record = self._record()
         record["kills"] = [dict(record["kills"][0])]
-        rows = extract_engagement_windows(record, horizon_seconds=5)
+        rows = extract_engagement_windows(record, horizon_seconds=5, decision_lead_seconds=0)
         self.assertEqual(len(rows), 2)
         self.assertFalse(any(row["label_kill"] for row in rows))
         self.assertFalse(any(row["label_death"] for row in rows))
+
+    def test_default_decision_is_before_contact(self):
+        rows = extract_engagement_windows(self._record(), horizon_seconds=5)
+        self.assertTrue(rows)
+        self.assertTrue(all(row["anchor_tick"] == 90 for row in rows))
+        self.assertTrue(all(row["contact_tick"] == 100 for row in rows))
+        self.assertTrue(all(row["decision_lead_seconds"] == 1.0 for row in rows))
+        self.assertTrue(all(row["features"]["anchor_kind"] == "pre_damage" for row in rows))
+        self.assertTrue(any(row["label_death"] for row in rows))
 
     def test_value_delta_is_only_filled_by_explicit_predictor(self):
         seen_inputs = []
@@ -126,7 +140,15 @@ class EngagementWindowTests(unittest.TestCase):
         self.assertEqual(by_player["t1"]["round_value_delta"], 0.25)
         self.assertIsNone(by_player["ct1"]["round_value_delta"])
         self.assertTrue(seen_inputs)
-        self.assertTrue(all("label_kill" not in row and "round_won" not in row for row in seen_inputs))
+        self.assertTrue(
+            all(
+                "label_kill" not in row
+                and "round_won" not in row
+                and "future_damage_dealt" not in row
+                and "observed_action_displacement" not in row
+                for row in seen_inputs
+            )
+        )
 
     def test_database_adapter_reads_existing_event_schema_without_rebuild(self):
         with TemporaryDirectory() as directory:

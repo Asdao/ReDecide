@@ -23,6 +23,131 @@ structured-output parser, deterministic validators, or fixture coach.
 - Checks: schema, evidence IDs, future language/timestamps, explicit
   contradictions, confidence cap, and abstention
 
+### Model I/O format
+
+The following is the logical provider boundary for the planned RE:DECIDE coach.
+It is not the current Noah connector request shape and is not yet an executable
+schema in `backend/app/coach/`.
+
+Model input is one JSON prompt envelope/.demo file:
+
+```json
+{
+  "decision_packet": {
+    "schema_version": "1.0",
+    "decision_id": "match-round-player-tick",
+    "match_id": "string",
+    "map": "de_mirage",
+    "round_number": 7,
+    "player": "PlayerName",
+    "decision_type": "POST_CONTACT_RESET",
+    "decision_open_tick": 12345,
+    "decision_open_seconds": 96.45,
+    "action_close_tick": 12665,
+    "known_before_decision": [],
+    "observed_action": {},
+    "unknowns": [],
+    "data_quality": {"score": 0.86, "warnings": []}
+  },
+  "intent": {
+    "tag": "TAKE_DUEL",
+    "text": "I thought the enemy was reloading"
+  },
+  "rubric": {
+    "version": "0.1",
+    "content": "versioned coaching rubric text or YAML"
+  },
+  "few_shot_examples": []
+}
+```
+
+Input rules:
+
+- `decision_packet` is the only game evidence. The raw `.dem`, full event log,
+  round winner, and anything after `action_close_tick` are excluded.
+- `intent` is the player's stated intent, not a fact asserted by the parser.
+- `few_shot_examples` contains zero to two reviewed examples using the same
+  schema.
+- The provider must not generate or receive `checks`; validators compute those
+  fields after parsing the response.
+
+The model response must be JSON matching the frozen `DecisionCard` shape:
+
+```json
+{
+  "report_type": "combined_replay_analysis",
+  "schema_version": "replay_analysis_v1",
+  "source": "fixture.dem",
+  "map_name": "de_mirage",
+  "summary": {
+    "moment_count": 4,
+    "kill_count": 4,
+    "kill_analysis_count": 4,
+    "least_risk_fallback_count": 4,
+    "least_risk_candidate_count": 4,
+    "least_risk_usable_count": 0,
+    "decision_classes": {
+      "insufficient_evidence": 4
+    },
+    "probability_decision_classes": {
+      "insufficient_evidence": 4
+    },
+    "recommendations_are_counterfactual_estimates": true,
+    "probability_labels_are_thresholded_estimates": true,
+    "candidate_model_type": "full_lightgbm_blended_with_small_statistical"
+  },
+  "kill_analysis": [
+    {
+      "kill_number": 1,
+      "round_num": 1,
+      "tick": 64,
+      "time_seconds": 1.0,
+      "event_id": "event-000001",
+      "attacker_id": "ct1",
+      "victim_id": "t1",
+      "weapon": "m4a1",
+      "observed_action": "hold",
+      "recommended_action": "hold",
+      "recommendation_supported": false,
+      "recommendation_sample_count": 104,
+      "recommendation_support_level": "backoff",
+      "recommendation_support_reason": "high_entropy",
+      "least_death_risk_action": "hold",
+      "least_death_probability": 0.145985401459854,
+      "least_death_round_loss_probability_proxy": 0.145985401459854,
+      "least_death_is_proxy": true,
+      "least_death_risk_upper_bound": 0.19542941544969175,
+      "least_death_risk_support": 135,
+      "least_death_risk_supported": false,
+      "least_death_risk_status": "unsupported_candidate_state",
+      "least_death_risk_source": "round_loss_proxy_posterior",
+      "round_win_probability": 0.14458186005395898,
+      "round_loss_probability_proxy": 0.855418139946041,
+      "probability_of_improvement": null,
+      "expected_regret": null,
+      "probability_decision_class": "insufficient_evidence",
+      "estimate_type": "simulator_action_value_estimate"
+    }
+  ]
+}
+```
+
+`checks` is shown here to document the final API output, but it is appended or
+overwritten by deterministic backend validation. A response with invalid JSON,
+unknown evidence IDs, forbidden future information, contradictions, or weak
+evidence is rejected, repaired at most once when appropriate, or converted to
+`INSUFFICIENT_EVIDENCE`.
+
+### Current Noah connector I/O
+
+The implemented boundary is different: `NoahCoachConnector.analyse_json()`
+accepts a normalized replay object such as the checked-in
+`backend/tests/fixtures/coach_replay.json` and returns a report with
+`report_type: "combined_replay_analysis"`. The report contains `full_match`,
+`moments`, `kill_analysis`, `summary`, model configuration, and probability /
+abstention metadata. It is a replay-analysis report, not a `DecisionCard`, and
+must not be sent to the frontend as the final coaching response.
+
 ## Existing work to review
 
 Root `agent-harness/` contains useful process, configuration, timeout, audit,

@@ -75,6 +75,50 @@ class _MultiKillReportModel:
         }
 
 
+class _EngagementReportModel:
+    def analyse_match(self, replay, **kwargs):
+        return {
+            "report_type": "full_match_timeline",
+            "source": "engagement.dem",
+            "map_name": "de_mirage",
+            "event_counts": {"kill": 1},
+            "timeline": [
+                {
+                    "round_num": 1,
+                    "tick": 128,
+                    "probability_ct_win": 0.4,
+                    "probability_swing": {"delta": -0.2, "absolute": 0.2},
+                    "events": [
+                        {
+                            "event_id": "kill-1",
+                            "category": "kill",
+                            "attacker_id": "ct1",
+                            "victim_id": "t1",
+                            "round_num": 1,
+                            "tick": 110,
+                        }
+                    ],
+                }
+            ],
+        }
+
+    def score_engagement(self, row):
+        move = row.get("observed_action") == "move"
+        return {
+            "kill_probability": 0.35 if move else 0.20,
+            "death_probability": 0.25 if move else 0.70,
+            "trade_probability": 0.10,
+            "survival_probability": 0.75 if move else 0.30,
+            "damage_probability": 0.60 if move else 0.30,
+            "round_win_probability": 0.65 if move else 0.35,
+            "sample_count": 20,
+            "confidence": 0.9,
+            "entropy": 0.5,
+            "supported": True,
+            "state_key": f"test|{row.get('observed_action')}",
+        }
+
+
 class AnalysisHarnessTests(unittest.TestCase):
     def _record(self):
         return {
@@ -161,13 +205,57 @@ class AnalysisHarnessTests(unittest.TestCase):
         self.assertEqual(report["summary"]["moment_count"], 2)
         self.assertEqual(
             [item["actor_id"] for item in report["moments"]],
-            ["ct1", "ct2"],
+            ["t1", "t2"],
         )
         self.assertEqual(report["summary"]["kill_analysis_count"], 2)
         self.assertEqual(
             [row["attacker_id"] for row in report["kill_analysis"]],
             ["ct1", "ct2"],
         )
+
+    def test_engagement_heads_rank_high_level_observed_action(self):
+        record = self._record()
+        record["damages"] = [
+            {
+                "round_num": 1,
+                "tick": 100,
+                "attacker_steamid": "ct1",
+                "victim_steamid": "t1",
+                "attacker_side": "ct",
+                "victim_side": "t",
+                "weapon": "m4a1",
+                "dmg_health_real": 25,
+            }
+        ]
+        record["kills"] = [
+            {
+                "round_num": 1,
+                "tick": 110,
+                "attacker_steamid": "ct1",
+                "victim_steamid": "t1",
+                "attacker_side": "ct",
+                "victim_side": "t",
+                "weapon": "m4a1",
+            }
+        ]
+        record["ticks"].extend(
+            [
+                {"round_num": 1, "tick": 36, "steamid": "t1", "side": "t", "health": 100, "place": "A_MAIN", "X": 0, "Y": 0},
+                {"round_num": 1, "tick": 100, "steamid": "t1", "side": "t", "health": 75, "place": "A_SITE", "X": 100, "Y": 0},
+            ]
+        )
+        report = build_replay_analysis(
+            record,
+            _EngagementReportModel(),
+            config=HarnessConfig(sample_every=1),
+        )
+        moment = report["moments"][0]
+        self.assertEqual(moment["actor_id"], "t1")
+        self.assertEqual(moment["decision_tick"], 36)
+        self.assertEqual(moment["best_estimated_alternative"]["action"], "move")
+        self.assertEqual(moment["observed_action_name"], "move_to_adjacent_zone:A_SITE")
+        self.assertEqual(moment["probability_decision_class"], "good")
+        self.assertEqual(moment["best_estimated_alternative"]["death_probability_source"], "engagement_death_head")
 
     def test_candidate_state_can_exclude_same_tick_kill_outcome(self):
         record = self._record()

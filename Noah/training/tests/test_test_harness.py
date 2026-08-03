@@ -30,6 +30,28 @@ class TestHarnessInputTests(unittest.TestCase):
             path.write_text(json.dumps({"header": {"map_name": "de_mirage"}}), encoding="utf-8")
             self.assertEqual(load_replay_record(path)["header"]["map_name"], "de_mirage")
 
+    def test_normalizes_canonical_extractor_json(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "extractor.json"
+            path.write_text(
+                json.dumps(
+                    {
+                        "metadata": {
+                            "map_name": "de_mirage",
+                            "tick_rate": 64,
+                            "parser": "replacement-extractor",
+                        },
+                        "rounds": [],
+                        "player_ticks": [],
+                        "events": [],
+                    }
+                ),
+                encoding="utf-8",
+            )
+            record = load_replay_record(path)
+            self.assertEqual(record["header"]["map_name"], "de_mirage")
+            self.assertEqual(record["tick_rate"], 64)
+
     def test_selects_jsonl_record(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "replays.jsonl"

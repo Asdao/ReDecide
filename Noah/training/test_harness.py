@@ -50,6 +50,10 @@ def load_replay_record(path: str | Path, *, record_index: int = 0) -> dict[str, 
     record = records[record_index]
     if not isinstance(record, dict):
         raise TypeError("selected replay record must be a JSON object")
+    if "metadata" in record:
+        from Noah.training.replay_extractor_adapter import normalize_extractor_record
+
+        record = normalize_extractor_record(record)
     return record
 
 
@@ -58,7 +62,7 @@ def run_replay_test(
     *,
     record_index: int = 0,
     release_dir: str | Path | None = None,
-    version: str = "v2",
+    version: str = "v3",
     candidate_model_path: str | Path | None = None,
     moment_threshold: float = 0.08,
     max_moments: int | None = 25,
@@ -134,7 +138,8 @@ def format_kill_analysis(report: dict[str, Any]) -> list[str]:
             f"{row.get('attacker_id') or '?'} -> {row.get('victim_id') or '?'} ({weapon}); "
             f"observed={observed}; best_estimate={recommended}; "
             f"least_death_risk={least_risk} "
-            f"(P(death proxy)={_format_probability(row.get('least_death_probability'))}, "
+            f"(P({'death proxy' if row.get('least_death_is_proxy', True) else 'death'})="
+            f"{_format_probability(row.get('least_death_probability'))}, "
             f"upper={_format_probability(row.get('least_death_risk_upper_bound'))}, "
             f"support={row.get('least_death_risk_support', 0)}, "
             f"supported={'yes' if row.get('least_death_risk_supported') else 'no'}, "
@@ -153,6 +158,13 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("input", type=Path, help="native .dem, extracted replay JSON, or JSONL")
     parser.add_argument("--record-index", type=int, default=0, help="record to test for JSONL/list input")
+    parser.add_argument(
+        "--release-dir",
+        type=Path,
+        default=None,
+        help="release bundle root (defaults to Noah/model/artifacts/releases)",
+    )
+    parser.add_argument("--version", default="v3", help="release version directory")
     parser.add_argument(
         "--candidate-model",
         type=Path,
@@ -178,6 +190,8 @@ def main() -> int:
     report = run_replay_test(
         args.input,
         record_index=args.record_index,
+        release_dir=args.release_dir,
+        version=args.version,
         candidate_model_path=args.candidate_model,
         moment_threshold=args.moment_threshold,
         max_moments=None if args.all_moments else args.max_moments,
