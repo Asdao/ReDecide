@@ -2,6 +2,7 @@
 
 from .api import (
     ActionTrainingArtifacts,
+    CandidateTrainingArtifacts,
     DatabaseBuildResult,
     ReplayTrainingArtifacts,
     TrainingConfig,
@@ -43,6 +44,7 @@ def __getattr__(name: str):
 
 __all__ = [
     "ActionTrainingArtifacts",
+    "CandidateTrainingArtifacts",
     "DatabaseBuildResult",
     "DecisionClass",
     "EngagementAnalysis",

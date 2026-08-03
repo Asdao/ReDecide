@@ -125,6 +125,43 @@ def _candidate_posterior(candidate: dict[str, Any]) -> BetaPosterior:
     return posterior_from_probability(_candidate_probability(candidate), support)
 
 
+def _has_outcome_evidence(candidate: dict[str, Any]) -> bool:
+    """Return whether a candidate carries labelled outcome counts.
+
+    ``sample_count`` is action-observation support, not a success/failure
+    sample size.  It is therefore never sufficient for a directional
+    probability comparison on its own.
+    """
+
+    if candidate.get("outcome_evidence") is True:
+        return True
+    successes = _number(candidate.get("posterior_successes"), None)
+    failures = _number(candidate.get("posterior_failures"), None)
+    return successes is not None and failures is not None and successes + failures > 0
+
+
+def _has_outcome_variance(
+    candidate: dict[str, Any],
+    peer: dict[str, Any],
+) -> bool:
+    explicit = candidate.get("outcome_variance")
+    if isinstance(explicit, bool):
+        return explicit
+    explicit_peer = peer.get("outcome_variance")
+    if isinstance(explicit_peer, bool):
+        return explicit_peer
+    # A direct report with raw posterior counts can be compared without the
+    # harness' shared variance annotation, provided the labelled means differ.
+    values: list[float] = []
+    for row in (candidate, peer):
+        successes = _number(row.get("posterior_successes"), None)
+        failures = _number(row.get("posterior_failures"), None)
+        if successes is None or failures is None or successes + failures <= 0:
+            return False
+        values.append((successes + 1.0) / (successes + failures + 2.0))
+    return max(values) - min(values) > 1e-9
+
+
 def _candidate_interval(candidate: dict[str, Any], *, level: float) -> dict[str, Any]:
     probability = _candidate_probability(candidate)
     successes = _number(candidate.get("posterior_successes"), None)
@@ -204,6 +241,12 @@ def annotate_probability_labels(
             abstain_reason = "missing_observed_or_candidate_action"
         elif int(best.get("sample_count") or 0) < settings.min_support or int(observed.get("sample_count") or 0) < settings.min_support:
             abstain_reason = "support_below_threshold"
+        elif not _has_outcome_evidence(best) or not _has_outcome_evidence(observed):
+            abstain_reason = "outcome_support_missing"
+        elif not _has_outcome_variance(best, observed):
+            abstain_reason = "no_counterfactual_outcome_variance"
+        elif best.get("supported") is False or observed.get("supported") is False:
+            abstain_reason = "candidate_marked_unsupported"
         else:
             best_probability = _candidate_probability(best)
             observed_probability = _candidate_probability(observed)
@@ -322,6 +365,11 @@ def rank_candidate_actions(
         value_delta = _number(candidate.get("round_value_delta"), 0.0)
         confidence = _number(candidate.get("confidence"), support / (support + 10.0))
         supported = support >= min_support and (entropy is None or entropy <= max_entropy)
+        support_reason = None
+        if support < min_support:
+            support_reason = "support_below_threshold"
+        elif entropy is not None and entropy > max_entropy:
+            support_reason = "high_entropy"
         item = dict(candidate)
         item.update(
             {
@@ -331,6 +379,7 @@ def rank_candidate_actions(
                 "round_value_delta": value_delta,
                 "confidence": confidence,
                 "supported": supported,
+                "support_reason": support_reason,
                 "estimate_type": "observational_counterfactual_estimate",
             }
         )

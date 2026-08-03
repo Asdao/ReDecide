@@ -10,6 +10,7 @@ from cs2_sim.core.model import (
 )
 from cs2_sim.models import SnapshotValueModel as LegacySnapshotValueModel
 from cs2_sim.state import BombState, GameState, PlayerState, Team
+
 from Noah.training.train_models import small_decision_metrics
 
 
@@ -47,6 +48,24 @@ class ModelTests(unittest.TestCase):
             loaded.choose_action(self.state, "t1", self.legal),
             model.choose_action(self.state, "t1", self.legal),
         )
+
+    def test_small_model_backs_off_for_unseen_exact_state(self) -> None:
+        model = SmallStatisticalModel()
+        for _ in range(6):
+            model.observe(self.state, "t1", self.legal[1], success=True)
+
+        unseen = GameState(
+            {
+                "t1": PlayerState("t1", Team.T, "MID"),
+                "ct1": PlayerState("ct1", Team.CT, "A_SITE", alive=False, health=0),
+            },
+            BombState.CARRIED,
+        )
+        support = model.action_support_info(unseen, "t1")
+
+        self.assertEqual(support["level"], "backoff")
+        self.assertGreater(support["support"], 0)
+        self.assertIn(model.choose_action(unseen, "t1", self.legal), self.legal)
 
     def test_full_model_falls_back_to_small_model_before_training(self) -> None:
         model = FullLightGBMModel()

@@ -1,0 +1,369 @@
+{
+  "schema_version": 1,
+  "parser": "fixture",
+  "demo_file": "coach-full-fixture.dem",
+  "header": {
+    "map_name": "de_mirage",
+    "tick_rate": 64
+  },
+  "rounds": [
+    {
+      "round_num": 1,
+      "start": 0,
+      "end": 256,
+      "winner": "ct"
+    },
+    {
+      "round_num": 2,
+      "start": 256,
+      "end": 512,
+      "winner": "t"
+    }
+  ],
+  "kills": [
+    {
+      "round_num": 1,
+      "tick": 64,
+      "attacker_steamid": "ct1",
+      "victim_steamid": "t1",
+      "attacker_side": "ct",
+      "victim_side": "t",
+      "weapon": "m4a1"
+    },
+    {
+      "round_num": 1,
+      "tick": 128,
+      "attacker_steamid": "ct2",
+      "victim_steamid": "t2",
+      "attacker_side": "ct",
+      "victim_side": "t",
+      "weapon": "awp"
+    },
+    {
+      "round_num": 2,
+      "tick": 320,
+      "attacker_steamid": "t1",
+      "victim_steamid": "ct1",
+      "attacker_side": "t",
+      "victim_side": "ct",
+      "weapon": "ak47"
+    },
+    {
+      "round_num": 2,
+      "tick": 384,
+      "attacker_steamid": "t2",
+      "victim_steamid": "ct2",
+      "attacker_side": "t",
+      "victim_side": "ct",
+      "weapon": "ak47"
+    }
+  ],
+  "events": {
+    "player_death": [
+      {
+        "round_num": 1,
+        "tick": 64,
+        "attacker_steamid": "ct1",
+        "victim_steamid": "t1",
+        "attacker_side": "ct",
+        "victim_side": "t",
+        "weapon": "m4a1"
+      },
+      {
+        "round_num": 1,
+        "tick": 128,
+        "attacker_steamid": "ct2",
+        "victim_steamid": "t2",
+        "attacker_side": "ct",
+        "victim_side": "t",
+        "weapon": "awp"
+      },
+      {
+        "round_num": 2,
+        "tick": 320,
+        "attacker_steamid": "t1",
+        "victim_steamid": "ct1",
+        "attacker_side": "t",
+        "victim_side": "ct",
+        "weapon": "ak47"
+      },
+      {
+        "round_num": 2,
+        "tick": 384,
+        "attacker_steamid": "t2",
+        "victim_steamid": "ct2",
+        "attacker_side": "t",
+        "victim_side": "ct",
+        "weapon": "ak47"
+      }
+    ]
+  },
+  "damages": [],
+  "bomb": [],
+  "ticks": [
+    {
+      "round_num": 1,
+      "tick": 0,
+      "steamid": "ct1",
+      "side": "ct",
+      "health": 100,
+      "alive": true,
+      "place": "A_SITE",
+      "X": 0,
+      "Y": 0
+    },
+    {
+      "round_num": 1,
+      "tick": 0,
+      "steamid": "ct2",
+      "side": "ct",
+      "health": 100,
+      "alive": true,
+      "place": "A_SITE",
+      "X": 0,
+      "Y": 50
+    },
+    {
+      "round_num": 1,
+      "tick": 0,
+      "steamid": "t1",
+      "side": "t",
+      "health": 100,
+      "alive": true,
+      "place": "A_MAIN",
+      "X": 100,
+      "Y": 0
+    },
+    {
+      "round_num": 1,
+      "tick": 0,
+      "steamid": "t2",
+      "side": "t",
+      "health": 100,
+      "alive": true,
+      "place": "A_MAIN",
+      "X": 100,
+      "Y": 50
+    },
+    {
+      "round_num": 1,
+      "tick": 64,
+      "steamid": "ct1",
+      "side": "ct",
+      "health": 100,
+      "alive": true,
+      "place": "A_SITE",
+      "X": 0,
+      "Y": 0
+    },
+    {
+      "round_num": 1,
+      "tick": 64,
+      "steamid": "ct2",
+      "side": "ct",
+      "health": 100,
+      "alive": true,
+      "place": "A_SITE",
+      "X": 0,
+      "Y": 50
+    },
+    {
+      "round_num": 1,
+      "tick": 64,
+      "steamid": "t1",
+      "side": "t",
+      "health": 0,
+      "alive": false,
+      "place": "A_MAIN",
+      "X": 100,
+      "Y": 0
+    },
+    {
+      "round_num": 1,
+      "tick": 64,
+      "steamid": "t2",
+      "side": "t",
+      "health": 100,
+      "alive": true,
+      "place": "A_MAIN",
+      "X": 100,
+      "Y": 50
+    },
+    {
+      "round_num": 1,
+      "tick": 128,
+      "steamid": "ct1",
+      "side": "ct",
+      "health": 100,
+      "alive": true,
+      "place": "A_SITE",
+      "X": 0,
+      "Y": 0
+    },
+    {
+      "round_num": 1,
+      "tick": 128,
+      "steamid": "ct2",
+      "side": "ct",
+      "health": 100,
+      "alive": true,
+      "place": "A_SITE",
+      "X": 0,
+      "Y": 50
+    },
+    {
+      "round_num": 1,
+      "tick": 128,
+      "steamid": "t1",
+      "side": "t",
+      "health": 0,
+      "alive": false,
+      "place": "A_MAIN",
+      "X": 100,
+      "Y": 0
+    },
+    {
+      "round_num": 1,
+      "tick": 128,
+      "steamid": "t2",
+      "side": "t",
+      "health": 0,
+      "alive": false,
+      "place": "A_MAIN",
+      "X": 100,
+      "Y": 50
+    },
+    {
+      "round_num": 2,
+      "tick": 256,
+      "steamid": "ct1",
+      "side": "ct",
+      "health": 100,
+      "alive": true,
+      "place": "A_SITE",
+      "X": 0,
+      "Y": 0
+    },
+    {
+      "round_num": 2,
+      "tick": 256,
+      "steamid": "ct2",
+      "side": "ct",
+      "health": 100,
+      "alive": true,
+      "place": "A_SITE",
+      "X": 0,
+      "Y": 50
+    },
+    {
+      "round_num": 2,
+      "tick": 256,
+      "steamid": "t1",
+      "side": "t",
+      "health": 100,
+      "alive": true,
+      "place": "A_MAIN",
+      "X": 100,
+      "Y": 0
+    },
+    {
+      "round_num": 2,
+      "tick": 256,
+      "steamid": "t2",
+      "side": "t",
+      "health": 100,
+      "alive": true,
+      "place": "A_MAIN",
+      "X": 100,
+      "Y": 50
+    },
+    {
+      "round_num": 2,
+      "tick": 320,
+      "steamid": "ct1",
+      "side": "ct",
+      "health": 0,
+      "alive": false,
+      "place": "A_SITE",
+      "X": 0,
+      "Y": 0
+    },
+    {
+      "round_num": 2,
+      "tick": 320,
+      "steamid": "ct2",
+      "side": "ct",
+      "health": 100,
+      "alive": true,
+      "place": "A_SITE",
+      "X": 0,
+      "Y": 50
+    },
+    {
+      "round_num": 2,
+      "tick": 320,
+      "steamid": "t1",
+      "side": "t",
+      "health": 100,
+      "alive": true,
+      "place": "A_MAIN",
+      "X": 100,
+      "Y": 0
+    },
+    {
+      "round_num": 2,
+      "tick": 320,
+      "steamid": "t2",
+      "side": "t",
+      "health": 100,
+      "alive": true,
+      "place": "A_MAIN",
+      "X": 100,
+      "Y": 50
+    },
+    {
+      "round_num": 2,
+      "tick": 384,
+      "steamid": "ct1",
+      "side": "ct",
+      "health": 0,
+      "alive": false,
+      "place": "A_SITE",
+      "X": 0,
+      "Y": 0
+    },
+    {
+      "round_num": 2,
+      "tick": 384,
+      "steamid": "ct2",
+      "side": "ct",
+      "health": 0,
+      "alive": false,
+      "place": "A_SITE",
+      "X": 0,
+      "Y": 50
+    },
+    {
+      "round_num": 2,
+      "tick": 384,
+      "steamid": "t1",
+      "side": "t",
+      "health": 100,
+      "alive": true,
+      "place": "A_MAIN",
+      "X": 100,
+      "Y": 0
+    },
+    {
+      "round_num": 2,
+      "tick": 384,
+      "steamid": "t2",
+      "side": "t",
+      "health": 100,
+      "alive": true,
+      "place": "A_MAIN",
+      "X": 100,
+      "Y": 50
+    }
+  ]
+}

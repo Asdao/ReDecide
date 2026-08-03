@@ -366,12 +366,15 @@ successfully and run `training.train_full_replay` without `--snapshot-input`.
 
 ### One-command test
 
-For the normal path, send the extracted replay JSON or JSONL file to the small
-runner. It selects release `v2`, applies the conservative defaults, and writes
-an adjacent `.analysis.json` report:
+For the normal path, send a native `.dem`, extracted replay JSON, or JSONL file
+to the small runner. Native demos go through the replacement extractor in
+memory; the harness does not build a database or retrain a model. It selects
+release `v2`, applies the conservative defaults, and writes an adjacent
+`.analysis.json` report:
 
 ```powershell
 python Noah/training/test_harness.py data/private/processed/full_replays.jsonl
+python Noah/training/test_harness.py path/to/match.dem --all-moments
 ```
 
 Use `--record-index 3` for another JSONL record or `--output path/to/report.json`
@@ -394,6 +397,117 @@ python -m training.analysis_harness `
   --max-moments 25 `
   --output data/private/processed/replay_analysis.json
 ```
+
+Use `--all-moments` for a complete event audit. This removes the default
+25-moment coaching cap; the embedded `full_match` report already retains all
+deduplicated kill/death/bomb evidence in every mode:
+
+```powershell
+python Noah/training/test_harness.py backend/tests/fixtures/coach_full_replay.json `
+  --all-moments --sample-every 1 `
+  --output data/private/processed/coach_fixture.analysis.json
+```
+
+Each kill line and JSON row contains both estimates when legal candidate
+actions are available: `best_estimated_alternative` is the round-value model's
+counterfactual, while `least_death_risk_action` is a conservative fallback
+selected by the lowest smoothed `death_probability` upper bound. The latter is
+currently a round-loss proxy (not literal player-death probability), and it
+includes support, outcome-variance, interval-level/method, and `risk_source`
+metadata. If the model
+has no candidate state, the fallback is `null`; low-support fallbacks should
+be treated as suggestions for review rather than proven best moves. The JSON
+also reports `least_risk_fallback_count` (selected while the primary label
+abstained), `least_risk_candidate_count`, and `least_risk_usable_count`.
+
+To test a newly trained candidate model before promoting it into a release,
+pass its standalone artifact explicitly:
+
+```powershell
+python Noah/training/test_harness.py `
+  backend/tests/fixtures/coach_full_replay.json `
+  --candidate-model data/private/artifacts/candidate_v3/candidate_action_value.txt `
+  --all-moments --sample-every 1
+```
+
+To check whether a replay is covered by the candidate-action model without
+running training, inspect the canonical replay or the combined report with the
+read-only coverage diagnostic:
+
+```powershell
+python Noah/training/candidate_coverage.py `
+  data/private/processed/coach_fixture.analysis.json `
+  --min-support 5
+```
+
+The JSON summary reports total/analyzed kills, supported and unsupported
+candidate rows, and missing support grouped by map, side, zone, bomb state,
+alive-count difference, and round-time bucket. High-entropy states are
+reported separately from low sample support, and a kill is counted as fully
+supported only when every candidate row is supported. Passing a JSONL file
+aggregates the counts across records; no input file is modified.
+
+The same diagnostic accepts the extractor output. In that mode it reports
+strict pre-event rows emitted and skip reasons (for example, missing snapshots)
+before any model-support threshold is applied:
+
+```powershell
+python Noah/training/candidate_coverage.py `
+  data/private/processed/candidate_states.json
+```
+
+To build a private candidate-action dataset from training-only demos, first
+extract strictly pre-kill states, then aggregate simulator outcomes:
+
+```powershell
+python Noah/training/candidate_states.py `
+  data/private/processed/full_replays.jsonl `
+  data/private/processed/candidate_states.json
+
+python Noah/training/candidate_rollouts.py `
+  data/private/processed/candidate_states.json `
+  data/private/processed/candidate_rollouts.jsonl `
+  --rollouts 8
+
+python Noah/training/split_candidate_dataset.py `
+  data/private/processed/candidate_states.json `
+  data/private/processed/candidate_rollouts.jsonl `
+  data/private/processed/candidate_split
+
+python Noah/training/train_candidate_value.py `
+  data/private/processed/candidate_split/train_candidate_states.json `
+  data/private/processed/candidate_split/train_candidate_rollouts.jsonl `
+  data/private/artifacts/candidate_v3
+
+python Noah/training/evaluate_candidate_value.py `
+  data/private/processed/candidate_split/heldout_candidate_states.json `
+  data/private/processed/candidate_split/heldout_candidate_rollouts.jsonl `
+  data/private/artifacts/candidate_v3 `
+  data/private/processed/candidate_v3_evaluation.json
+```
+
+The state extractor excludes same-tick and future outcomes. Rollout files keep
+aggregate wins/losses per legal action rather than storing simulation traces.
+The trainer always writes the compact Bayesian model and writes the LightGBM
+candidate model when the optional full dependencies are available.
+The held-out evaluator reports Brier score, log loss, top-action agreement and
+support coverage; held-out demos must remain separate from training inputs.
+The trainer splits by complete `record_index` groups. With only one replay it
+writes a prior for inspection but refuses to produce a promotable full model;
+add a second complete training demo before measuring generalisation.
+The training metrics also report whether rollout outcomes vary across actions.
+If the compact simulator has no action-outcome variance, the resulting model
+is useful for plumbing and priors but is not evidence that one tactical action
+is causally better. Its current survival field is explicitly marked as a
+no-combat simulator diagnostic; use real damage/death horizons before treating
+it as death-risk probability.
+
+The command prints one line per kill with its round/tick, observed action,
+best estimated action, lowest-risk fallback, proxy probabilities, support,
+fallback status, and probability label. Use `--show-moments` when keeping the normal 25-moment cap
+but still wanting the detailed table. `summary.kill_count` is the total kill
+count in the replay; `summary.kill_analysis_count` is the number scored by the
+current moment cap.
 
 The report first selects key moments from round-value swings and kill/death/
 bomb events. It then reconstructs the nearest legal simulator state, scores

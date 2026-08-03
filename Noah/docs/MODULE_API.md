@@ -137,6 +137,17 @@ records the current default-topology legality scope. `analyse_engagement` and
 `rank_candidate_actions` are likewise observational: a ranked alternative is
 not proof that a player should have made that move.
 
+The small statistical candidate model uses hierarchical support: it first
+looks for an exact state, then backs off to zone/bomb, side/bomb, side, and
+global priors. Candidate rows expose `support_level` and `raw_support`; the
+effective `sample_count` is discounted for broader backoff levels.
+
+Pass `max_moments=None` when auditing a complete replay and every detected
+kill/death/bomb moment should receive a candidate-analysis entry. The default
+cap of 25 is intended for bounded coaching responses. The nested
+`full_match.events` list and `event_counts` retain all deduplicated event
+evidence in either mode.
+
 The response also contains additive probability-based fields under each
 moment. `probability_of_improvement` estimates the probability that the best
 supported candidate exceeds the observed action, and `expected_regret` is the

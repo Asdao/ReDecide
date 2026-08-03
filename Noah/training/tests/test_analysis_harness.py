@@ -40,6 +40,41 @@ class _ReportModel:
         }
 
 
+class _MultiKillReportModel:
+    def analyse_match(self, replay, **kwargs):
+        return {
+            "report_type": "full_match_timeline",
+            "source": "fixture.dem",
+            "map_name": "de_mirage",
+            "timeline": [
+                {
+                    "round_num": 1,
+                    "tick": 10,
+                    "probability_ct_win": 0.3,
+                    "probability_swing": {"delta": -0.2, "absolute": 0.2},
+                    "events": [
+                        {
+                            "event_id": "event-1",
+                            "category": "kill",
+                            "attacker_id": "ct1",
+                            "victim_id": "t1",
+                            "round_num": 1,
+                            "tick": 10,
+                        },
+                        {
+                            "event_id": "event-2",
+                            "category": "kill",
+                            "attacker_id": "ct2",
+                            "victim_id": "t2",
+                            "round_num": 1,
+                            "tick": 10,
+                        },
+                    ],
+                }
+            ],
+        }
+
+
 class AnalysisHarnessTests(unittest.TestCase):
     def _record(self):
         return {
@@ -94,9 +129,100 @@ class AnalysisHarnessTests(unittest.TestCase):
         self.assertGreater(moment["legal_candidate_count"], 0)
         self.assertEqual(moment["best_estimated_alternative"]["action"], "hold")
         self.assertEqual(moment["best_estimated_alternative"]["estimate_type"], "simulator_action_value_estimate")
+        self.assertIsNotNone(moment["least_death_risk_action"])
+        self.assertIn("action", moment["least_death_risk_action"])
+        self.assertIn("death_probability", moment["least_death_risk_action"])
+        self.assertIn("risk_upper_bound", moment["least_death_risk_action"])
+        self.assertEqual(
+            report["summary"]["least_risk_fallback_count"],
+            0,
+        )
+        self.assertEqual(report["summary"]["least_risk_candidate_count"], 1)
+        self.assertEqual(report["summary"]["least_risk_usable_count"], 1)
         self.assertEqual(len(moment["candidate_actions"]), moment["legal_candidate_count"])
         self.assertIn("posterior_successes", moment["best_estimated_alternative"])
         self.assertTrue(moment["best_estimated_alternative"]["legal"])
+        self.assertGreaterEqual(moment["best_estimated_alternative"]["entropy"], 0.0)
+        self.assertLessEqual(moment["best_estimated_alternative"]["entropy"], 1.0)
+
+    def test_simultaneous_kills_keep_actor_specific_context(self):
+        record = self._record()
+        record["ticks"].extend(
+            [
+                {"round_num": 1, "tick": 0, "steamid": "ct2", "side": "ct", "health": 100, "place": "A_SITE"},
+                {"round_num": 1, "tick": 0, "steamid": "t2", "side": "t", "health": 100, "place": "A_MAIN"},
+            ]
+        )
+        report = build_replay_analysis(
+            record,
+            _MultiKillReportModel(),
+            config=HarnessConfig(sample_every=1),
+        )
+        self.assertEqual(report["summary"]["moment_count"], 2)
+        self.assertEqual(
+            [item["actor_id"] for item in report["moments"]],
+            ["ct1", "ct2"],
+        )
+        self.assertEqual(report["summary"]["kill_analysis_count"], 2)
+        self.assertEqual(
+            [row["attacker_id"] for row in report["kill_analysis"]],
+            ["ct1", "ct2"],
+        )
+
+    def test_candidate_state_can_exclude_same_tick_kill_outcome(self):
+        record = self._record()
+        record["ticks"].extend(
+            [
+                {"round_num": 1, "tick": 10, "steamid": "ct1", "side": "ct", "health": 100},
+                {"round_num": 1, "tick": 10, "steamid": "t1", "side": "t", "health": 0, "alive": False},
+            ]
+        )
+
+        after_event = reconstruct_game_state(record, round_num=1, tick=10)
+        before_event = reconstruct_game_state(record, round_num=1, tick=10, before_event=True)
+
+        self.assertIsNotNone(after_event)
+        self.assertIsNotNone(before_event)
+        self.assertFalse(after_event.players["t1"].alive)
+        self.assertTrue(before_event.players["t1"].alive)
+
+    def test_candidate_state_uses_elapsed_round_time(self):
+        state = reconstruct_game_state(self._record(), round_num=1, tick=128)
+        self.assertIsNotNone(state)
+        self.assertEqual(state.time_seconds, 2.0)
+
+    def test_constant_candidate_outcomes_abstain(self):
+        record = self._record()
+        state = reconstruct_game_state(record, round_num=1, tick=10)
+        self.assertIsNotNone(state)
+        model = SmallStatisticalModel()
+        for action in legal_actions(state, "ct1"):
+            for _ in range(10):
+                model.observe(state, "ct1", action, success=True)
+        report = build_replay_analysis(
+            record,
+            _ReportModel(),
+            candidate_model=model,
+            config=HarnessConfig(sample_every=1),
+        )
+        moment = report["moments"][0]
+        self.assertEqual(moment["probability_decision_class"], "insufficient_evidence")
+        self.assertEqual(
+            moment["probability_abstention"]["reason"],
+            "no_counterfactual_outcome_variance",
+        )
+        self.assertEqual(
+            moment["least_death_risk_action"]["fallback_status"],
+            "abstained_no_action_outcome_variance",
+        )
+        self.assertFalse(moment["least_death_risk_action"]["fallback_usable"])
+
+    def test_before_event_without_prior_snapshot_abstains(self):
+        record = self._record()
+        record["ticks"] = [row for row in record["ticks"] if row["tick"] == 10]
+        self.assertIsNone(
+            reconstruct_game_state(record, round_num=1, tick=10, before_event=True)
+        )
 
 
 if __name__ == "__main__":

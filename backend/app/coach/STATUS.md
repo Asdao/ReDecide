@@ -127,7 +127,12 @@ legacy fields remain in the report for compatibility. The probability-based
 fields use seeded Beta-posterior comparisons and require support, a meaningful
 expected gap, and a probability-of-improvement threshold before emitting a
 directional label. Unsupported cases abstain and must remain visible to the
-coach layer.
+coach layer. Candidate support can be exact or hierarchical backoff; reports
+expose the level and raw support so a broad prior is not confused with an
+exact-state observation.
+High-entropy rankings, missing labelled outcome counts, and constant
+within-state rollout outcomes also abstain; action-observation support alone
+is not treated as a success/failure sample size.
 
 ## Important paths
 
@@ -140,7 +145,8 @@ data/eval/model/**
 ## Tests and validation
 
 The connector tests are in `backend/tests/test_coach_noah_connector.py` and
-cover forwarding, JSON input, invalid input, and stable configuration errors.
+cover forwarding, JSON input, invalid input, stable configuration errors, and
+the real checked-in fixture flowing through the deployed runtime.
 The RE:DECIDE coach contract itself still has no fixture tests in the new path.
 
 The user-facing Noah smoke runner is:
@@ -148,6 +154,26 @@ The user-facing Noah smoke runner is:
 ```powershell
 python Noah/training/test_harness.py data/private/processed/full_replays.jsonl
 ```
+
+For a deterministic local smoke test, send the checked-in fixture through the
+same runner. It lives under `backend/tests`, so it is separate from training
+data:
+
+```powershell
+python Noah/training/test_harness.py backend/tests/fixtures/coach_full_replay.json --all-moments --sample-every 1 --output data/private/processed/coach_fixture.analysis.json
+```
+
+The backend boundary can use that same object directly, or decode a request
+body with `NoahCoachConnector.analyse_json(payload)`. The fixture is tiny, so
+sparse evidence may produce abstention/insufficient-evidence probability
+labels; that is the expected safe result. `full_match.event_counts.kill` and
+the kill events attached to `moments` should contain all four fixture kills.
+Normal production calls remain capped at 25 key moments unless
+`max_moments=None`/`--all-moments` is explicitly requested.
+The command also prints a per-kill table; the JSON report exposes the same
+rows under `kill_analysis`. `summary.kill_count` remains the total replay kill
+count, while `summary.kill_analysis_count` reports how many received candidate
+analysis under the selected cap.
 
 Required coverage includes well-formed fixtures, nonexistent evidence IDs,
 forbidden outcome information, malformed model JSON, low-quality packets,

@@ -16,6 +16,8 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
+from bisect import bisect_left, bisect_right
 from collections import defaultdict
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
@@ -50,7 +52,7 @@ class DecisionClass(StrEnum):
 @dataclass(frozen=True, slots=True)
 class HarnessConfig:
     moment_threshold: float = 0.08
-    max_moments: int = 25
+    max_moments: int | None = 25
     min_support: int = 5
     recommendation_margin: float = 0.05
     sample_every: int = 8
@@ -64,8 +66,10 @@ class HarnessConfig:
     def __post_init__(self) -> None:
         if not 0 < self.moment_threshold <= 1:
             raise ValueError("moment_threshold must be between 0 and 1")
-        if self.max_moments <= 0 or self.min_support < 0:
-            raise ValueError("max_moments must be positive and min_support cannot be negative")
+        if self.max_moments is not None and self.max_moments <= 0:
+            raise ValueError("max_moments must be positive when provided")
+        if self.min_support < 0:
+            raise ValueError("min_support cannot be negative")
         if self.recommendation_margin < 0 or self.recommendation_margin > 1:
             raise ValueError("recommendation_margin must be between 0 and 1")
         if self.sample_every <= 0:
@@ -125,21 +129,82 @@ def _zone(row: Mapping[str, Any]) -> str:
     return str(row.get("last_place_name") or row.get("place") or row.get("zone") or "unknown")
 
 
-def _nearest_tick_rows(record: Mapping[str, Any], *, round_num: int, tick: int) -> dict[str, dict[str, Any]]:
+def _nearest_tick_rows(
+    record: Mapping[str, Any],
+    *,
+    round_num: int,
+    tick: int,
+    strict_before: bool = False,
+    tick_index: Mapping[int, Mapping[str, tuple[list[int], list[dict[str, Any]]]]] | None = None,
+) -> dict[str, dict[str, Any]]:
     """Reconstruct latest player rows at or before a replay event."""
 
+    if tick_index is not None:
+        output: dict[str, dict[str, Any]] = {}
+        for player_id, (ticks, rows) in tick_index.get(round_num, {}).items():
+            position = bisect_left(ticks, tick) if strict_before else bisect_right(ticks, tick)
+            if position:
+                output[player_id] = dict(rows[position - 1])
+        return output
     latest: dict[str, tuple[int, dict[str, Any]]] = {}
     for ordinal, row in enumerate(record.get("ticks") or []):
         if not isinstance(row, Mapping) or _int(row.get("round_num")) != round_num:
             continue
         row_tick = _int(row.get("tick"))
-        if row_tick < 0 or row_tick > tick:
+        if row_tick < 0 or row_tick > tick or (strict_before and row_tick >= tick):
             continue
         player_id = _identity(row, ordinal)
         previous = latest.get(player_id)
         if previous is None or row_tick >= previous[0]:
             latest[player_id] = (row_tick, dict(row))
     return {player_id: row for player_id, (_, row) in latest.items()}
+
+
+def _build_tick_index(
+    record: Mapping[str, Any],
+) -> dict[int, dict[str, tuple[list[int], list[dict[str, Any]]]]]:
+    """Index one replay's player snapshots for repeated pre-event lookups."""
+
+    grouped: dict[int, dict[str, list[tuple[int, dict[str, Any]]]]] = defaultdict(dict)
+    for ordinal, raw in enumerate(record.get("ticks") or ()):
+        if not isinstance(raw, Mapping):
+            continue
+        round_num = _int(raw.get("round_num"))
+        tick = _int(raw.get("tick"))
+        if round_num < 0 or tick < 0:
+            continue
+        player_id = _identity(raw, ordinal)
+        grouped.setdefault(round_num, {}).setdefault(player_id, []).append((tick, dict(raw)))
+    indexed: dict[int, dict[str, tuple[list[int], list[dict[str, Any]]]]] = {}
+    for round_num, players in grouped.items():
+        indexed[round_num] = {}
+        for player_id, values in players.items():
+            values.sort(key=lambda item: item[0])
+            # Keep the last parser row when duplicate identities share a tick.
+            deduplicated: dict[int, dict[str, Any]] = {}
+            for tick, row in values:
+                deduplicated[tick] = row
+            ticks = sorted(deduplicated)
+            indexed[round_num][player_id] = (ticks, [deduplicated[tick] for tick in ticks])
+    return indexed
+
+
+def _round_start_tick(record: Mapping[str, Any], round_num: int) -> int | None:
+    """Return the normalized round start tick when the parser supplied it."""
+
+    for row in record.get("rounds") or ():
+        if not isinstance(row, Mapping) or _int(row.get("round_num")) != round_num:
+            continue
+        value = _int(row.get("start"), -1)
+        return value if value >= 0 else None
+    return None
+
+
+def _tick_rate(record: Mapping[str, Any]) -> float:
+    header = record.get("header")
+    header = header if isinstance(header, Mapping) else {}
+    value = _number(header.get("tick_rate") or record.get("tick_rate"), 64.0)
+    return value if value > 0 else 64.0
 
 
 def _bomb_state(record: Mapping[str, Any], *, round_num: int, tick: int) -> tuple[BombState, str, float | None]:
@@ -176,10 +241,28 @@ def _bomb_state(record: Mapping[str, Any], *, round_num: int, tick: int) -> tupl
     return state, site, 40.0 if state is BombState.PLANTED else None
 
 
-def reconstruct_game_state(record: Mapping[str, Any], *, round_num: int, tick: int) -> GameState | None:
-    """Build the simulator state needed for legal candidate generation."""
+def reconstruct_game_state(
+    record: Mapping[str, Any],
+    *,
+    round_num: int,
+    tick: int,
+    before_event: bool = False,
+    tick_index: Mapping[int, Mapping[str, tuple[list[int], list[dict[str, Any]]]]] | None = None,
+) -> GameState | None:
+    """Build a simulator state, optionally excluding same-tick event outcomes."""
 
-    rows = _nearest_tick_rows(record, round_num=round_num, tick=tick)
+    rows = _nearest_tick_rows(
+        record,
+        round_num=round_num,
+        tick=tick,
+        strict_before=before_event,
+        tick_index=tick_index,
+    )
+    if before_event and not rows:
+        # Without a strictly earlier snapshot, using an event-tick row can
+        # leak the kill/death outcome into the candidate state.  The caller
+        # must abstain and report missing pre-event evidence instead.
+        return None
     players: dict[str, PlayerState] = {}
     for player_id, row in rows.items():
         team = _side(row.get("team_name") or row.get("team") or row.get("side"))
@@ -200,12 +283,19 @@ def reconstruct_game_state(record: Mapping[str, Any], *, round_num: int, tick: i
     if not players:
         return None
     bomb_state, bomb_site, bomb_time = _bomb_state(record, round_num=round_num, tick=tick)
+    start_tick = _round_start_tick(record, round_num)
+    tick_rate = _tick_rate(record)
+    elapsed_seconds = (
+        max(0.0, (tick - start_tick) / tick_rate)
+        if start_tick is not None
+        else max(0.0, tick / tick_rate)
+    )
     return GameState(
         players,
         bomb_state=bomb_state,
         bomb_site=bomb_site,
         bomb_time_remaining=bomb_time,
-        time_seconds=0.0,
+        time_seconds=elapsed_seconds,
     )
 
 
@@ -215,6 +305,12 @@ def _action_name(action: Action) -> str:
 
 def _action_support(model: CandidateModel, state: GameState, player_id: str, action: Action) -> int:
     small = getattr(model, "small_model", model)
+    support_method = getattr(small, "action_support", None)
+    if callable(support_method):
+        try:
+            return int(support_method(state, player_id))
+        except (KeyError, TypeError, ValueError):
+            return 0
     counts = getattr(small, "_action_counts", {})
     state_key_fn = getattr(small, "state_key", None)
     if state_key_fn is None:
@@ -233,6 +329,12 @@ def _action_outcome_counts(
     action: Action,
 ) -> tuple[int, int] | None:
     small = getattr(model, "small_model", model)
+    outcome_method = getattr(small, "outcome_counts", None)
+    if callable(outcome_method):
+        try:
+            return outcome_method(state, player_id, action)
+        except (KeyError, TypeError, ValueError):
+            return None
     outcomes = getattr(small, "_outcomes", {})
     state_key_fn = getattr(small, "state_key", None)
     action_key_fn = getattr(small, "action_key", None)
@@ -253,6 +355,8 @@ def _action_outcome_counts(
 
 
 def _candidate_model_type(model: CandidateModel | None) -> str:
+    if model is None:
+        return "unavailable"
     if isinstance(model, FullLightGBMModel) and model.is_fitted:
         return "full_lightgbm_blended_with_small_statistical"
     if isinstance(model, SmallStatisticalModel) or isinstance(getattr(model, "small_model", None), SmallStatisticalModel):
@@ -273,20 +377,63 @@ def _candidate_rows(
     if not legal:
         return [], "no_legal_actions"
     scores = model.score_actions(state, player_id, legal)
+    entropy_method = getattr(model, "normalized_entropy", None)
+    try:
+        entropy = float(entropy_method(state, player_id, legal)) if callable(entropy_method) else 1.0
+    except (KeyError, TypeError, ValueError, ZeroDivisionError):
+        entropy = 1.0
+    entropy = min(1.0, max(0.0, entropy))
+    action_outcomes = {
+        _action_name(action): _action_outcome_counts(model, state, player_id, action)
+        for action in legal
+    }
+    outcome_means = [
+        (wins + 1.0) / (wins + losses + 2.0)
+        for values in action_outcomes.values()
+        if values is not None
+        for wins, losses in (values,)
+        if wins + losses > 0
+    ]
+    outcome_variance = (
+        len(outcome_means) == len(legal)
+        and max(outcome_means) - min(outcome_means) > 1e-9
+    )
+    small = getattr(model, "small_model", model)
+    support_info_method = getattr(small, "action_support_info", None)
+    support_info = (
+        support_info_method(state, player_id)
+        if callable(support_info_method)
+        else {"level": "exact", "raw_support": None}
+    )
     rows: list[dict[str, Any]] = []
     for action in legal:
+        action_name = _action_name(action)
         success = min(1.0, max(0.0, float(scores[action])))
         support = _action_support(model, state, player_id, action)
-        outcome_counts = _action_outcome_counts(model, state, player_id, action)
+        outcome_counts = action_outcomes[action_name]
         rows.append(
             {
-                "action": _action_name(action),
+                "action": action_name,
                 "candidate_success_probability": success,
                 "death_probability": 1.0 - success,
                 "round_value_delta": success,
                 "sample_count": support,
+                "support_level": support_info.get("level"),
+                "raw_support": support_info.get("raw_support"),
                 "confidence": support / (support + 10.0) if support else 0.0,
-                "entropy": 0.0,
+                "entropy": entropy,
+                "outcome_support": (
+                    sum(outcome_counts) if outcome_counts is not None else 0
+                ),
+                "outcome_evidence": bool(
+                    outcome_counts is not None and sum(outcome_counts) > 0
+                ),
+                "outcome_variance": outcome_variance,
+                "rollout_quality": (
+                    "action_outcome_variance"
+                    if outcome_variance
+                    else "no_action_outcome_variance"
+                ),
                 "legal": True,
                 "supported": support >= min_support,
                 **(
@@ -300,6 +447,110 @@ def _candidate_rows(
             }
         )
     return rows, "simulator_action_value"
+
+
+def _least_death_risk_candidate(
+    candidates: Iterable[Mapping[str, Any]],
+) -> dict[str, Any] | None:
+    """Return the lowest conservative death-risk estimate among legal actions.
+
+    This is deliberately separate from the primary round-value ranking.  The
+    current candidate model's ``death_probability`` is a round-loss proxy, so
+    the output carries its provenance and should be shown as a fallback when
+    the primary recommendation abstains.
+    """
+
+    estimates: list[dict[str, Any]] = []
+    for candidate in candidates:
+        action = str(candidate.get("action") or "")
+        if not action or candidate.get("legal") is False:
+            continue
+        successes = candidate.get("posterior_successes")
+        failures = candidate.get("posterior_failures")
+        try:
+            successes_value = float(successes)
+            failures_value = float(failures)
+        except (TypeError, ValueError):
+            successes_value = failures_value = -1.0
+        if (
+            successes_value >= 0
+            and failures_value >= 0
+            and math.isfinite(successes_value)
+            and math.isfinite(failures_value)
+            and successes_value + failures_value > 0
+        ):
+            alpha = failures_value + 1.0
+            beta = successes_value + 1.0
+            total = alpha + beta
+            mean = alpha / total
+            variance = alpha * beta / (total * total * (total + 1.0))
+            source = "round_loss_proxy_posterior"
+            support = successes_value + failures_value
+        else:
+            try:
+                mean = min(1.0, max(0.0, float(candidate.get("death_probability", 0.5))))
+            except (TypeError, ValueError):
+                mean = 0.5
+            try:
+                support = max(0.0, float(candidate.get("sample_count", 0)))
+            except (TypeError, ValueError):
+                support = 0.0
+            alpha = mean * support + 1.0
+            beta = (1.0 - mean) * support + 1.0
+            total = alpha + beta
+            variance = alpha * beta / (total * total * (total + 1.0))
+            source = "round_loss_proxy_support_prior"
+            outcome_evidence = False
+        if (
+            successes_value >= 0
+            and failures_value >= 0
+            and math.isfinite(successes_value)
+            and math.isfinite(failures_value)
+            and successes_value + failures_value > 0
+        ):
+            outcome_evidence = True
+        upper = min(1.0, max(0.0, mean + 1.645 * math.sqrt(max(0.0, variance))))
+        outcome_variance = bool(candidate.get("outcome_variance"))
+        candidate_supported = bool(candidate.get("supported", False))
+        if not outcome_evidence:
+            fallback_status = "abstained_no_outcome_evidence"
+        elif not outcome_variance:
+            fallback_status = "abstained_no_action_outcome_variance"
+        elif not candidate_supported:
+            fallback_status = "unsupported_candidate_state"
+        else:
+            fallback_status = "usable"
+        estimates.append(
+            {
+                "action": action,
+                "death_probability": mean,
+                "round_loss_probability_proxy": mean,
+                "is_proxy": True,
+                "risk_upper_bound": upper,
+                "risk_interval_level": 0.90,
+                "risk_interval_method": "beta_normal_approximation_upper_bound",
+                "support": int(support),
+                "support_level": candidate.get("support_level"),
+                "supported": candidate_supported,
+                "outcome_evidence": outcome_evidence,
+                "outcome_variance": outcome_variance,
+                "fallback_usable": fallback_status == "usable",
+                "fallback_status": fallback_status,
+                "risk_source": source,
+                "selection_mode": "lowest_conservative_death_risk",
+            }
+        )
+    if not estimates:
+        return None
+    return min(
+        estimates,
+        key=lambda item: (
+            float(item["risk_upper_bound"]),
+            float(item["death_probability"]),
+            -int(item["support"]),
+            str(item["action"]),
+        ),
+    )
 
 
 def _snapshot_for_event(rows: list[dict[str, Any]], *, round_num: int, tick: int) -> dict[str, Any] | None:
@@ -347,8 +598,13 @@ def _event_actor(event: Mapping[str, Any]) -> str | None:
     return None
 
 
-def _find_moments(report: Mapping[str, Any], *, threshold: float, max_moments: int) -> list[dict[str, Any]]:
-    moments: dict[tuple[int, int], dict[str, Any]] = {}
+def _find_moments(
+    report: Mapping[str, Any],
+    *,
+    threshold: float,
+    max_moments: int | None,
+) -> list[dict[str, Any]]:
+    moments: dict[tuple[Any, ...], dict[str, Any]] = {}
     timeline = report.get("timeline") or []
     for item in timeline:
         if not isinstance(item, Mapping):
@@ -361,19 +617,43 @@ def _find_moments(report: Mapping[str, Any], *, threshold: float, max_moments: i
         important_events = [event for event in events if str(event.get("category")) in {"kill", "death", "bomb"}]
         if swing_value < threshold and not important_events:
             continue
-        entry = moments.setdefault(
-            (round_num, tick),
-            {
-                "round_num": round_num,
-                "tick": tick,
-                "probability_ct_win": _number(item.get("probability_ct_win")),
-                "probability_swing": dict(swing) if isinstance(swing, Mapping) else None,
-                "importance": swing_value,
-                "events": [],
-            },
+        # A moment may contain multiple simultaneous kills. Keep each kill in
+        # its own moment so actor-specific recommendations cannot leak from
+        # the first event to the other flattened kill rows. Non-kill events
+        # at one tick remain grouped with the probability-swing context.
+        kill_events = [
+            event for event in important_events if str(event.get("category")) == "kill"
+        ]
+        # Death rows commonly mirror the same kill in parser output. Prefer
+        # the kill event as the actor-specific coaching moment so one physical
+        # event does not create a duplicate context-only moment.
+        event_groups: list[Mapping[str, Any] | None] = (
+            kill_events if kill_events else list(important_events) if important_events else [None]
         )
-        entry["importance"] = max(float(entry["importance"]), swing_value)
-        entry["events"].extend(important_events)
+        for important_event in event_groups:
+            if important_event is not None and str(important_event.get("category")) == "kill":
+                event_key = important_event.get("event_id") or (
+                    important_event.get("attacker_id"),
+                    important_event.get("victim_id"),
+                    important_event.get("weapon"),
+                )
+                moment_key: tuple[Any, ...] = (round_num, tick, "kill", event_key)
+            else:
+                moment_key = (round_num, tick, "context")
+            entry = moments.setdefault(
+                moment_key,
+                {
+                    "round_num": round_num,
+                    "tick": tick,
+                    "probability_ct_win": _number(item.get("probability_ct_win")),
+                    "probability_swing": dict(swing) if isinstance(swing, Mapping) else None,
+                    "importance": swing_value,
+                    "events": [],
+                },
+            )
+            entry["importance"] = max(float(entry["importance"]), swing_value)
+            if important_event is not None:
+                entry["events"].append(important_event)
     result = list(moments.values())
     for item in result:
         unique: dict[tuple[Any, ...], Mapping[str, Any]] = {}
@@ -389,7 +669,120 @@ def _find_moments(report: Mapping[str, Any], *, threshold: float, max_moments: i
             unique[key] = event
         item["events"] = list(unique.values())
     result.sort(key=lambda item: (-float(item["importance"]), item["round_num"], item["tick"]))
-    return result[:max_moments]
+    return result if max_moments is None else result[:max_moments]
+
+
+def _kill_analysis_rows(moments: Iterable[Mapping[str, Any]]) -> list[dict[str, Any]]:
+    """Flatten one structured row per kill for API and CLI consumers."""
+
+    rows: list[dict[str, Any]] = []
+    for moment in moments:
+        best = moment.get("best_estimated_alternative")
+        best = best if isinstance(best, Mapping) else {}
+        least_risk = moment.get("least_death_risk_action")
+        least_risk = least_risk if isinstance(least_risk, Mapping) else {}
+        snapshot = moment.get("snapshot")
+        snapshot = snapshot if isinstance(snapshot, Mapping) else {}
+        observed_action = moment.get("observed_action_name")
+        for event in moment.get("events") or []:
+            if not isinstance(event, Mapping) or str(event.get("category")) != "kill":
+                continue
+            rows.append(
+                {
+                    "round_num": _int(event.get("round_num"), _int(moment.get("round_num"))),
+                    "tick": _int(event.get("tick"), _int(moment.get("tick"))),
+                    "time_seconds": _number(snapshot.get("elapsed_seconds"), 0.0),
+                    "event_id": event.get("event_id"),
+                    "attacker_id": event.get("attacker_id"),
+                    "victim_id": event.get("victim_id"),
+                    "weapon": event.get("weapon"),
+                    "observed_action": observed_action,
+                    "recommended_action": best.get("action"),
+                    "recommendation_supported": bool(best.get("supported", False)),
+                    "recommendation_sample_count": int(best.get("sample_count") or 0),
+                    "recommendation_support_level": best.get("support_level"),
+                    "recommendation_support_reason": best.get("support_reason"),
+                    "recommendation_raw_support": best.get("raw_support"),
+                    "recommendation_outcome_support": best.get("outcome_support"),
+                    "recommendation_outcome_variance": best.get("outcome_variance"),
+                    "recommendation_rollout_quality": best.get("rollout_quality"),
+                    "least_death_risk_action": (
+                        least_risk.get("action") if isinstance(least_risk, Mapping) else None
+                    ),
+                    "least_death_probability": (
+                        least_risk.get("death_probability") if isinstance(least_risk, Mapping) else None
+                    ),
+                    "least_death_round_loss_probability_proxy": (
+                        least_risk.get("round_loss_probability_proxy")
+                        if isinstance(least_risk, Mapping)
+                        else None
+                    ),
+                    "least_death_is_proxy": (
+                        bool(least_risk.get("is_proxy", True))
+                        if isinstance(least_risk, Mapping)
+                        else None
+                    ),
+                    "least_death_risk_upper_bound": (
+                        least_risk.get("risk_upper_bound") if isinstance(least_risk, Mapping) else None
+                    ),
+                    "least_death_risk_interval_level": (
+                        least_risk.get("risk_interval_level")
+                        if isinstance(least_risk, Mapping)
+                        else None
+                    ),
+                    "least_death_risk_interval_method": (
+                        least_risk.get("risk_interval_method")
+                        if isinstance(least_risk, Mapping)
+                        else None
+                    ),
+                    "least_death_risk_support": (
+                        least_risk.get("support") if isinstance(least_risk, Mapping) else None
+                    ),
+                    "least_death_risk_supported": (
+                        bool(least_risk.get("supported", False))
+                        if isinstance(least_risk, Mapping)
+                        else False
+                    ),
+                    "least_death_risk_outcome_variance": (
+                        least_risk.get("outcome_variance") if isinstance(least_risk, Mapping) else None
+                    ),
+                    "least_death_risk_outcome_evidence": (
+                        least_risk.get("outcome_evidence")
+                        if isinstance(least_risk, Mapping)
+                        else None
+                    ),
+                    "least_death_risk_fallback_usable": (
+                        bool(least_risk.get("fallback_usable", False))
+                        if isinstance(least_risk, Mapping)
+                        else False
+                    ),
+                    "least_death_risk_status": (
+                        least_risk.get("fallback_status")
+                        if isinstance(least_risk, Mapping)
+                        else None
+                    ),
+                    "least_death_risk_source": (
+                        least_risk.get("risk_source") if isinstance(least_risk, Mapping) else None
+                    ),
+                    "round_win_probability": best.get("candidate_success_probability"),
+                    "round_loss_probability_proxy": best.get("death_probability"),
+                    "probability_of_improvement": moment.get("probability_of_improvement"),
+                    "expected_regret": moment.get("expected_regret"),
+                    "probability_decision_class": moment.get("probability_decision_class"),
+                    "probability_abstention": moment.get("probability_abstention"),
+                    "estimate_type": best.get("estimate_type"),
+                }
+            )
+    rows.sort(
+        key=lambda row: (
+            _int(row.get("round_num")),
+            _int(row.get("tick")),
+            str(row.get("event_id") or ""),
+        )
+    )
+    for index, row in enumerate(rows, start=1):
+        row["kill_number"] = index
+    return rows
 
 
 def build_replay_analysis(
@@ -420,7 +813,12 @@ def build_replay_analysis(
         event = moment["events"][0] if moment["events"] else {}
         event_ticks = [_int(item.get("tick")) for item in moment["events"] if _int(item.get("tick")) >= 0]
         decision_tick = min(event_ticks) if event_ticks else tick
-        state = reconstruct_game_state(normalized, round_num=round_num, tick=decision_tick)
+        state = reconstruct_game_state(
+            normalized,
+            round_num=round_num,
+            tick=decision_tick,
+            before_event=True,
+        )
         actor = _event_actor(event)
         observed_action = _observed_action(action_rows, actor=actor, round_num=round_num, tick=decision_tick)
         candidates, candidate_source = _candidate_rows(
@@ -433,6 +831,7 @@ def build_replay_analysis(
         for candidate in ranked:
             candidate["estimate_type"] = "simulator_action_value_estimate"
         best = ranked[0] if ranked else None
+        least_risk = _least_death_risk_candidate(ranked)
         observed_candidate: dict[str, Any] | None = None
         classification = DecisionClass.NO_OBSERVED_ACTION.value
         regret = None
@@ -470,6 +869,7 @@ def build_replay_analysis(
                 "observed_action": observed_candidate,
                 "observed_action_name": observed_action["action"] if observed_action else None,
                 "best_estimated_alternative": best,
+                "least_death_risk_action": least_risk,
                 "estimated_regret": regret,
                 "decision_class": classification,
             }
@@ -477,6 +877,7 @@ def build_replay_analysis(
     classes = defaultdict(int)
     for item in output_moments:
         classes[str(item["decision_class"])] += 1
+    total_kills = int((report.get("event_counts") or {}).get("kill", 0))
     base_report = {
         "report_type": "combined_replay_analysis",
         "schema_version": HARNESS_SCHEMA_VERSION,
@@ -490,8 +891,14 @@ def build_replay_analysis(
         },
         "full_match": report,
         "moments": output_moments,
+        "kill_analysis": [],
         "summary": {
             "moment_count": len(output_moments),
+            "kill_count": total_kills,
+            "kill_analysis_count": 0,
+            "least_risk_fallback_count": 0,
+            "least_risk_candidate_count": 0,
+            "least_risk_usable_count": 0,
             "decision_classes": dict(sorted(classes.items())),
             "recommendations_are_counterfactual_estimates": True,
             "candidate_model_type": _candidate_model_type(candidate_model),
@@ -506,7 +913,7 @@ def build_replay_analysis(
             ),
         },
     }
-    return annotate_probability_labels(
+    annotated = annotate_probability_labels(
         base_report,
         thresholds=ProbabilityLabelThresholds(
             min_support=settings.min_support,
@@ -522,12 +929,32 @@ def build_replay_analysis(
             seed=settings.posterior_seed,
         ),
     )
+    annotated["kill_analysis"] = _kill_analysis_rows(annotated.get("moments") or [])
+    annotated["summary"]["kill_analysis_count"] = len(annotated["kill_analysis"])
+    annotated["summary"]["least_risk_candidate_count"] = sum(
+        1 for item in annotated.get("moments") or [] if item.get("least_death_risk_action")
+    )
+    annotated["summary"]["least_risk_usable_count"] = sum(
+        1
+        for item in annotated.get("moments") or []
+        if isinstance(item.get("least_death_risk_action"), Mapping)
+        and item["least_death_risk_action"].get("fallback_usable")
+    )
+    annotated["summary"]["least_risk_fallback_count"] = sum(
+        1
+        for item in annotated.get("moments") or []
+        if item.get("least_death_risk_action")
+        and item.get("probability_decision_class") == DecisionClass.INSUFFICIENT_EVIDENCE.value
+    )
+    return annotated
 
 
 def load_candidate_model(path: str | Path) -> CandidateModel:
     """Load the simulator-trained action scorer, with statistical fallback."""
 
     candidate_path = Path(path)
+    if candidate_path.name == "small_statistical.json":
+        return SmallStatisticalModel.load(candidate_path)
     try:
         return FullLightGBMModel.load(candidate_path)
     except (ImportError, RuntimeError, ValueError):
@@ -557,6 +984,11 @@ def main() -> int:
     parser.add_argument("--candidate-model", type=Path, default=None)
     parser.add_argument("--moment-threshold", type=float, default=0.08)
     parser.add_argument("--max-moments", type=int, default=25)
+    parser.add_argument(
+        "--all-moments",
+        action="store_true",
+        help="analyze every detected kill/death/bomb moment instead of the default cap",
+    )
     parser.add_argument("--min-support", type=int, default=5)
     parser.add_argument("--recommendation-margin", type=float, default=0.05)
     parser.add_argument("--probability-of-improvement-threshold", type=float, default=0.8)
@@ -608,7 +1040,7 @@ def main() -> int:
             candidate_model=load_candidate_model(args.candidate_model),
             config=HarnessConfig(
                 moment_threshold=args.moment_threshold,
-                max_moments=args.max_moments,
+                max_moments=None if args.all_moments else args.max_moments,
                 min_support=args.min_support,
                 recommendation_margin=args.recommendation_margin,
                 sample_every=args.sample_every,
@@ -637,7 +1069,7 @@ def main() -> int:
         result = runtime.analyse_replay(
             selected,
             moment_threshold=args.moment_threshold,
-            max_moments=args.max_moments,
+            max_moments=None if args.all_moments else args.max_moments,
             min_support=args.min_support,
             recommendation_margin=args.recommendation_margin,
             sample_every=args.sample_every,

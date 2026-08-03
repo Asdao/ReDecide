@@ -20,18 +20,42 @@ class ProbabilityLabelTests(unittest.TestCase):
                     "round_num": 1,
                     "tick": 10,
                     "candidate_actions": [
-                        {"action": "hold", "candidate_success_probability": 0.85, "sample_count": 30},
-                        {"action": "peek", "candidate_success_probability": 0.45, "sample_count": 30},
+                        {
+                            "action": "hold",
+                            "candidate_success_probability": 0.85,
+                            "sample_count": 30,
+                            "posterior_successes": 26,
+                            "posterior_failures": 4,
+                            "outcome_evidence": True,
+                            "outcome_variance": True,
+                        },
+                        {
+                            "action": "peek",
+                            "candidate_success_probability": 0.45,
+                            "sample_count": 30,
+                            "posterior_successes": 10,
+                            "posterior_failures": 20,
+                            "outcome_evidence": True,
+                            "outcome_variance": True,
+                        },
                     ],
                     "best_estimated_alternative": {
                         "action": "hold",
                         "candidate_success_probability": 0.85,
                         "sample_count": 30,
+                        "posterior_successes": 26,
+                        "posterior_failures": 4,
+                        "outcome_evidence": True,
+                        "outcome_variance": True,
                     },
                     "observed_action": {
                         "action": "peek",
                         "candidate_success_probability": 0.45,
                         "sample_count": 30,
+                        "posterior_successes": 10,
+                        "posterior_failures": 20,
+                        "outcome_evidence": True,
+                        "outcome_variance": True,
                     },
                     "decision_class": "bad",
                 },
@@ -65,7 +89,7 @@ class ProbabilityLabelTests(unittest.TestCase):
         self.assertGreater(first["probability_of_improvement"], 0.8)
         self.assertGreater(first["expected_regret"], 0.0)
         self.assertEqual(first["credible_intervals"]["observed_action"]["level"], 0.9)
-        self.assertEqual(first["credible_intervals"]["observed_action"]["method"], "support_proxy_normal_approximation")
+        self.assertEqual(first["credible_intervals"]["observed_action"]["method"], "beta_normal_approximation")
         self.assertEqual(second["probability_decision_class"], "insufficient_evidence")
         self.assertTrue(second["probability_abstention"]["abstained"])
         self.assertEqual(second["probability_abstention"]["reason"], "support_below_threshold")
@@ -83,6 +107,19 @@ class ProbabilityLabelTests(unittest.TestCase):
         self.assertEqual(interval["method"], "beta_normal_approximation")
         self.assertEqual(interval["observations"], 10)
         self.assertEqual(labelled["config"]["probability_thresholds"]["credible_level"], 0.95)
+
+    def test_proxy_probability_without_outcome_counts_abstains(self):
+        report = self._report()
+        for moment in report["moments"][:1]:
+            for candidate in (moment["candidate_actions"] + [moment["best_estimated_alternative"], moment["observed_action"]]):
+                candidate.pop("posterior_successes", None)
+                candidate.pop("posterior_failures", None)
+                candidate.pop("outcome_evidence", None)
+                candidate.pop("outcome_variance", None)
+        labelled = annotate_probability_labels(report)
+        first = labelled["moments"][0]
+        self.assertEqual(first["probability_decision_class"], "insufficient_evidence")
+        self.assertEqual(first["probability_abstention"]["reason"], "outcome_support_missing")
 
     def test_public_api_adds_probability_contract_without_removing_legacy_fields(self):
         model = ReplayModel(

@@ -233,7 +233,7 @@ class ReplayModel:
         replay: Mapping[str, Any],
         *,
         moment_threshold: float = 0.08,
-        max_moments: int = 25,
+        max_moments: int | None = 25,
         min_support: int = 5,
         recommendation_margin: float = 0.05,
         sample_every: int = 8,
@@ -249,7 +249,8 @@ class ReplayModel:
         Legacy ``decision_class`` values remain in the response.  Additive
         ``probability_decision_class`` fields use uncertainty-aware
         probability-of-improvement and expected-regret thresholds; ambiguous
-        cases explicitly abstain.
+        cases explicitly abstain. ``max_moments=None`` opts into analyzing
+        every detected kill/death/bomb moment instead of the default cap.
         """
 
         try:
