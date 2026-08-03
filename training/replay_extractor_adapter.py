@@ -170,17 +170,6 @@ def normalize_extractor_record(raw: Any) -> dict[str, Any]:
     return _canonical_to_raw(normalized)
 
 
-def load_extractor_jsonl(path: Path, *, limit: int | None = None) -> list[dict[str, Any]]:
-    """Read and normalize replacement-extractor JSONL without persisting it."""
-
-    records: list[dict[str, Any]] = []
-    for record in iter_extractor_jsonl(path):
-        records.append(record)
-        if limit is not None and len(records) >= limit:
-            break
-    return records
-
-
 def iter_extractor_jsonl(path: Path) -> Iterator[dict[str, Any]]:
     """Yield normalized extractor records lazily for bounded testers."""
 

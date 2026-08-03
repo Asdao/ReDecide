@@ -1,4 +1,5 @@
 import json
+import importlib.util
 import subprocess
 import sys
 import unittest
@@ -7,9 +8,13 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 BRIDGE = ROOT / "agent-harness" / "src" / "cs2_sim" / "agent_bridge.py"
-sys.path.insert(0, str(BRIDGE.parent.parent))
-
-from cs2_sim.agent_bridge import handle_request  # noqa: E402
+BRIDGE_MODULE_NAME = "ghackathon_agent_bridge"
+BRIDGE_SPEC = importlib.util.spec_from_file_location(BRIDGE_MODULE_NAME, BRIDGE)
+assert BRIDGE_SPEC is not None and BRIDGE_SPEC.loader is not None
+BRIDGE_MODULE = importlib.util.module_from_spec(BRIDGE_SPEC)
+sys.modules[BRIDGE_MODULE_NAME] = BRIDGE_MODULE
+BRIDGE_SPEC.loader.exec_module(BRIDGE_MODULE)
+handle_request = BRIDGE_MODULE.handle_request
 
 
 class AgentBridgeTests(unittest.TestCase):

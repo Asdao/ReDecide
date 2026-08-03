@@ -47,10 +47,6 @@ def events_for_round(segments: SegmentedReplay, round_num: int) -> tuple[EventRe
     return tuple(row for row in segments.events if row.round_num == round_num)
 
 
-def ticks_for_round(segments: SegmentedReplay, round_num: int) -> tuple[PlayerTick, ...]:
-    return tuple(row for row in segments.player_ticks if row.round_num == round_num)
-
-
 def _heatmap_point(replay: ReplayRecord, row: PlayerTick, cell_size: int) -> HeatmapPoint:
     assert row.x is not None and row.y is not None
     return HeatmapPoint(

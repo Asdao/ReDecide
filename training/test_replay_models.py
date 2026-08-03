@@ -27,20 +27,25 @@ from training.replay_repository import ReplayRepository
 def _active_release_root() -> Path:
     """Resolve the active release, with v2/legacy fallbacks for old installs."""
 
-    releases = Path("model/artifacts/releases")
-    pointer = releases / "current.json"
-    if pointer.exists():
-        try:
-            payload = json.loads(pointer.read_text(encoding="utf-8"))
-            version = payload.get("version") if isinstance(payload, dict) else None
-            if isinstance(version, str):
-                candidate = releases / version
-                if candidate.is_dir():
-                    return candidate
-        except (OSError, json.JSONDecodeError):
-            pass
-    v2 = releases / "v2"
-    return v2 if v2.is_dir() else Path("models")
+    for releases in (Path("model/artifacts/releases"), Path("models/releases")):
+        pointer = releases / "current.json"
+        if pointer.exists():
+            try:
+                payload = json.loads(pointer.read_text(encoding="utf-8"))
+                version = payload.get("version") if isinstance(payload, dict) else None
+                if isinstance(version, str):
+                    candidate = releases / version
+                    if candidate.is_dir():
+                        return candidate
+            except (OSError, json.JSONDecodeError):
+                pass
+        v2 = releases / "v2"
+        if v2.is_dir():
+            return v2
+    for legacy in (Path("model/artifacts"), Path("models")):
+        if legacy.is_dir():
+            return legacy
+    return Path("model/artifacts")
 
 
 def _default_database() -> Path | None:

@@ -200,6 +200,37 @@ retraining.
 With no `--database`, `--manifest`, or `--action-model` flags, the tester
 follows `model/artifacts/releases/current.json` and uses the active release bundle.
 
+## Sealed unseen-demo benchmark
+
+Native demos are large, so benchmark selection uses the compact metadata first,
+excludes every replay identity in the training database, and enforces a
+cumulative byte budget before downloading:
+
+```powershell
+python -m training.benchmark_dataset `
+  --training-database data/full/processed/cs2_replays_v2.sqlite `
+  --output data/benchmark `
+  --manifest data/benchmark/manifest.json `
+  --max-files 1 `
+  --max-gb 0.6
+```
+
+The manifest records the repository path, match/map metadata, local file,
+size, and SHA-256 checksum. It is marked training-excluded and the evaluator
+checks for overlap again before parsing any demo:
+
+```powershell
+python -m training.evaluate_benchmark `
+  --benchmark-manifest data/benchmark/manifest.json `
+  --model-manifest model/artifacts/releases/v2/full_replay_value.manifest.json `
+  --action-model model/artifacts/releases/v2/action_frequency.json `
+  --output data/benchmark/evaluation.json
+```
+
+The benchmark report is a macro-average across unseen demos. It is a true
+generalisation check for round-value prediction, but it is not yet a
+counterfactual “best move” score.
+
 The downloader reads the compact metadata already stored under
 `data/small/metadata`. It rejects incomplete maps by requiring at least 16
 rounds and 80 kills, ranks higher-star/recent matches first, and selects maps

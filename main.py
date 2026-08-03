@@ -1,4 +1,3 @@
-from cs2_sim.actions import ActionType
 from cs2_sim.baseline_policy import BaselinePolicy
 from cs2_sim.config import SimConfig
 from cs2_sim.simulator import Simulator

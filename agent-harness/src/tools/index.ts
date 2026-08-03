@@ -1,7 +1,5 @@
 import type { AuditSink, RegisteredTool } from "../types.js";
 import type { PythonBridge } from "../bridge.js";
-import { makeComparePoliciesTool } from "./compare-policies.js";
-import { makeInspectLegalActionsTool } from "./inspect-legal-actions.js";
 import { makeSimulateRoundTool } from "./simulate-round.js";
 
 export function createToolRegistry(bridge: PythonBridge): readonly RegisteredTool[] {

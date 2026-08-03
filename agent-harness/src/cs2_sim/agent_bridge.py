@@ -51,17 +51,6 @@ def _ensure_simulator_importable() -> None:
     source = _project_source_dir()
     if str(source) not in sys.path:
         sys.path.insert(0, str(source))
-    # If this package shim was selected first, append the real package path so
-    # imports such as ``cs2_sim.simulator`` resolve to the simulator source.
-    try:
-        import cs2_sim as package
-
-        package_path = source / "cs2_sim"
-        if hasattr(package, "__path__") and str(package_path) not in package.__path__:
-            package.__path__.append(str(package_path))
-    except Exception:
-        # Import errors are converted to a stable error by the request handler.
-        return
 
 
 _ensure_simulator_importable()
