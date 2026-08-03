@@ -7,7 +7,7 @@ JSONL file so larger demo collections do not need to fit in memory.
 
 Example::
 
-    $env:PYTHONPATH = "src"
+    $env:PYTHONPATH = "model/src"
     python -m training.extract_features \
         --input data/full \
         --output data/full/processed/analysis_snapshots.jsonl
@@ -35,6 +35,18 @@ def _roster_counts(match: dict[str, Any]) -> dict[str, int]:
         if side is not None:
             counts[side] += len(team.get("players") or [])
     return {side: count or 5 for side, count in counts.items()}
+
+
+def _first_present(row: dict[str, Any], *keys: str) -> Any:
+    for key in keys:
+        if row.get(key) is not None:
+            return row[key]
+    return None
+
+
+def _tick_or_default(row: dict[str, Any], default: int) -> int:
+    value = _first_present(row, "tick")
+    return default if value is None else int(value)
 
 
 def _kill_is_real(kill: dict[str, Any]) -> bool:
@@ -65,7 +77,7 @@ def extract_snapshots(
         raise ValueError("decision_window_seconds must be positive")
 
     match = document.get("match") or {}
-    tick_rate = float(match.get("tick_rate") or 128.0)
+    tick_rate = float(match.get("tick_rate") or 64.0)
     roster = _roster_counts(match)
     kills_by_round: dict[int, list[dict[str, Any]]] = defaultdict(list)
     for kill in document.get("kills") or []:
@@ -75,7 +87,7 @@ def extract_snapshots(
     snapshots: list[dict[str, Any]] = []
     for round_info in document.get("rounds") or []:
         round_num = int(round_info.get("round_num") or 0)
-        start_tick = int(round_info.get("start") or 0)
+        start_tick = int(_first_present(round_info, "start", "start_tick") or 0)
         winner = _side(round_info.get("winner"))
         ct_alive, t_alive = roster["ct"], roster["t"]
         bomb_tick = round_info.get("bomb_plant")
@@ -84,18 +96,18 @@ def extract_snapshots(
         bomb_site = bomb_site if bomb_site not in (None, "not_planted") else None
         round_kills = kills_by_round.get(round_num, [])
         first_contact_tick = min(
-            (int(kill.get("tick") or start_tick) for kill in round_kills),
+            (_tick_or_default(kill, start_tick) for kill in round_kills),
             default=None,
         )
         events: list[tuple[int, int, str, dict[str, Any] | None]] = []
         if include_round_start:
             events.append((start_tick, 0, "round_start", None))
         for kill in round_kills:
-            tick = int(kill.get("tick") or start_tick)
+            tick = _tick_or_default(kill, start_tick)
             events.append((tick, 1, "kill", kill))
         if bomb_tick is not None:
             events.append((bomb_tick, 2, "bomb_plant", None))
-        end_tick = int(round_info.get("end") or round_info.get("official_end") or start_tick)
+        end_tick = int(_first_present(round_info, "end", "official_end", "end_tick") or start_tick)
         if include_round_end:
             events.append((end_tick, 3, "round_end", None))
         events.sort(key=lambda event: (event[0], event[1]))

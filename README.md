@@ -50,7 +50,7 @@ real kill. It excludes terminal states and future events from the model input.
 Native demo parsing can provide richer positional and event data through Awpy,
 but it is optional.
 
-The sibling [`replay-extractor`](replay-extractor/README.md) package provides a
+The sibling [`extractor`](extractor/README.md) package provides a
 separate path for parsing, normalizing, segmenting, and storing replay data in
 SQLite.
 
@@ -72,7 +72,7 @@ python -m pip install -e ".[full]"
 For the standalone extractor:
 
 ```powershell
-python -m pip install -e replay-extractor
+python -m pip install -e extractor
 ```
 
 ## Run the simulator
@@ -80,7 +80,7 @@ python -m pip install -e replay-extractor
 From the repository root:
 
 ```powershell
-$env:PYTHONPATH = "src"
+$env:PYTHONPATH = "model/src"
 python main.py
 ```
 
@@ -106,12 +106,14 @@ The documented training workflow is in [`docs/TRAINING.md`](docs/TRAINING.md).
 The main commands are:
 
 ```powershell
-$env:PYTHONPATH = "src"
+$env:PYTHONPATH = "model/src"
 python -m training.train_snapshot_model
 python -m training.train_full_replay `
-  --database data/full/processed/cs2_replays.sqlite `
-  --calibrator models/full_replay_calibrator.json `
-  --manifest models/full_replay_value.manifest.json
+  --database data/full/processed/cs2_replays_v2.sqlite `
+  --output model/artifacts/releases/v2/full_replay_value.txt `
+  --small-model-output model/artifacts/releases/v2/small_snapshot_value.json `
+  --calibrator model/artifacts/releases/v2/full_replay_calibrator.json `
+  --manifest model/artifacts/releases/v2/full_replay_value.manifest.json
 ```
 
 To test the saved artifacts against a database, parsed JSONL file, or native
@@ -119,7 +121,8 @@ demo:
 
 ```powershell
 python -m training.test_replay_models `
-  --database data/full/processed/cs2_replays.sqlite `
+  --database data/full/processed/cs2_replays_v2.sqlite `
+  --manifest model/artifacts/releases/v2/full_replay_value.manifest.json `
   --limit 500
 ```
 
@@ -128,24 +131,26 @@ Load the deployable ensemble in Python:
 ```python
 from cs2_sim.core.model import ReplayValueEnsemble
 
-model = ReplayValueEnsemble.load("models/full_replay_value.manifest.json")
+model = ReplayValueEnsemble.load("model/artifacts/releases/v2/full_replay_value.manifest.json")
 prediction = model.predict(snapshot)
 print(prediction.probability, prediction.uncertainty)
 ```
 
-If LightGBM is unavailable, the runtime falls back to the Bayesian component.
+The loader is strict by default: missing or checksum-mismatched components fail
+fast. Use `allow_fallback=True` only for an explicit degraded Bayesian-only
+smoke check.
 
 ## Repository layout
 
-- `src/cs2_sim/` — deterministic CS2 state, rules, simulator, and model code.
+- `model/src/cs2_sim/` — deterministic CS2 state, rules, simulator, and model code.
 - `training/` — feature extraction, replay storage, training, calibration, and
   evaluation scripts.
-- `replay-extractor/` — standalone replay parsing and normalization package.
+- `extractor/` — standalone replay parsing and normalization package.
 - `agent-harness/` — TypeScript/Pi boundary with the bounded simulator tool.
-- `models/` — generated model artifacts and metrics.
+- `model/artifacts/` — generated model artifacts and metrics.
 - `docs/` — detailed plans, training notes, reliability guidance, and target
   analysis architecture.
-- `tests/` — Python, TypeScript, extractor, bridge, and model tests.
+- `training/tests/`, `model/tests/`, and `extractor/tests/` — tests grouped by ownership.
 
 ## What is not implemented yet
 

@@ -39,12 +39,12 @@ def _project_source_dir() -> Path:
 
     here = Path(__file__).resolve()
     for parent in here.parents:
-        candidate = parent / "src" / "cs2_sim"
+        candidate = parent / "model" / "src" / "cs2_sim"
         if (candidate / "simulator.py").is_file() and candidate != here.parent:
             return candidate.parent
     # This fallback is useful when a test copies the bridge file to a temp dir;
     # importing then produces the normal stable INTERNAL_ERROR envelope.
-    return here.parents[3] / "src"
+    return here.parents[3] / "model" / "src"
 
 
 def _ensure_simulator_importable() -> None:

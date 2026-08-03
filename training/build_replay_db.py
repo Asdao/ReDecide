@@ -185,6 +185,23 @@ def _number_or_none(value: Any) -> float | None:
         return None
 
 
+def _is_alive(row: dict[str, Any]) -> bool:
+    """Respect an explicit parser alive flag before falling back to health."""
+
+    alive = row.get("alive")
+    if alive is not None:
+        if isinstance(alive, bool):
+            return alive
+        text = str(alive).strip().lower()
+        if text in {"0", "false", "dead", "none", "no", "null", ""}:
+            return False
+        try:
+            return float(text) != 0.0
+        except ValueError:
+            return True
+    return _number(row.get("health"), 100.0) > 0
+
+
 def _zone(row: dict[str, Any]) -> str | None:
     named = row.get("last_place_name") or row.get("zone")
     if named not in (None, ""):
@@ -194,6 +211,19 @@ def _zone(row: dict[str, Any]) -> str | None:
     if x is not None and y is not None and math.isfinite(x) and math.isfinite(y):
         return f"grid:{math.floor(x / 1000.0)}:{math.floor(y / 1000.0)}"
     return None
+
+
+def _normalise_bomb_site(value: Any) -> str | None:
+    if value is None:
+        return None
+    text = str(value).strip().lower().replace("-", "").replace("_", "")
+    if not text or text in {"none", "notplanted", "unknown", "null"}:
+        return None
+    if text in {"a", "bombsitea", "sitea"}:
+        return "a"
+    if text in {"b", "bombsiteb", "siteb"}:
+        return "b"
+    return str(value).strip().lower()
 
 
 def _event_rows(record: dict[str, Any]):
@@ -273,8 +303,13 @@ def build_database(
             connection.execute("ALTER TABLE replays ADD COLUMN match_id TEXT")
         metadata = {
             "schema_version": "2",
+            "feature_schema_version": "2",
             "cleaning_version": CLEANING_VERSION if clean else "raw",
             "input_path": str(input_path),
+            "default_tick_rate": "64",
+            "sample_every": str(sample_every),
+            "decision_window_seconds": str(decision_window_seconds),
+            "action_window_seconds": str(action_window_seconds),
         }
         if cleaning_report is not None:
             metadata["cleaning_report"] = json.dumps(cleaning_report, separators=(",", ":"))
@@ -316,7 +351,7 @@ def build_database(
                     demo_file,
                     str(record.get("parser") or "unknown"),
                     map_name,
-                    _number(header.get("tick_rate") or match.get("tick_rate"), 128.0),
+                    _number(header.get("tick_rate") or match.get("tick_rate"), 64.0),
                     len(ticks),
                     len(record.get("rounds") or []),
                     _record_checksum(record),
@@ -373,8 +408,12 @@ def build_database(
                         _number_or_none(player_row.get("Y") if "Y" in player_row else player_row.get("y")),
                         _number_or_none(player_row.get("Z") if "Z" in player_row else player_row.get("z")),
                         _number_or_none(player_row.get("health")),
-                        _number_or_none(player_row.get("armor_value") or player_row.get("armor")),
-                        int(_number(player_row.get("health"), 100.0) > 0),
+                        _number_or_none(
+                            player_row.get("armor_value")
+                            if player_row.get("armor_value") is not None
+                            else player_row.get("armor")
+                        ),
+                        int(_is_alive(player_row)),
                         _zone(player_row),
                         json.dumps(player_row, separators=(",", ":")),
                     ),
@@ -401,7 +440,11 @@ def build_database(
                         event.get("victim_steamid"),
                         event.get("steamid") or event.get("player_steamid"),
                         _side(event.get("attacker_side") or event.get("side") or event.get("team_name")),
-                        event.get("bombsite") or event.get("site") or event.get("which_bomb_zone"),
+                        _normalise_bomb_site(
+                            event.get("bombsite")
+                            or event.get("site")
+                            or event.get("which_bomb_zone")
+                        ),
                         event.get("weapon"),
                         json.dumps(event, separators=(",", ":")),
                     ),
@@ -452,7 +495,7 @@ def build_database(
                         int(_number(round_info.get("bomb_plant")))
                         if round_info.get("bomb_plant") is not None
                         else None,
-                        round_info.get("bomb_site") if round_info.get("bomb_site") != "not_planted" else None,
+                        _normalise_bomb_site(round_info.get("bomb_site")),
                     ),
                 )
                 round_count += 1

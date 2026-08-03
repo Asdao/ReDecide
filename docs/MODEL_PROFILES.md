@@ -64,12 +64,12 @@ Until raw replay parsing supplies action labels, train a monitored bootstrap
 pair from simulator outcomes:
 
 ```powershell
-$env:PYTHONPATH = "src"
+$env:PYTHONPATH = "model/src"
 python -m training.train_models --states 500
 ```
 
-This writes `models/small_statistical.json`, `models/full_lightgbm.txt`, and
-`models/bootstrap_metrics.json`. These artifacts are useful for testing the
+This writes `model/artifacts/small_statistical.json`, `model/artifacts/full_lightgbm.txt`, and
+`model/artifacts/bootstrap_metrics.json`. These artifacts are useful for testing the
 tool interface, but should be retrained after full replay-derived examples are
 available.
 
@@ -80,7 +80,7 @@ the model input features.
 Train the small snapshot model with:
 
 ```powershell
-$env:PYTHONPATH = "src"
+$env:PYTHONPATH = "model/src"
 python -m training.train_snapshot_model
 ```
 
@@ -107,7 +107,7 @@ python -m training.train_full_replay
 
 The trainer requires at least two parsed demos so validation can be separated
 by whole demo. It blends the LightGBM prediction with the small snapshot model
-when `models/small_snapshot_value.json` exists.
+when `model/artifacts/small_snapshot_value.json` exists.
 
 While native positional parsing is unavailable, a provisional event-only
 LightGBM model can use the same leakage-safe snapshot dataset:

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import math
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 
 
 def binary_probability_metrics(
@@ -100,4 +100,55 @@ def binary_probability_metrics(
         }
         result["log_loss_improvement"] = float(baseline_metrics["log_loss"]) - log_loss
         result["brier_improvement"] = float(baseline_metrics["brier"]) - brier
+    return result
+
+
+def training_prior(labels: Sequence[int | float]) -> float:
+    """Return a class prior estimated from training labels only."""
+
+    if not labels:
+        raise ValueError("training labels cannot be empty")
+    values = [int(bool(value)) for value in labels]
+    return sum(values) / len(values)
+
+
+def multiclass_probability_metrics(
+    probabilities: Sequence[Mapping[str, float]],
+    labels: Sequence[str],
+    *,
+    baseline_probabilities: Mapping[str, float] | None = None,
+) -> dict[str, float | None | dict[str, float]]:
+    """Evaluate categorical action probabilities without using test labels as a prior.
+
+    ``baseline_probabilities`` should be estimated from the training groups.
+    The function intentionally accepts sparse mappings so legal action sets can
+    vary by state while still producing a comparable log loss.
+    """
+
+    if len(probabilities) != len(labels) or not labels:
+        raise ValueError("probabilities and labels must have the same non-zero length")
+    eps = 1e-7
+    log_losses: list[float] = []
+    predictions: list[str] = []
+    for score, label in zip(probabilities, labels, strict=True):
+        if not score:
+            raise ValueError("each probability mapping must be non-empty")
+        clipped = {str(key): min(1.0 - eps, max(eps, float(value))) for key, value in score.items()}
+        total = sum(clipped.values())
+        normalized = {key: value / total for key, value in clipped.items()}
+        log_losses.append(-math.log(normalized.get(str(label), eps)))
+        predictions.append(max(normalized, key=lambda key: (normalized[key], key)))
+    accuracy = sum(prediction == str(label) for prediction, label in zip(predictions, labels, strict=True)) / len(labels)
+    result: dict[str, float | None | dict[str, float]] = {
+        "log_loss": sum(log_losses) / len(log_losses),
+        "accuracy": accuracy,
+        "brier": None,
+    }
+    if baseline_probabilities is not None:
+        baseline = {str(key): max(eps, float(value)) for key, value in baseline_probabilities.items()}
+        total = sum(baseline.values())
+        baseline = {key: value / total for key, value in baseline.items()}
+        baseline_loss = -sum(math.log(max(eps, baseline.get(str(label), eps))) for label in labels) / len(labels)
+        result["training_prior_baseline"] = {"log_loss": baseline_loss}
+        result["log_loss_improvement"] = baseline_loss - float(result["log_loss"])
     return result

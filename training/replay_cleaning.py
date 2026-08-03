@@ -95,7 +95,7 @@ def audit_record(record: dict[str, Any], *, options: CleaningOptions | None = No
         winner = _side(raw_round.get("winner"))
         duration = None
         if start >= 0 and end >= start:
-            tick_rate = _number((record.get("header") or {}).get("tick_rate"), 128.0)
+            tick_rate = _number((record.get("header") or {}).get("tick_rate"), 64.0)
             duration = (end - start) / max(tick_rate, 1.0)
         row = {"round_num": round_num, "winner": winner, "duration_seconds": duration}
         round_stats.append(row)

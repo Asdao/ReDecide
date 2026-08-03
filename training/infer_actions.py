@@ -5,11 +5,14 @@ from __future__ import annotations
 import argparse
 import json
 import math
+from bisect import bisect_left
 from collections import defaultdict
 from pathlib import Path
 from typing import Any
 
 from training.map_regions import NavRegionIndex, region_for_row
+
+DEFAULT_TICK_RATE = 64.0
 
 def _number(value: Any, default: float = 0.0) -> float:
     try:
@@ -32,6 +35,17 @@ def _identity(row: dict[str, Any], ordinal: int) -> str:
         if row.get(key) not in (None, ""):
             return str(row[key])
     return f"anonymous:{ordinal}"
+
+
+def _is_alive(row: dict[str, Any]) -> bool:
+    """Use explicit alive state when health is unavailable."""
+
+    alive = row.get("alive")
+    if alive is not None:
+        if isinstance(alive, bool):
+            return alive
+        return str(alive).strip().lower() not in {"0", "false", "dead", "none", "no"}
+    return _number(row.get("health"), 100.0) > 0
 
 
 def _zone(row: dict[str, Any], nav_index: NavRegionIndex | None = None) -> str:
@@ -58,7 +72,8 @@ def infer_actions(
     if window_seconds <= 0 or movement_threshold < 0:
         raise ValueError("window_seconds must be positive and movement_threshold cannot be negative")
     header = record.get("header") or {}
-    rate = tick_rate or _number(header.get("tick_rate"), 128.0)
+    configured_rate = tick_rate if tick_rate is not None else header.get("tick_rate") or record.get("tick_rate")
+    rate = _number(configured_rate, DEFAULT_TICK_RATE)
     if rate <= 0:
         raise ValueError("tick_rate must be positive")
     map_name = str(header.get("map_name") or record.get("map_name") or "")
@@ -75,13 +90,14 @@ def infer_actions(
     window_ticks = max(1, int(round(window_seconds * rate)))
     for (round_num, player_id), series in grouped.items():
         series.sort(key=lambda item: item[0])
+        ticks = [item[0] for item in series]
         for index, (tick, current) in enumerate(series):
-            if _number(current.get("health"), 100.0) <= 0:
+            if not _is_alive(current):
                 continue
-            future = next(
-                ((future_tick, row) for future_tick, row in series[index + 1 :] if future_tick >= tick + window_ticks),
-                None,
-            )
+            future_index = bisect_left(ticks, tick + window_ticks, lo=index + 1)
+            while future_index < len(series) and not _is_alive(series[future_index][1]):
+                future_index += 1
+            future = series[future_index] if future_index < len(series) else None
             if future is None:
                 continue
             next_tick, next_row = future
@@ -90,12 +106,19 @@ def infer_actions(
             x2 = _number(next_row.get("X") if "X" in next_row else next_row.get("x"))
             y2 = _number(next_row.get("Y") if "Y" in next_row else next_row.get("y"))
             distance = math.hypot(x2 - x1, y2 - y1)
+            horizon_seconds = (next_tick - tick) / rate
+            distance_per_second = distance / max(horizon_seconds, 1e-9)
             current_zone = _zone(current, nav_index)
             next_zone = _zone(next_row, nav_index)
-            action = "move" if distance >= movement_threshold else "hold"
+            # Scale the displacement threshold by the observed horizon. Sparse
+            # extractor ticks therefore do not turn a long gap into a false
+            # movement label.
+            target_distance = movement_threshold * horizon_seconds / window_seconds
+            action = "move" if distance >= target_distance else "hold"
             output.append(
                 {
                     "source": record.get("source_path") or record.get("demo_file") or "unknown",
+                    "map_name": map_name or "unknown",
                     "round_num": round_num,
                     "tick": tick,
                     "next_tick": next_tick,
@@ -105,6 +128,8 @@ def infer_actions(
                     "next_zone": str(next_zone),
                     "action": action,
                     "distance": distance,
+                    "distance_per_second": distance_per_second,
+                    "horizon_seconds": horizon_seconds,
                     "window_seconds": window_seconds,
                     "horizon_ticks": next_tick - tick,
                     "legal_actions": ["hold", "move"],

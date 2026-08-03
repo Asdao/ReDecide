@@ -109,8 +109,8 @@ def train(input_path: Path, output_path: Path, metrics_path: Path, seed: int) ->
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--input", type=Path, default=Path("data/small/processed/analysis_snapshots.jsonl"))
-    parser.add_argument("--output", type=Path, default=Path("models/small_snapshot_value.json"))
-    parser.add_argument("--metrics", type=Path, default=Path("models/small_snapshot_metrics.json"))
+    parser.add_argument("--output", type=Path, default=Path("model/artifacts/small_snapshot_value.json"))
+    parser.add_argument("--metrics", type=Path, default=Path("model/artifacts/small_snapshot_metrics.json"))
     parser.add_argument("--seed", type=int, default=7)
     args = parser.parse_args()
     train(args.input, args.output, args.metrics, args.seed)

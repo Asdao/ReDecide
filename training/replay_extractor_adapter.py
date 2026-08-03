@@ -1,4 +1,4 @@
-"""Tester-only bridge for the standalone ``replay-extractor`` package.
+"""Tester-only bridge for the standalone ``extractor`` package.
 
 The extractor owns ingestion and normalization.  The model pipeline still
 consumes its historical Awpy-shaped dictionaries, so this module translates
@@ -11,21 +11,22 @@ from __future__ import annotations
 import sys
 from dataclasses import is_dataclass
 from pathlib import Path
+from collections.abc import Iterator
 from typing import Any, Mapping
 
 
 def _load_extractor_normalizer() -> Any:
     """Load the sibling package without making it a runtime dependency."""
 
-    package_root = Path(__file__).resolve().parents[1] / "replay-extractor" / "src"
+    package_root = Path(__file__).resolve().parents[1] / "extractor" / "src"
     if package_root.exists() and str(package_root) not in sys.path:
         sys.path.insert(0, str(package_root))
     try:
         from replay_extractor.normalize import normalize_record
     except ImportError as exc:  # pragma: no cover - only used for broken installs
         raise RuntimeError(
-            "the replacement extractor is unavailable; keep replay-extractor in the "
-            "workspace or install it with `python -m pip install -e replay-extractor`"
+            "the replacement extractor is unavailable; keep extractor in the "
+            "workspace or install it with `python -m pip install -e extractor`"
         ) from exc
     return normalize_record
 
@@ -54,10 +55,11 @@ def _canonical_to_raw(record: Any) -> dict[str, Any]:
         header["tick_rate"] = tick_rate
 
     raw: dict[str, Any] = {
-        "schema_version": 1,
+        "schema_version": 2,
         "parser": _value(metadata, "parser", "replay-extractor"),
         "demo_file": _value(metadata, "demo_file", "unknown"),
         "source_path": _value(metadata, "source_path", "unknown"),
+        "tick_rate": tick_rate or 64.0,
         "header": header,
         "rounds": [],
         "kills": [],
@@ -76,7 +78,7 @@ def _canonical_to_raw(record: Any) -> dict[str, Any]:
                 "winner": _value(round_row, "winner"),
                 "reason": _value(round_row, "reason"),
                 "bomb_plant": _value(round_row, "bomb_plant_tick"),
-                "bomb_site": _value(round_row, "bomb_site"),
+                "bomb_site": _normalise_bomb_site(_value(round_row, "bomb_site")),
             }
         )
 
@@ -91,11 +93,16 @@ def _canonical_to_raw(record: Any) -> dict[str, Any]:
         _fill(row, "Y", _value(tick_row, "y"))
         _fill(row, "Z", _value(tick_row, "z"))
         _fill(row, "health", _value(tick_row, "health"))
-        # Preserve the parser's original spelling. The trained sidecar data
-        # uses ``armor`` while native Awpy uses ``armor_value``; adding the
-        # other alias would silently change the trained feature distribution.
-        if "armor" not in row and "armor_value" not in row:
-            _fill(row, "armor_value", _value(tick_row, "armor"))
+        # Keep both parser spellings available. The shared feature contract
+        # resolves them in a deterministic order, so this does not alter the
+        # value distribution while making canonical records interoperable.
+        armor = _value(tick_row, "armor")
+        if row.get("armor_value") is None and row.get("armor") is None:
+            _fill(row, "armor_value", armor)
+        if row.get("armor_value") is None and row.get("armor") is not None:
+            row["armor_value"] = row["armor"]
+        if row.get("armor") is None and row.get("armor_value") is not None:
+            row["armor"] = row["armor_value"]
         _fill(row, "alive", _value(tick_row, "alive"))
         _fill(row, "zone", _value(tick_row, "zone"))
         raw["ticks"].append(row)
@@ -109,7 +116,9 @@ def _canonical_to_raw(record: Any) -> dict[str, Any]:
         _fill(row, "victim_steamid", _value(event_row, "victim_id"))
         _fill(row, "steamid", _value(event_row, "actor_id"))
         _fill(row, "attacker_side", _value(event_row, "side"))
-        _fill(row, "bombsite", _value(event_row, "site"))
+        site = _value(event_row, "site")
+        if site is not None:
+            row["bombsite"] = _normalise_bomb_site(site)
         _fill(row, "weapon", _value(event_row, "weapon"))
         _fill(row, "event", event_type)
         # ``player_death``, ``player_hurt`` and ``bomb_planted`` are generic
@@ -134,6 +143,19 @@ def _fill(row: dict[str, Any], key: str, value: Any) -> None:
         row[key] = value
 
 
+def _normalise_bomb_site(value: Any) -> str | None:
+    if value is None:
+        return None
+    text = str(value).strip().lower().replace("-", "").replace("_", "")
+    if not text or text in {"none", "notplanted", "unknown", "null"}:
+        return None
+    if text in {"a", "bombsitea", "sitea"}:
+        return "a"
+    if text in {"b", "bombsiteb", "siteb"}:
+        return "b"
+    return str(value).strip().lower()
+
+
 def normalize_extractor_record(raw: Any) -> dict[str, Any]:
     """Normalize one replacement-extractor record for model testing."""
 
@@ -151,17 +173,24 @@ def normalize_extractor_record(raw: Any) -> dict[str, Any]:
 def load_extractor_jsonl(path: Path, *, limit: int | None = None) -> list[dict[str, Any]]:
     """Read and normalize replacement-extractor JSONL without persisting it."""
 
+    records: list[dict[str, Any]] = []
+    for record in iter_extractor_jsonl(path):
+        records.append(record)
+        if limit is not None and len(records) >= limit:
+            break
+    return records
+
+
+def iter_extractor_jsonl(path: Path) -> Iterator[dict[str, Any]]:
+    """Yield normalized extractor records lazily for bounded testers."""
+
     try:
         from replay_extractor.extractor import load_jsonl
     except ImportError:
         _load_extractor_normalizer()
         from replay_extractor.extractor import load_jsonl
-    records: list[dict[str, Any]] = []
     for raw in load_jsonl(path):
-        records.append(normalize_extractor_record(raw))
-        if limit is not None and len(records) >= limit:
-            break
-    return records
+        yield normalize_extractor_record(raw)
 
 
 def parse_extractor_demo(path: Path, *, tick_interval: int = 32) -> dict[str, Any]:

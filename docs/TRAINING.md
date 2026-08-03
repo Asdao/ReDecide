@@ -8,7 +8,7 @@ download the very large `.dem` file for every match.
 Use the project Python and set `PYTHONPATH` first:
 
 ```powershell
-$env:PYTHONPATH = "src"
+$env:PYTHONPATH = "model/src"
 
 python -m training.download_dataset sidecars --max-files 500 --max-gb 0.25
 
@@ -57,8 +57,9 @@ SQLite. Build it after native parsing:
 ```powershell
 python -m training.build_replay_db `
   --input data/full/processed/full_replays.jsonl `
-  --output data/full/processed/cs2_replays.sqlite `
+  --output data/full/processed/cs2_replays_v2.sqlite `
   --action-window-seconds 2 `
+  --clean `
   --replace
 ```
 
@@ -80,26 +81,49 @@ the full JSONL:
 
 ```powershell
 python -m training.train_full_replay `
-  --database data/full/processed/cs2_replays.sqlite `
-  --calibrator models/full_replay_calibrator.json `
-  --manifest models/full_replay_value.manifest.json
+  --database data/full/processed/cs2_replays_v2.sqlite `
+  --output model/artifacts/releases/v2/full_replay_value.txt `
+  --small-model-output model/artifacts/releases/v2/small_snapshot_value.json `
+  --calibrator model/artifacts/releases/v2/full_replay_calibrator.json `
+  --manifest model/artifacts/releases/v2/full_replay_value.manifest.json
 ```
+
+The trainer uses deterministic match/source-held-out groups: development rows
+are split again for tuning and calibration, while the final test groups are
+used only for the reported metrics. The manifest records the feature schema,
+dataset fingerprint, split fingerprint, tick rate, and checksums for every
+replay-value component.
 
 The lightweight baselines can be compared with:
 
 ```powershell
-python -m training.train_baselines --database data/full/processed/cs2_replays.sqlite
+python -m training.train_baselines --database data/full/processed/cs2_replays_v2.sqlite
 python -m training.evaluate_models `
-  models/full_replay_metrics.json `
-  models/statistical_baseline_metrics.json
+  model/artifacts/releases/v2/full_replay_metrics.json `
+  model/artifacts/releases/v2/statistical_baseline_metrics.json `
+  --output model/artifacts/releases/v2/model_comparison.json
 ```
+
+LightGBM plus the Bayesian snapshot model is the deployed replay-value
+ensemble. Gaussian/logistic reports are advisory baselines only; the
+comparison command rejects reports built from a different dataset or split.
 
 Train the movement-frequency and zone-transition tools from SQLite:
 
 ```powershell
 python -m training.train_action_models `
-  --database data/full/processed/cs2_replays.sqlite
+  --database data/full/processed/cs2_replays_v2.sqlite `
+  --action-output model/artifacts/releases/v2/action_frequency.json `
+  --transition-output model/artifacts/releases/v2/zone_transitions.json
+python -m training.evaluate_actions `
+  --database data/full/processed/cs2_replays_v2.sqlite `
+  --output model/artifacts/releases/v2/action_evaluation.json
 ```
+
+Action labels are deterministic observed movement tendencies (`hold`/`move`)
+over a fixed two-second window. They are not claims about a strategically
+optimal or “best” CS2 move; the held-out action report makes that distinction
+explicit.
 
 At runtime, load the single manifest and use the Bayesian fallback if the
 optional LightGBM native library is unavailable:
@@ -107,15 +131,28 @@ optional LightGBM native library is unavailable:
 ```python
 from cs2_sim.core.model import ReplayValueEnsemble
 
-model = ReplayValueEnsemble.load("models/full_replay_value.manifest.json")
+model = ReplayValueEnsemble.load("model/artifacts/releases/v2/full_replay_value.manifest.json")
 prediction = model.predict_ct_win(snapshot)
+```
+
+To install and activate a verified local release bundle:
+
+```powershell
+python -m training.download_models `
+  --source path/to/cs2-model-bundle-v2 `
+  --releases model/artifacts/releases `
+  --version v2 `
+  --activate `
+  --require-checksums
 ```
 
 Run the end-to-end tester against SQLite, parsed JSONL, or a native demo:
 
 ```powershell
 python -m training.test_replay_models `
-  --database data/full/processed/cs2_replays.sqlite `
+  --database data/full/processed/cs2_replays_v2.sqlite `
+  --manifest model/artifacts/releases/v2/full_replay_value.manifest.json `
+  --action-model model/artifacts/releases/v2/action_frequency.json `
   --limit 500
 
 python -m training.test_replay_models `
@@ -133,7 +170,7 @@ not rebuild SQLite or retrain either model:
 python -m training.test_replay_models `
   --extractor-input path/to/replacement-extractor.jsonl `
   --limit 500 `
-  --output models/replay_model_test_extractor.json
+  --output model/artifacts/replay_model_test_extractor.json
 
 python -m training.test_replay_models `
   --extractor-demo path/to/match.dem `
@@ -141,7 +178,7 @@ python -m training.test_replay_models `
 ```
 
 Install the sibling extractor only if needed:
-`python -m pip install -e replay-extractor` (use its optional `full` extra for
+`python -m pip install -e extractor` (use its optional `full` extra for
 native Awpy parsing).
 
 The adapter preserves the model's existing `record_to_rows` contract, including
@@ -150,9 +187,14 @@ field names. A regression test compares the resulting feature vectors before
 and after adaptation so extractor changes cannot silently shift the model
 input distribution.
 
-The test report includes held-out replay-value metrics, action counts, and
-nav-region transitions. `training.map_regions` uses the downloaded nav mesh
-area IDs and the Awpy radar transform for overlays.
+The default tester mode is a bounded smoke check. It reports model predictions
+and observed action counts, but its rows are not a held-out accuracy claim.
+Use the trainer and `evaluate_actions` reports for held-out metrics. The
+tester accepts replacement-extractor JSONL without rebuilding SQLite or
+retraining.
+
+With no `--database`, `--manifest`, or `--action-model` flags, the tester
+follows `model/artifacts/releases/current.json` and uses the active release bundle.
 
 The downloader reads the compact metadata already stored under
 `data/small/metadata`. It rejects incomplete maps by requiring at least 16
@@ -168,22 +210,23 @@ and setup/world kills. The first kill is used because lightweight sidecars do
 not contain damage ticks. Native demos can later use the first damage event as
 a better contact marker.
 
-Training and validation are separated by entire demo, not random snapshot.
-The saved deployment artifacts are retrained on all rows only after validation
-metrics have been computed. Metrics include log loss, Brier score, balanced
-accuracy, expected calibration error, and comparison with the training-set CT
-win-rate baseline.
+Training, calibration, and test evaluation are separated by entire demo/match,
+not random snapshots. Metrics include log loss, Brier score, balanced accuracy,
+expected calibration error, and comparison with the training-set CT win-rate
+baseline.
 
 ## Outputs
 
-- `models/small_snapshot_value.json`: hierarchical Bayesian model. It backs
+- `model/artifacts/small_snapshot_value.json`: hierarchical Bayesian model. It backs
   off through exact state, broader state, map, and global evidence.
-- `models/full_replay_value.txt`: LightGBM model blended with a split-safe 20%
+- `model/artifacts/full_replay_value.txt`: LightGBM model blended with a split-safe 20%
   Bayesian prior during evaluation.
-- `models/small_snapshot_metrics.json` and
-  `models/full_replay_metrics.json`: demo-separated validation results.
-- `models/full_replay_value.manifest.json`: deployable Bayesian/LightGBM
-  component manifest.
+- `model/artifacts/small_snapshot_metrics.json` and
+  `model/artifacts/full_replay_metrics.json`: demo-separated validation results.
+- `model/artifacts/releases/v2/full_replay_value.manifest.json`: deployable
+  Bayesian/LightGBM component manifest with checksums and dataset fingerprints.
+- `model/artifacts/releases/v2/action_frequency.json` and `zone_transitions.json`:
+  map-aware movement-tendency tools.
 
 The event-only full model estimates round win probability. It is not yet a
 movement/action model because sidecars contain no player positions, health,

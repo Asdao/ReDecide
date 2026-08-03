@@ -51,7 +51,7 @@ class ReplayRepository:
 
     def iter_snapshot_rows(self, *, include_terminal: bool = True) -> Iterator[dict[str, Any]]:
         query = (
-            "SELECT s.snapshot_id,s.replay_id,r.source_path,s.round_num,s.tick,s.map_name,"
+            "SELECT s.snapshot_id,s.replay_id,r.source_path,r.match_id,s.round_num,s.tick,s.map_name,"
             "s.elapsed_seconds,s.ct_alive,s.t_alive,s.alive_difference,s.kills_seen,"
             "s.bomb_planted,s.bomb_site,s.label_ct_win,s.features_json,s.snapshot_json "
             "FROM snapshots s JOIN replays r ON r.replay_id=s.replay_id "
@@ -69,6 +69,7 @@ class ReplayRepository:
                     snapshot.setdefault(name, value)
             yield {
                 "source": str(row["source_path"]),
+                "match_id": row["match_id"],
                 "replay_id": int(row["replay_id"]),
                 "snapshot_id": int(row["snapshot_id"]),
                 "round_num": int(row["round_num"]),
@@ -113,12 +114,15 @@ class ReplayRepository:
             yield item
 
     def iter_actions(self, *, replay_id: int | None = None) -> Iterator[dict[str, Any]]:
-        query = "SELECT * FROM inferred_actions"
+        query = (
+            "SELECT a.*, r.map_name, r.source_path, r.match_id FROM inferred_actions a "
+            "JOIN replays r ON r.replay_id=a.replay_id"
+        )
         params: tuple[Any, ...] = ()
         if replay_id is not None:
-            query += " WHERE replay_id=?"
+            query += " WHERE a.replay_id=?"
             params = (replay_id,)
-        query += " ORDER BY replay_id,round_num,tick,action_id"
+        query += " ORDER BY a.replay_id,a.round_num,a.tick,a.action_id"
         for row in self.connection.execute(query, params):
             item = dict(row)
             item["legal_actions"] = json.loads(item.pop("legal_actions_json"))

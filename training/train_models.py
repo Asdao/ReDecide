@@ -7,7 +7,7 @@ bootstrap model, not a replacement for replay-derived training.
 
 Run from the repository root with the source tree on ``PYTHONPATH``::
 
-    $env:PYTHONPATH = "src"
+    $env:PYTHONPATH = "model/src"
     python -m training.train_models --states 200
 """
 

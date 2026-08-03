@@ -29,18 +29,19 @@ GHackathon/
 |-- pyproject.toml
 |-- docs/
 |   `-- PLAN.md                     # This document
-|-- src/
-|   `-- cs2_sim/
-|       |-- __init__.py
-|       |-- config.py               # Tick and decision interval configuration
-|       |-- state.py                # GameState, PlayerState, Team, BombState
-|       |-- actions.py              # Action types, durations, completion rules
-|       |-- events.py               # Damage, death, sighting and bomb events
-|       |-- rules.py                # Legal actions and round-ending rules
-|       |-- policy.py               # ActionPolicy protocol
-|       |-- baseline_policy.py      # Simple seeded rule-based policy
-|       |-- bayesian_policy.py      # Optional learned action probabilities
-|       `-- simulator.py            # Simulation loop and action interruption
+|-- model/
+|   |-- src/
+|   |   `-- cs2_sim/
+|   |       |-- __init__.py
+|   |       |-- config.py               # Tick and decision interval configuration
+|   |       |-- state.py                # GameState, PlayerState, Team, BombState
+|   |       |-- actions.py              # Action types, durations, completion rules
+|   |       |-- events.py               # Damage, death, sighting and bomb events
+|   |       |-- rules.py                # Legal actions and round-ending rules
+|   |       |-- policy.py               # ActionPolicy protocol
+|   |       |-- baseline_policy.py      # Simple seeded rule-based policy
+|   |       |-- bayesian_policy.py      # Optional learned action probabilities
+|   |       `-- simulator.py            # Simulation loop and action interruption
 |-- training/
 |   |-- __init__.py
 |   |-- download_dataset.py         # Stream small metadata or full demos with a byte cap
@@ -50,13 +51,9 @@ GHackathon/
 |-- data/                           # Downloaded data; ignored by Git
 |   |-- small/metadata/
 |   `-- full/
-|-- models/                         # Generated model data; ignored by Git
-`-- tests/
-    |-- test_downloader.py
-    |-- test_rules.py
-    |-- test_actions.py
-    |-- test_simulator.py
-    `-- test_policy.py
+|-- extractor/                     # Standalone replay parsing package
+|-- model/artifacts/               # Generated model data; ignored by Git
+`-- model/tests/                   # Runtime and model tests
 ```
 
 Do not create all modules with placeholder code at once. Add them in the order
@@ -140,7 +137,7 @@ Use Dirichlet/Laplace smoothing so unseen and rare states still have sensible
 probabilities. Save the result as versioned JSON rather than Python pickle. JSON
 is portable, inspectable, and safer to load.
 
-Keep training outside `src/cs2_sim`. Runtime code may load a completed model but
+Keep training outside `model/src/cs2_sim`. Runtime code may load a completed model but
 must never train one during a simulation.
 
 The initial metadata dataset can train event and outcome probabilities. Tactical

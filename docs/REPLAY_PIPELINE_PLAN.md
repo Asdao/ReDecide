@@ -40,7 +40,7 @@ training/
 |-- calibrate_model.py        # Platt or beta calibration
 `-- evaluate_models.py        # Grouped comparison and reports
 
-src/cs2_sim/core/model/
+model/src/cs2_sim/core/model/
 |-- replay_value.py           # Deployable Bayesian + LightGBM ensemble
 |-- action_value.py           # Future action recommendation model
 `-- transitions.py            # Future first-order Markov movement model
@@ -218,7 +218,7 @@ the simplest model that satisfies the selection rules.
 
 ## Phase 5: Deployable replay-value ensemble
 
-Create `src/cs2_sim/core/model/replay_value.py`.
+Create `model/src/cs2_sim/core/model/replay_value.py`.
 
 The class must:
 

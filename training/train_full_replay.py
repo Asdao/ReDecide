@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import random
 from pathlib import Path
 from typing import Any
 
@@ -18,6 +17,8 @@ from training.full_features import (
 from training.metrics import binary_probability_metrics
 from training.replay_repository import ReplayRepository
 from training.calibration import PlattCalibrator
+from training.dataset_split import evaluation_metadata, group_id, grouped_split
+from training.full_features import FEATURE_SCHEMA_VERSION
 
 
 def _read_records(path: Path) -> list[dict[str, Any]]:
@@ -30,7 +31,7 @@ def _first_round_indices(rows: list[dict[str, Any]]) -> list[int]:
 
     first: dict[tuple[str, int], int] = {}
     for index, row in enumerate(rows):
-        key = (str(row.get("source") or "unknown"), int(row.get("round_num") or 0))
+        key = (group_id(row, index=index), int(row.get("round_num") or 0))
         previous = first.get(key)
         if previous is None or int(row.get("tick") or 0) < int(rows[previous].get("tick") or 0):
             first[key] = index
@@ -51,6 +52,8 @@ def train(
     small_model_path: Path | None,
     allow_event_only: bool,
     seed: int,
+    validation_fraction: float = 0.2,
+    small_model_output: Path | None = None,
 ) -> None:
     rows: list[dict[str, Any]] = []
     event_only_rows = 0
@@ -92,13 +95,23 @@ def train(
             "no positional tick rows found; run parse_demos on a machine where "
             "Awpy/PyArrow native parsing works, or pass --allow-event-only"
         )
-    sources = sorted({str(row["source"]) for row in rows})
-    random.Random(seed).shuffle(sources)
-    validation_sources = set(sources[-max(1, len(sources) // 5) :])
-    train_rows = [row for row in rows if row["source"] not in validation_sources]
-    validation_rows = [row for row in rows if row["source"] in validation_sources]
-    if not train_rows or not validation_rows:
-        raise ValueError("need at least two demos for a demo-separated split")
+    development_rows, test_rows, outer_split = grouped_split(
+        rows,
+        validation_fraction=validation_fraction,
+        seed=seed,
+    )
+    tuning_pool, calibration_rows, calibration_split = grouped_split(
+        development_rows,
+        validation_fraction=0.2,
+        seed=seed + 1,
+    )
+    train_rows, tuning_rows, tuning_split = grouped_split(
+        tuning_pool,
+        validation_fraction=0.2,
+        seed=seed + 2,
+    )
+    if not train_rows or not tuning_rows or not calibration_rows or not test_rows:
+        raise ValueError("need enough match/source groups for train, tuning, calibration and test splits")
 
     try:
         import lightgbm as lgb
@@ -111,17 +124,17 @@ def train(
         dtype=float,
     )
     train_labels = np.asarray([row["label_ct_win"] for row in train_rows], dtype=int)
-    validation_matrix = np.asarray(
-        [[row["features"][name] for name in FULL_FEATURE_NAMES] for row in validation_rows],
+    tuning_matrix = np.asarray(
+        [[row["features"][name] for name in FULL_FEATURE_NAMES] for row in tuning_rows],
         dtype=float,
     )
-    validation_labels = np.asarray([row["label_ct_win"] for row in validation_rows], dtype=int)
+    tuning_labels = np.asarray([row["label_ct_win"] for row in tuning_rows], dtype=int)
     round_counts: dict[tuple[str, int], int] = {}
     for row in train_rows:
-        key = (str(row["source"]), int(row.get("round_num") or 0))
+        key = (group_id(row), int(row.get("round_num") or 0))
         round_counts[key] = round_counts.get(key, 0) + 1
     train_weights = np.asarray(
-        [1.0 / round_counts[(str(row["source"]), int(row.get("round_num") or 0))] for row in train_rows],
+        [1.0 / round_counts[(group_id(row), int(row.get("round_num") or 0))] for row in train_rows],
         dtype=float,
     )
     if len(set(train_labels.tolist())) < 2:
@@ -133,8 +146,8 @@ def train(
         feature_name=list(FULL_FEATURE_NAMES),
     )
     valid_set = lgb.Dataset(
-        validation_matrix,
-        label=validation_labels,
+        tuning_matrix,
+        label=tuning_labels,
         reference=train_set,
         feature_name=list(FULL_FEATURE_NAMES),
     )
@@ -161,54 +174,44 @@ def train(
         valid_names=["validation"],
         callbacks=[lgb.early_stopping(30, verbose=False)],
     )
-    raw_probabilities = booster.predict(validation_matrix).tolist()
-    probabilities = raw_probabilities
-    small = None
-    if small_model_path is not None and small_model_path.exists():
-        # Build a split-safe Bayesian blend for evaluation.  Loading the final
-        # all-data artifact here would leak validation demo outcomes.
-        small = SnapshotValueModel()
-        for row in train_rows:
-            snapshot = dict(row["snapshot"])
-            snapshot["label_round_winner"] = "ct" if row["label_ct_win"] else "t"
-            small.observe(snapshot)
-        prior = [small.predict_ct_win(row["snapshot"]) for row in validation_rows]
-        probabilities = [0.8 * full + 0.2 * prior for full, prior in zip(raw_probabilities, prior, strict=True)]
-    baseline_probability = float(train_labels.mean())
-    validation_metrics = binary_probability_metrics(
-        probabilities,
-        validation_labels.tolist(),
-        baseline_probability=baseline_probability,
-    )
-    round_indices = _first_round_indices(validation_rows)
-    round_metrics = binary_probability_metrics(
-        [probabilities[index] for index in round_indices],
-        [int(validation_labels[index]) for index in round_indices],
-        baseline_probability=baseline_probability,
-    )
+    # Fit the calibration input only on rows not used by this initial booster.
+    small_train = SnapshotValueModel()
+    for row in train_rows:
+        snapshot = dict(row["snapshot"])
+        snapshot["label_round_winner"] = "ct" if row["label_ct_win"] else "t"
+        small_train.observe(snapshot)
+    calibration_booster = booster.predict(
+        np.asarray(
+            [[row["features"][name] for name in FULL_FEATURE_NAMES] for row in calibration_rows],
+            dtype=float,
+        )
+    ).tolist()
+    calibration_prior = [small_train.predict_ct_win(row["snapshot"]) for row in calibration_rows]
+    calibration_probabilities = [
+        0.8 * full + 0.2 * prior
+        for full, prior in zip(calibration_booster, calibration_prior, strict=True)
+    ]
     calibrator = None
-    calibrated_metrics = None
-    if calibrator_path is not None and len(set(validation_labels.tolist())) >= 2:
-        calibrator = PlattCalibrator().fit(probabilities, validation_labels.tolist())
-        calibrated_metrics = binary_probability_metrics(
-            calibrator.predict(probabilities),
-            validation_labels.tolist(),
-            baseline_probability=baseline_probability,
+    if calibrator_path is not None and len({int(row["label_ct_win"]) for row in calibration_rows}) >= 2:
+        calibrator = PlattCalibrator().fit(
+            calibration_probabilities,
+            [int(row["label_ct_win"]) for row in calibration_rows],
         )
 
-    # Retrain the deployable booster on all rows using the iteration count
-    # selected without touching validation during evaluation.
+    # The deployable artifacts are trained on development groups only; the
+    # final test groups remain untouched until metrics are computed below.
+    dev_rows = development_rows
     all_matrix = np.asarray(
-        [[row["features"][name] for name in FULL_FEATURE_NAMES] for row in rows],
+        [[row["features"][name] for name in FULL_FEATURE_NAMES] for row in dev_rows],
         dtype=float,
     )
-    all_labels = np.asarray([row["label_ct_win"] for row in rows], dtype=int)
+    all_labels = np.asarray([row["label_ct_win"] for row in dev_rows], dtype=int)
     all_round_counts: dict[tuple[str, int], int] = {}
-    for row in rows:
-        key = (str(row["source"]), int(row.get("round_num") or 0))
+    for row in dev_rows:
+        key = (group_id(row), int(row.get("round_num") or 0))
         all_round_counts[key] = all_round_counts.get(key, 0) + 1
     all_weights = np.asarray(
-        [1.0 / all_round_counts[(str(row["source"]), int(row.get("round_num") or 0))] for row in rows],
+        [1.0 / all_round_counts[(group_id(row), int(row.get("round_num") or 0))] for row in dev_rows],
         dtype=float,
     )
     final_set = lgb.Dataset(
@@ -219,65 +222,131 @@ def train(
     )
     best_iteration = booster.best_iteration or 200
     final_booster = lgb.train(parameters, final_set, num_boost_round=best_iteration)
+    small = SnapshotValueModel()
+    for row in dev_rows:
+        snapshot = dict(row["snapshot"])
+        snapshot["label_round_winner"] = "ct" if row["label_ct_win"] else "t"
+        small.observe(snapshot)
+    if small_model_output is not None:
+        small_model_output.parent.mkdir(parents=True, exist_ok=True)
+        small.save(small_model_output)
+
+    test_matrix = np.asarray(
+        [[row["features"][name] for name in FULL_FEATURE_NAMES] for row in test_rows],
+        dtype=float,
+    )
+    raw_test_probabilities = final_booster.predict(test_matrix).tolist()
+    test_prior = [small.predict_ct_win(row["snapshot"]) for row in test_rows]
+    probabilities = [
+        0.8 * full + 0.2 * prior
+        for full, prior in zip(raw_test_probabilities, test_prior, strict=True)
+    ]
+    baseline_probability = float(all_labels.mean())
+    test_labels = [int(row["label_ct_win"]) for row in test_rows]
+    validation_metrics = binary_probability_metrics(
+        probabilities,
+        test_labels,
+        baseline_probability=baseline_probability,
+    )
+    round_indices = _first_round_indices(test_rows)
+    round_metrics = binary_probability_metrics(
+        [probabilities[index] for index in round_indices],
+        [test_labels[index] for index in round_indices],
+        baseline_probability=baseline_probability,
+    )
+    calibrated_metrics = None
+    if calibrator is not None:
+        calibrated_metrics = binary_probability_metrics(
+            calibrator.predict(probabilities),
+            test_labels,
+            baseline_probability=baseline_probability,
+        )
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
     metrics_path.parent.mkdir(parents=True, exist_ok=True)
     final_booster.save_model(str(output_path))
+    artifact_metadata = {
+        "version": 2,
+        "feature_schema_version": FEATURE_SCHEMA_VERSION,
+        "feature_names": list(FULL_FEATURE_NAMES),
+        "small_model_blend": 0.2 if small is not None else 0.0,
+        "training_mode": "sqlite" if database_path is not None else ("event_only" if event_only_rows else "positional_ticks"),
+        "event_only_rows": event_only_rows,
+        "decision_window_seconds": decision_window_seconds,
+        "tick_rate": 64.0,
+        "training_rows": len(dev_rows),
+        "test_rows": len(test_rows),
+        "boosting_rounds": best_iteration,
+        "weighting": "equal_total_weight_per_replay_round",
+        "calibrator": str(calibrator_path) if calibrator is not None else None,
+    }
     output_path.with_suffix(output_path.suffix + ".json").write_text(
         json.dumps(
-            {
-                "version": 1,
-                "feature_names": list(FULL_FEATURE_NAMES),
-                "small_model_blend": 0.2 if small is not None else 0.0,
-                "training_mode": "sqlite" if database_path is not None else ("event_only" if event_only_rows else "positional_ticks"),
-                "event_only_rows": event_only_rows,
-                "decision_window_seconds": decision_window_seconds,
-                "training_rows": len(rows),
-                "boosting_rounds": best_iteration,
-                "weighting": "equal_total_weight_per_replay_round",
-                "calibrator": str(calibrator_path) if calibrator is not None else None,
-            },
+            artifact_metadata,
             indent=2,
         ),
         encoding="utf-8",
     )
-    metrics_path.write_text(
-        json.dumps(
-            {
-                "source": str(source_path),
-                "train_rows": len(train_rows),
-                "validation_rows": len(validation_rows),
-                "validation_sources": sorted(validation_sources),
-                "feature_names": list(FULL_FEATURE_NAMES),
-                "small_model_blend": 0.2 if small is not None else 0.0,
-                "training_mode": "sqlite" if database_path is not None else ("event_only" if event_only_rows else "positional_ticks"),
-                "database": str(database_path) if database_path is not None else None,
-                "event_only_rows": event_only_rows,
-                "decision_window_seconds": decision_window_seconds,
-                "artifact_training_rows": len(rows),
-                "boosting_rounds": best_iteration,
-                "weighting": "equal_total_weight_per_replay_round",
-                "snapshot_metrics": validation_metrics,
-                "round_metrics": round_metrics,
-                "calibrated_snapshot_metrics": calibrated_metrics,
-            },
-            indent=2,
-        ),
-        encoding="utf-8",
+    metadata = evaluation_metadata(
+        rows,
+        train_rows=dev_rows,
+        validation_rows=test_rows,
+        feature_schema_version=str(FEATURE_SCHEMA_VERSION),
+        seed=seed,
+        validation_fraction=validation_fraction,
     )
+    metrics_report = {
+        "source": str(source_path),
+        "train_rows": len(dev_rows),
+        "test_rows": len(test_rows),
+        "test_groups": outer_split["validation_groups"],
+        "feature_names": list(FULL_FEATURE_NAMES),
+        "feature_schema_version": FEATURE_SCHEMA_VERSION,
+        "small_model_blend": 0.2 if small is not None else 0.0,
+        "training_mode": "sqlite" if database_path is not None else ("event_only" if event_only_rows else "positional_ticks"),
+        "database": str(database_path) if database_path is not None else None,
+        "event_only_rows": event_only_rows,
+        "decision_window_seconds": decision_window_seconds,
+        "tick_rate": 64.0,
+        "artifact_training_rows": len(dev_rows),
+        "boosting_rounds": best_iteration,
+        "weighting": "equal_total_weight_per_replay_round",
+        "training_prior": baseline_probability,
+        "snapshot_metrics": validation_metrics,
+        "round_metrics": round_metrics,
+        "calibrated_snapshot_metrics": calibrated_metrics,
+        "metadata": metadata,
+    }
+    metrics_path.write_text(json.dumps(metrics_report, indent=2), encoding="utf-8")
     if calibrator is not None and calibrator_path is not None:
         calibrator_path.parent.mkdir(parents=True, exist_ok=True)
         calibrator_path.write_text(json.dumps(calibrator.to_dict(), indent=2), encoding="utf-8")
     if manifest_path is not None:
+        if small_model_output is None:
+            raise ValueError("deployment manifest requires --small-model-output so calibration matches the Bayesian artifact")
         ReplayValueEnsemble(booster_weight=0.8 if small is not None else 1.0).save_manifest(
             manifest_path,
             booster_path=output_path,
-            bayesian_path=small_model_path if small is not None else None,
+            bayesian_path=small_model_output,
             calibrator_path=calibrator_path if calibrator is not None else None,
         )
-    print(f"[full] rows={len(rows)} train={len(train_rows)} validation={len(validation_rows)}")
+        manifest_payload = json.loads(manifest_path.read_text(encoding="utf-8"))
+        manifest_payload.update(
+            {
+                "release_version": "v2",
+                "deployed_model": "lightgbm+bayesian",
+                "baseline_role": "advisory_only",
+                "feature_schema_version": FEATURE_SCHEMA_VERSION,
+                "tick_rate": 64.0,
+                "training_prior": baseline_probability,
+                "dataset_fingerprint": metadata["dataset_fingerprint"],
+                "split_fingerprint": metadata["split_fingerprint"],
+            }
+        )
+        manifest_path.write_text(json.dumps(manifest_payload, indent=2) + "\n", encoding="utf-8")
+    print(f"[full] rows={len(rows)} train={len(dev_rows)} test={len(test_rows)}")
     print(f"[full] saved {output_path}")
-    print(f"[full] validation {json.dumps(validation_metrics, sort_keys=True)}")
+    print(f"[full] held-out test {json.dumps(validation_metrics, sort_keys=True)}")
 
 
 def main() -> int:
@@ -295,13 +364,15 @@ def main() -> int:
         default=None,
         help="train event-only LightGBM directly from leakage-safe snapshot JSONL",
     )
-    parser.add_argument("--output", type=Path, default=Path("models/full_replay_value.txt"))
-    parser.add_argument("--metrics", type=Path, default=Path("models/full_replay_metrics.json"))
+    parser.add_argument("--output", type=Path, default=Path("model/artifacts/full_replay_value.txt"))
+    parser.add_argument("--metrics", type=Path, default=Path("model/artifacts/full_replay_metrics.json"))
     parser.add_argument("--calibrator", type=Path, default=None)
     parser.add_argument("--manifest", type=Path, default=None)
     parser.add_argument("--sample-every", type=int, default=4)
     parser.add_argument("--decision-window-seconds", type=float, default=5.0)
-    parser.add_argument("--small-model", type=Path, default=Path("models/small_snapshot_value.json"))
+    parser.add_argument("--small-model", type=Path, default=Path("model/artifacts/small_snapshot_value.json"))
+    parser.add_argument("--small-model-output", type=Path, default=None)
+    parser.add_argument("--validation-fraction", type=float, default=0.2)
     parser.add_argument("--seed", type=int, default=7)
     parser.add_argument(
         "--allow-event-only",
@@ -326,6 +397,8 @@ def main() -> int:
         small_model_path=args.small_model,
         allow_event_only=args.allow_event_only,
         seed=args.seed,
+        validation_fraction=args.validation_fraction,
+        small_model_output=args.small_model_output,
     )
     return 0
 

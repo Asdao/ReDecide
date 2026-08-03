@@ -10,6 +10,8 @@ from cs2_sim.core.model.replay_value import REPLAY_FEATURE_NAMES
 from training.extract_features import extract_snapshots
 
 FULL_FEATURE_NAMES = REPLAY_FEATURE_NAMES
+FEATURE_SCHEMA_VERSION = 2
+DEFAULT_TICK_RATE = 64.0
 _MAP_NAMES = tuple(name.removeprefix("map_is_") for name in FULL_FEATURE_NAMES if name.startswith("map_is_"))
 _BOMB_SITES = tuple(
     name.removeprefix("bomb_site_is_") for name in FULL_FEATURE_NAMES if name.startswith("bomb_site_is_")
@@ -39,32 +41,92 @@ def _number(value: Any, default: float = 0.0) -> float:
         return default
 
 
+def _first_present(row: dict[str, Any], *keys: str) -> Any:
+    for key in keys:
+        if row.get(key) is not None:
+            return row[key]
+    return None
+
+
+def _is_alive(player: dict[str, Any]) -> bool:
+    """Use an explicit alive flag when supplied, even if health is missing."""
+
+    alive = player.get("alive")
+    if alive is not None:
+        if isinstance(alive, bool):
+            return alive
+        text = str(alive).strip().lower()
+        if text in {"0", "false", "dead", "none", "no", "null", ""}:
+            return False
+        try:
+            return float(text) != 0.0
+        except ValueError:
+            return True
+    return _number(player.get("health"), 100.0) > 0
+
+
+def _player_value(player: dict[str, Any], field: str) -> Any:
+    aliases = {
+        "X": ("X", "x"),
+        "Y": ("Y", "y"),
+        "Z": ("Z", "z"),
+        "armor_value": ("armor_value", "armor"),
+    }
+    return _first_present(player, *aliases.get(field, (field,)))
+
+
+def _normalise_map(value: Any) -> str:
+    return str(value or "unknown").strip().lower()
+
+
+def _normalise_bomb_site(value: Any) -> str:
+    if value is None:
+        return "none"
+    text = str(value).strip().lower().replace("-", "").replace("_", "")
+    if not text or text in {"none", "notplanted", "unknown", "null"}:
+        return "none"
+    if text in {"a", "bombsitea", "sitea"}:
+        return "a"
+    if text in {"b", "bombsiteb", "siteb"}:
+        return "b"
+    return str(value).strip().lower()
+
+
 def _real_kill(kill: dict[str, Any]) -> bool:
     return kill.get("weapon") != "world" and kill.get("attacker_steamid") != kill.get("victim_steamid")
 
 
 def _average(players: list[dict[str, Any]], field: str) -> float:
     values = [
-        _number(player.get(field))
+        _number(_player_value(player, field), 100.0 if field == "health" else 0.0)
         for player in players
-        if _number(player.get("health"), 100.0) > 0
+        if _is_alive(player)
     ]
     return sum(values) / len(values) if values else 0.0
 
 
 def _total(players: list[dict[str, Any]], field: str) -> float:
-    return sum(_number(player.get(field)) for player in players if _number(player.get("health"), 100.0) > 0)
+    return sum(
+        _number(_player_value(player, field), 100.0 if field == "health" else 0.0)
+        for player in players
+        if _is_alive(player)
+    )
 
 
 def _events_before(events: list[dict[str, Any]], tick: int) -> list[dict[str, Any]]:
     return [event for event in events if int(_number(event.get("tick"))) <= tick]
 
 
-def _event_rows_before(event_groups: dict[str, list[dict[str, Any]]], tick: int) -> list[tuple[str, dict[str, Any]]]:
+def _event_rows_before(
+    event_groups: dict[str, list[dict[str, Any]]],
+    tick: int,
+    round_num: int,
+) -> list[tuple[str, dict[str, Any]]]:
     return [
         (str(name), event)
         for name, values in event_groups.items()
         for event in _events_before(values or [], tick)
+        if int(_number(event.get("round_num"), -1)) == round_num
     ]
 
 
@@ -92,7 +154,7 @@ def _feature_row(
         "t_avg_health": _average(t_players, "health"),
         "kills_seen": float(kills_seen),
         "bomb_planted": float(snapshot["bomb_planted"]),
-        "bomb_site_code": _code(bomb_site),
+        "bomb_site_code": _code(_normalise_bomb_site(bomb_site)),
         "ct_avg_x": _average(ct_players, "X"),
         "ct_avg_y": _average(ct_players, "Y"),
         "t_avg_x": _average(t_players, "X"),
@@ -112,6 +174,9 @@ def _feature_row(
         "t_norm_x": _average(t_players, "X") / 10_000.0,
         "t_norm_y": _average(t_players, "Y") / 10_000.0,
     }
+    map_name = _normalise_map(map_name)
+    bomb_site = _normalise_bomb_site(bomb_site)
+    values["map_code"] = _code(map_name)
     values.update({f"map_is_{name}": float(map_name == name) for name in _MAP_NAMES})
     values.update({f"bomb_site_is_{name}": float(bomb_site == name) for name in _BOMB_SITES})
     return {name: values.get(name, 0.0) for name in FULL_FEATURE_NAMES}
@@ -134,8 +199,8 @@ def record_to_rows(
     if decision_window_seconds is not None and decision_window_seconds <= 0:
         raise ValueError("decision_window_seconds must be positive")
     header = record.get("header") or {}
-    tick_rate = _number(header.get("tick_rate") or record.get("tick_rate"), 128.0)
-    map_name = header.get("map_name") or "unknown"
+    tick_rate = _number(header.get("tick_rate") or record.get("tick_rate"), DEFAULT_TICK_RATE)
+    map_name = _normalise_map(header.get("map_name") or record.get("map_name"))
     kills = [kill for kill in record.get("kills") or [] if _real_kill(kill)]
     damages = [damage for damage in record.get("damages") or [] if _real_kill(damage)]
     bomb_events = record.get("bomb") or []
@@ -177,8 +242,8 @@ def record_to_rows(
                     sides[side].append(player)
             if not sides["ct"] and not sides["t"]:
                 continue
-            ct_alive = sum(_number(player.get("health"), 100.0) > 0 for player in sides["ct"])
-            t_alive = sum(_number(player.get("health"), 100.0) > 0 for player in sides["t"])
+            ct_alive = sum(_is_alive(player) for player in sides["ct"])
+            t_alive = sum(_is_alive(player) for player in sides["t"])
             if not include_terminal and (ct_alive <= 0 or t_alive <= 0):
                 continue
 
@@ -186,10 +251,14 @@ def record_to_rows(
             bomb_planted = any("plant" in str(event.get("event") or "").lower() for event in prior_bombs)
             bomb_site = "none"
             if prior_bombs:
-                bomb_site = str(prior_bombs[-1].get("bombsite") or prior_bombs[-1].get("site") or "none")
+                bomb_site = _normalise_bomb_site(
+                    prior_bombs[-1].get("bombsite")
+                    or prior_bombs[-1].get("site")
+                    or prior_bombs[-1].get("which_bomb_zone")
+                )
             kills_seen = sum(int(_number(kill.get("tick"))) <= tick for kill in round_kills)
             damage_seen = len(_events_before(round_damages, tick))
-            prior_event_rows = _event_rows_before(event_groups, tick)
+            prior_event_rows = _event_rows_before(event_groups, tick, round_num)
             shots_seen = sum("fire" in name.lower() for name, _ in prior_event_rows)
             utility_seen = sum(
                 any(token in (name.lower() + " " + str(event.get("weapon") or "").lower())
@@ -223,24 +292,36 @@ def record_to_rows(
                 "t_avg_x": _average(sides["t"], "X"),
                 "t_avg_y": _average(sides["t"], "Y"),
             }
+            features = _feature_row(
+                snapshot=snapshot,
+                map_name=str(map_name),
+                bomb_site=bomb_site,
+                sides=sides,
+                kills_seen=kills_seen,
+                damage_events_seen=damage_seen,
+                shots_seen=shots_seen,
+                utility_events_seen=utility_seen,
+                bomb_time_remaining=bomb_time_remaining,
+            )
+            # Keep the runtime snapshot and trainer vector as one contract.
+            # SQLite has historically copied these fields back into snapshots;
+            # doing it here prevents raw JSONL/extractor inference from silently
+            # defaulting the extended features to zero.
+            snapshot.update(
+                {
+                    name: value
+                    for name, value in features.items()
+                    if name not in {"map_code", "bomb_site_code"}
+                }
+            )
             rows.append(
                 {
-                    "source": record.get("demo_file") or "unknown",
+                    "source": record.get("source_path") or record.get("demo_file") or "unknown",
                     "round_num": round_num,
                     "tick": tick,
                     "label_ct_win": int(winner == "ct"),
                     "snapshot": snapshot,
-                    "features": _feature_row(
-                        snapshot=snapshot,
-                        map_name=str(map_name),
-                        bomb_site=bomb_site,
-                        sides=sides,
-                        kills_seen=kills_seen,
-                        damage_events_seen=damage_seen,
-                        shots_seen=shots_seen,
-                        utility_events_seen=utility_seen,
-                        bomb_time_remaining=bomb_time_remaining,
-                    ),
+                    "features": features,
                 }
             )
     return rows
@@ -281,8 +362,8 @@ def snapshot_to_event_row(snapshot: dict[str, Any]) -> dict[str, Any]:
     winner = snapshot.get("label_round_winner")
     if winner not in {"ct", "t"}:
         raise ValueError("snapshot has no valid round winner label")
-    map_name = str(snapshot.get("map_name") or "unknown")
-    bomb_site = str(snapshot.get("bomb_site") or "none").lower()
+    map_name = _normalise_map(snapshot.get("map_name"))
+    bomb_site = _normalise_bomb_site(snapshot.get("bomb_site"))
     features = {name: 0.0 for name in FULL_FEATURE_NAMES}
     features.update(
         {

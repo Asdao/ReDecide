@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import random
 from pathlib import Path
 from typing import Any
 
@@ -12,6 +11,8 @@ from training.full_features import FULL_FEATURE_NAMES, record_to_rows
 from training.metrics import binary_probability_metrics
 from training.replay_repository import ReplayRepository
 from training.statistical_baselines import GaussianNaiveBayes, LogisticBaseline
+from training.dataset_split import evaluation_metadata, group_id, grouped_split
+from training.full_features import FEATURE_SCHEMA_VERSION
 
 
 def _read_records(path: Path) -> list[dict[str, Any]]:
@@ -34,7 +35,7 @@ def _load_rows(input_path: Path | None, database_path: Path | None, *, sample_ev
 def _first_round_indices(rows: list[dict[str, Any]]) -> list[int]:
     first: dict[tuple[str, int], int] = {}
     for index, row in enumerate(rows):
-        key = (str(row.get("source") or "unknown"), int(row.get("round_num") or 0))
+        key = (group_id(row, index=index), int(row.get("round_num") or 0))
         if key not in first or int(row.get("tick") or 0) < int(rows[first[key]].get("tick") or 0):
             first[key] = index
     return list(first.values())
@@ -57,13 +58,17 @@ def train_baselines(
         rows = rows[:max_rows]
     if not rows:
         raise ValueError("no labelled replay rows found")
-    sources = sorted({str(row.get("source") or "unknown") for row in rows})
-    random.Random(seed).shuffle(sources)
-    validation_sources = set(sources[-max(1, len(sources) // 5) :])
-    train_rows = [row for row in rows if str(row.get("source") or "unknown") not in validation_sources]
-    validation_rows = [row for row in rows if str(row.get("source") or "unknown") in validation_sources]
+    train_rows, validation_rows, split = grouped_split(rows, validation_fraction=0.2, seed=seed)
     if not train_rows or not validation_rows:
         raise ValueError("need at least two replay sources for a grouped split")
+    metadata = evaluation_metadata(
+        rows,
+        train_rows=train_rows,
+        validation_rows=validation_rows,
+        feature_schema_version=str(FEATURE_SCHEMA_VERSION),
+        seed=seed,
+        validation_fraction=0.2,
+    )
     train_features = [[float(row["features"][name]) for name in FULL_FEATURE_NAMES] for row in train_rows]
     validation_features = [[float(row["features"][name]) for name in FULL_FEATURE_NAMES] for row in validation_rows]
     train_labels = [int(row["label_ct_win"]) for row in train_rows]
@@ -75,9 +80,11 @@ def train_baselines(
     metrics: dict[str, Any] = {
         "source": str(database_path or input_path),
         "feature_names": list(FULL_FEATURE_NAMES),
+        "feature_schema_version": FEATURE_SCHEMA_VERSION,
         "train_rows": len(train_rows),
         "validation_rows": len(validation_rows),
-        "validation_sources": sorted(validation_sources),
+        "validation_sources": split["validation_groups"],
+        "metadata": metadata,
         "models": {},
     }
     round_indices = _first_round_indices(validation_rows)
@@ -97,6 +104,7 @@ def train_baselines(
         json.dumps(
             {
                 "version": 1,
+                "role": "advisory_baseline_only",
                 "feature_names": list(FULL_FEATURE_NAMES),
                 "models": {name: model.to_dict() for name, model in models.items()},
             },
@@ -113,8 +121,8 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--input", type=Path, default=Path("data/full/processed/full_replays.jsonl"))
     parser.add_argument("--database", type=Path, default=None)
-    parser.add_argument("--output", type=Path, default=Path("models/statistical_baselines.json"))
-    parser.add_argument("--metrics", type=Path, default=Path("models/statistical_baseline_metrics.json"))
+    parser.add_argument("--output", type=Path, default=Path("model/artifacts/statistical_baselines.json"))
+    parser.add_argument("--metrics", type=Path, default=Path("model/artifacts/statistical_baseline_metrics.json"))
     parser.add_argument("--sample-every", type=int, default=4)
     parser.add_argument("--max-rows", type=int, default=None)
     parser.add_argument("--seed", type=int, default=7)
