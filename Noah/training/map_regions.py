@@ -8,6 +8,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from Noah.training.data_paths import DATA_PATHS
+
 
 @dataclass(frozen=True, slots=True)
 class NavArea:
@@ -77,7 +79,7 @@ class NavRegionIndex:
         return cls(areas, cell_size=cell_size)
 
     @classmethod
-    def for_map(cls, map_name: str, map_root: Path = Path("data/maps")) -> "NavRegionIndex | None":
+    def for_map(cls, map_name: str, map_root: Path = DATA_PATHS.public_maps) -> "NavRegionIndex | None":
         path = map_root / map_name / f"{map_name}.json"
         if not path.exists():
             return None
@@ -115,7 +117,7 @@ class RadarTransform:
         return cls(json.loads(path.read_text(encoding="utf-8")))
 
     @classmethod
-    def from_root(cls, map_root: Path = Path("data/maps")) -> "RadarTransform":
+    def from_root(cls, map_root: Path = DATA_PATHS.public_maps) -> "RadarTransform":
         return cls.from_path(map_root / "map-data.json")
 
     def world_to_radar(self, map_name: str, x: float, y: float, z: float = 0.0) -> tuple[float, float, float]:

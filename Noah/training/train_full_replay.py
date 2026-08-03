@@ -19,6 +19,7 @@ from Noah.training.replay_repository import ReplayRepository
 from Noah.training.calibration import PlattCalibrator
 from Noah.training.dataset_split import evaluation_metadata, group_id, grouped_split
 from Noah.training.full_features import FEATURE_SCHEMA_VERSION
+from Noah.training.data_paths import DATA_PATHS
 
 
 def _read_records(path: Path) -> list[dict[str, Any]]:
@@ -353,7 +354,7 @@ def train(
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--input", type=Path, default=Path("data/full/processed/full_replays.jsonl"))
+    parser.add_argument("--input", type=Path, default=DATA_PATHS.private_processed / "full_replays.jsonl")
     parser.add_argument(
         "--database",
         type=Path,
@@ -383,7 +384,7 @@ def main() -> int:
     )
     args = parser.parse_args()
     database_path = args.database
-    default_database = Path("data/full/processed/cs2_replays.sqlite")
+    default_database = DATA_PATHS.private_databases / "cs2_replays.sqlite"
     if database_path is None and default_database.exists() and args.snapshot_input is None:
         database_path = default_database
     train(

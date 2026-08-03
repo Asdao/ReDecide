@@ -1,5 +1,10 @@
 # Training the two replay-value models
 
+Data is split into public and private roots. Public metadata and maps may be
+uploaded after checking their source license; raw demos, parsed replay data,
+SQLite databases, features, and user uploads stay under `data/private`. See
+[`DATA_LAYOUT.md`](DATA_LAYOUT.md).
+
 The lightweight pipeline uses parsed `.analysis.json` sidecars. It does not
 download the very large `.dem` file for every match.
 
@@ -17,14 +22,14 @@ $env:PYTHONPATH = "model/src"
 python -m training.download_dataset sidecars --max-files 500 --max-gb 0.25
 
 python -m training.extract_features `
-  --input data/small/sidecars `
-  --output data/small/processed/analysis_snapshots.jsonl `
+  --input data/private/sidecars `
+  --output data/public/processed/analysis_snapshots.jsonl `
   --decision-window-seconds 5
 
 python -m training.train_snapshot_model
 
 python -m training.train_full_replay `
-  --snapshot-input data/small/processed/analysis_snapshots.jsonl
+  --snapshot-input data/public/processed/analysis_snapshots.jsonl
 ```
 
 ## Sharing the exact same sidecar data
@@ -37,7 +42,7 @@ byte count, and SHA-256 checksum. A new user can download that exact set with:
 $env:PYTHONPATH = "model/src"
 python -m training.download_dataset locked `
   --manifest training/sidecars_manifest.json `
-  --output data/small/sidecars
+  --output data/private/sidecars
 ```
 
 The command reuses a file only when its checksum matches; otherwise it
@@ -47,7 +52,7 @@ downloading anything, run:
 ```powershell
 python -m training.download_dataset verify `
   --manifest training/sidecars_manifest.json `
-  --input data/small/sidecars
+  --input data/private/sidecars
 ```
 
 If the upstream selection changes later, regenerate a new manifest explicitly
@@ -60,8 +65,8 @@ SQLite. Build it after native parsing:
 
 ```powershell
 python -m training.build_replay_db `
-  --input data/full/processed/full_replays.jsonl `
-  --output data/full/processed/cs2_replays_v2.sqlite `
+  --input data/private/processed/full_replays.jsonl `
+  --output data/private/databases/cs2_replays_v2.sqlite `
   --action-window-seconds 2 `
   --clean `
   --replace
@@ -76,8 +81,8 @@ Run a read-only audit before rebuilding:
 
 ```powershell
 python -m training.audit_replays `
-  --input data/full/processed/full_replays.jsonl `
-  --report data/full/processed/replay_audit.json
+  --input data/private/processed/full_replays.jsonl `
+  --report data/private/processed/replay_audit.json
 ```
 
 For normal training, read SQLite directly instead of rebuilding features from
@@ -85,7 +90,7 @@ the full JSONL:
 
 ```powershell
 python -m training.train_full_replay `
-  --database data/full/processed/cs2_replays_v2.sqlite `
+  --database data/private/databases/cs2_replays_v2.sqlite `
   --output model/artifacts/releases/v2/full_replay_value.txt `
   --small-model-output model/artifacts/releases/v2/small_snapshot_value.json `
   --calibrator model/artifacts/releases/v2/full_replay_calibrator.json `
@@ -101,7 +106,7 @@ replay-value component.
 The lightweight baselines can be compared with:
 
 ```powershell
-python -m training.train_baselines --database data/full/processed/cs2_replays_v2.sqlite
+python -m training.train_baselines --database data/private/databases/cs2_replays_v2.sqlite
 python -m training.evaluate_models `
   model/artifacts/releases/v2/full_replay_metrics.json `
   model/artifacts/releases/v2/statistical_baseline_metrics.json `
@@ -116,11 +121,11 @@ Train the movement-frequency and zone-transition tools from SQLite:
 
 ```powershell
 python -m training.train_action_models `
-  --database data/full/processed/cs2_replays_v2.sqlite `
+  --database data/private/databases/cs2_replays_v2.sqlite `
   --action-output model/artifacts/releases/v2/action_frequency.json `
   --transition-output model/artifacts/releases/v2/zone_transitions.json
 python -m training.evaluate_actions `
-  --database data/full/processed/cs2_replays_v2.sqlite `
+  --database data/private/databases/cs2_replays_v2.sqlite `
   --output model/artifacts/releases/v2/action_evaluation.json
 ```
 
@@ -154,13 +159,13 @@ Run the end-to-end tester against SQLite, parsed JSONL, or a native demo:
 
 ```powershell
 python -m training.test_replay_models `
-  --database data/full/processed/cs2_replays_v2.sqlite `
+  --database data/private/databases/cs2_replays_v2.sqlite `
   --manifest model/artifacts/releases/v2/full_replay_value.manifest.json `
   --action-model model/artifacts/releases/v2/action_frequency.json `
   --limit 500
 
 python -m training.test_replay_models `
-  --input data/full/processed/full_replays.jsonl `
+  --input data/private/processed/full_replays.jsonl `
   --limit 500
 
 python -m training.test_replay_models --demo path/to/match.dem --limit 500
@@ -208,9 +213,9 @@ cumulative byte budget before downloading:
 
 ```powershell
 python -m training.benchmark_dataset `
-  --training-database data/full/processed/cs2_replays_v2.sqlite `
-  --output data/benchmark `
-  --manifest data/benchmark/manifest.json `
+  --training-database data/private/databases/cs2_replays_v2.sqlite `
+  --output data/private/benchmark_cache `
+  --manifest data/public/benchmark_manifest.json `
   --max-files 1 `
   --max-gb 0.6
 ```
@@ -221,10 +226,10 @@ checks for overlap again before parsing any demo:
 
 ```powershell
 python -m training.evaluate_benchmark `
-  --benchmark-manifest data/benchmark/manifest.json `
+  --benchmark-manifest data/public/benchmark_manifest.json `
   --model-manifest model/artifacts/releases/v2/full_replay_value.manifest.json `
   --action-model model/artifacts/releases/v2/action_frequency.json `
-  --output data/benchmark/evaluation.json
+  --output data/public/benchmark_evaluation.json
 ```
 
 The benchmark report is a macro-average across unseen demos. It is a true
@@ -232,7 +237,7 @@ generalisation check for round-value prediction, but it is not yet a
 counterfactual “best move” score.
 
 The downloader reads the compact metadata already stored under
-`data/small/metadata`. It rejects incomplete maps by requiring at least 16
+`data/public/metadata`. It rejects incomplete maps by requiring at least 16
 rounds and 80 kills, ranks higher-star/recent matches first, and selects maps
 round-robin to avoid a Mirage/Dust2-heavy subset. Change `--min-rounds`,
 `--min-kills`, `--min-stars`, or `--max-files` when needed.

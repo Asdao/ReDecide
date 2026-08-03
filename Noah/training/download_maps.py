@@ -11,6 +11,8 @@ import urllib.request
 import zipfile
 from pathlib import Path
 
+from Noah.training.data_paths import DATA_PATHS
+
 
 DEFAULT_MAPS = (
     "de_ancient",
@@ -101,7 +103,7 @@ def download_maps(output_dir: Path, *, maps: tuple[str, ...] = DEFAULT_MAPS, pat
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--output", type=Path, default=Path("data/maps"))
+    parser.add_argument("--output", type=Path, default=DATA_PATHS.public_maps)
     parser.add_argument("--patch", type=int, default=DEFAULT_PATCH)
     parser.add_argument("--maps", nargs="+", default=list(DEFAULT_MAPS))
     args = parser.parse_args()

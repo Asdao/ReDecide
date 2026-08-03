@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Any
 
 from Noah.training.map_regions import NavRegionIndex, region_for_row
+from Noah.training.data_paths import DATA_PATHS
 
 DEFAULT_TICK_RATE = 64.0
 
@@ -65,7 +66,7 @@ def infer_actions(
     tick_rate: float | None = None,
     movement_threshold: float = 20.0,
     max_rows: int | None = None,
-    map_root: Path = Path("data/maps"),
+    map_root: Path = DATA_PATHS.public_maps,
 ) -> list[dict[str, Any]]:
     """Return movement labels with no future-round or terminal-state leakage."""
 
@@ -168,8 +169,8 @@ def infer_file(input_path: Path, output_path: Path, *, window_seconds: float = 1
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--input", type=Path, default=Path("data/full/processed/full_replays.jsonl"))
-    parser.add_argument("--output", type=Path, default=Path("data/full/processed/player_actions.jsonl"))
+    parser.add_argument("--input", type=Path, default=DATA_PATHS.private_processed / "full_replays.jsonl")
+    parser.add_argument("--output", type=Path, default=DATA_PATHS.private_processed / "player_actions.jsonl")
     parser.add_argument("--window-seconds", type=float, default=1.0)
     parser.add_argument("--movement-threshold", type=float, default=20.0)
     args = parser.parse_args()

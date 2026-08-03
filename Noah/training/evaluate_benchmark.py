@@ -9,6 +9,7 @@ from statistics import fmean
 from typing import Any
 
 from Noah.training.benchmark_dataset import demo_keys, training_demo_keys
+from Noah.training.data_paths import DATA_PATHS
 from Noah.training.test_replay_models import test_models
 
 
@@ -31,9 +32,7 @@ def _verify_manifest_overlap(manifest: dict[str, Any], manifest_path: Path) -> N
     database_value = manifest.get("training_database")
     if not isinstance(database_value, str) or not database_value:
         raise ValueError("benchmark manifest must record training_database")
-    database_path = Path(database_value)
-    if not database_path.is_absolute():
-        database_path = (manifest_path.parent / database_path).resolve()
+    database_path = _resolve_reference(database_value, manifest_path)
     if not database_path.exists():
         raise FileNotFoundError(f"training database recorded by benchmark is missing: {database_path}")
     excluded = training_demo_keys(database_path)
@@ -52,14 +51,27 @@ def _entry_path(entry: dict[str, Any], manifest_path: Path) -> Path:
     value = entry.get("local_path")
     if not isinstance(value, str) or not value:
         raise ValueError("benchmark file is missing local_path")
-    path = (manifest_path.parent / value).resolve()
+    path = _resolve_reference(value, manifest_path)
+    allowed_root = DATA_PATHS.private.resolve() if value.startswith("private:") else manifest_path.parent.resolve()
     try:
-        path.relative_to(manifest_path.parent.resolve())
+        path.relative_to(allowed_root)
     except ValueError as exc:
-        raise ValueError(f"benchmark demo escapes manifest directory: {path}") from exc
+        raise ValueError(f"benchmark demo escapes its storage root: {path}") from exc
     if not path.is_file():
         raise FileNotFoundError(f"benchmark demo does not exist: {path}")
     return path
+
+
+def _resolve_reference(value: str, manifest_path: Path) -> Path:
+    """Resolve portable private references and legacy manifest paths."""
+
+    if value.startswith("private:"):
+        relative = Path(value.removeprefix("private:"))
+        if relative.is_absolute() or ".." in relative.parts:
+            raise ValueError(f"unsafe private benchmark reference: {value}")
+        return (DATA_PATHS.private / relative).resolve()
+    path = Path(value)
+    return path.resolve() if path.is_absolute() else (manifest_path.parent / path).resolve()
 
 
 def evaluate_benchmark(
@@ -116,11 +128,11 @@ def evaluate_benchmark(
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--benchmark-manifest", type=Path, default=Path("data/benchmark/manifest.json"))
+    parser.add_argument("--benchmark-manifest", type=Path, default=DATA_PATHS.public_benchmark_manifest)
     parser.add_argument("--model-manifest", type=Path, default=None)
     parser.add_argument("--action-model", type=Path, default=None)
     parser.add_argument("--limit", type=int, default=500)
-    parser.add_argument("--output", type=Path, default=Path("models/releases/v2/benchmark_evaluation.json"))
+    parser.add_argument("--output", type=Path, default=DATA_PATHS.public_benchmark_evaluation)
     args = parser.parse_args()
     report = evaluate_benchmark(
         args.benchmark_manifest,

@@ -13,6 +13,7 @@ from Noah.training.replay_repository import ReplayRepository
 from Noah.training.statistical_baselines import GaussianNaiveBayes, LogisticBaseline
 from Noah.training.dataset_split import evaluation_metadata, group_id, grouped_split
 from Noah.training.full_features import FEATURE_SCHEMA_VERSION
+from Noah.training.data_paths import DATA_PATHS
 
 
 def _read_records(path: Path) -> list[dict[str, Any]]:
@@ -119,7 +120,7 @@ def train_baselines(
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--input", type=Path, default=Path("data/full/processed/full_replays.jsonl"))
+    parser.add_argument("--input", type=Path, default=DATA_PATHS.private_processed / "full_replays.jsonl")
     parser.add_argument("--database", type=Path, default=None)
     parser.add_argument("--output", type=Path, default=Path("model/artifacts/statistical_baselines.json"))
     parser.add_argument("--metrics", type=Path, default=Path("model/artifacts/statistical_baseline_metrics.json"))

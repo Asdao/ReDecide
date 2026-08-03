@@ -117,8 +117,8 @@ Initial cleaning policy:
 Output:
 
 ```text
-data/full/processed/audit_report.json
-data/full/processed/cleaning_manifest.json
+data/private/processed/audit_report.json
+data/private/processed/cleaning_manifest.json
 ```
 
 Done when the audit is deterministic, raw files remain unchanged, and every
@@ -164,7 +164,7 @@ training keys.
 
 ```powershell
 python -m training.train_full_replay `
-  --database data/full/processed/cs2_replays.sqlite
+  --database data/private/databases/cs2_replays.sqlite
 ```
 
 Training behaviour:

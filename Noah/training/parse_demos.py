@@ -14,6 +14,8 @@ import sys
 from pathlib import Path
 from typing import Any
 
+from Noah.training.data_paths import DATA_PATHS
+
 
 EVENTS = [
     "round_freeze_end",
@@ -136,8 +138,8 @@ def parse_directory(
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--input", type=Path, default=Path("data/full/demos"))
-    parser.add_argument("--output", type=Path, default=Path("data/full/processed/full_replays.jsonl"))
+    parser.add_argument("--input", type=Path, default=DATA_PATHS.private_raw_demos)
+    parser.add_argument("--output", type=Path, default=DATA_PATHS.private_processed / "full_replays.jsonl")
     parser.add_argument("--tick-interval", type=int, default=32)
     parser.add_argument("--no-sidecar-fallback", action="store_true")
     args = parser.parse_args()

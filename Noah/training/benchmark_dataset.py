@@ -19,6 +19,7 @@ from pathlib import Path, PurePosixPath
 from typing import Any, Iterable
 
 from Noah.training.download_dataset import DATASET_ID, download_files
+from Noah.training.data_paths import DATA_PATHS
 from Noah.training.sidecar_catalog import COMPETITIVE_MAPS
 
 
@@ -211,6 +212,16 @@ def _sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
+def _private_reference(path: Path) -> str | None:
+    """Return a portable private-root reference when ``path`` is local data."""
+
+    try:
+        relative = path.resolve().relative_to(DATA_PATHS.private.resolve())
+    except ValueError:
+        return None
+    return "private:" + relative.as_posix()
+
+
 def write_benchmark_manifest(
     manifest_path: Path,
     *,
@@ -232,7 +243,10 @@ def write_benchmark_manifest(
             {
                 **asdict(candidate),
                 "match_date": candidate.match_date.isoformat(),
-                "local_path": local_path.relative_to(manifest_path.parent.resolve()).as_posix(),
+                "local_path": (
+                    _private_reference(local_path)
+                    or local_path.relative_to(manifest_path.parent.resolve()).as_posix()
+                ),
                 "bytes": local_path.stat().st_size,
                 "sha256": _sha256(local_path),
             }
@@ -244,7 +258,10 @@ def write_benchmark_manifest(
         "type": "held_out_native_demo_benchmark",
         "dataset_id": dataset_id,
         "revision": revision,
-        "training_database": str(training_database.resolve()),
+        "training_database": (
+            _private_reference(training_database)
+            or str(training_database.resolve())
+        ),
         "training_excluded": True,
         "files": entries,
     }
@@ -257,10 +274,10 @@ def write_benchmark_manifest(
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--metadata", type=Path, default=Path("data/small/metadata"))
-    parser.add_argument("--training-database", type=Path, default=Path("data/full/processed/cs2_replays_v2.sqlite"))
-    parser.add_argument("--output", type=Path, default=Path("data/benchmark"))
-    parser.add_argument("--manifest", type=Path, default=Path("data/benchmark/manifest.json"))
+    parser.add_argument("--metadata", type=Path, default=DATA_PATHS.public_metadata)
+    parser.add_argument("--training-database", type=Path, default=DATA_PATHS.private_databases / "cs2_replays_v2.sqlite")
+    parser.add_argument("--output", type=Path, default=DATA_PATHS.private_benchmark_cache)
+    parser.add_argument("--manifest", type=Path, default=DATA_PATHS.public_benchmark_manifest)
     parser.add_argument("--max-files", type=int, default=1)
     parser.add_argument("--max-gb", type=float, default=0.6)
     parser.add_argument("--seed", type=int, default=7)

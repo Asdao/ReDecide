@@ -10,6 +10,8 @@ import sqlite3
 from pathlib import Path
 from typing import Any
 
+from Noah.training.data_paths import DATA_PATHS
+
 from Noah.training.full_features import record_to_rows
 from Noah.training.infer_actions import infer_actions
 from Noah.training.replay_cleaning import CLEANING_VERSION, CleaningOptions, clean_records
@@ -547,8 +549,8 @@ def build_database(
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--input", type=Path, default=Path("data/full/processed/full_replays.jsonl"))
-    parser.add_argument("--output", type=Path, default=Path("data/full/processed/cs2_replays.sqlite"))
+    parser.add_argument("--input", type=Path, default=DATA_PATHS.private_processed / "full_replays.jsonl")
+    parser.add_argument("--output", type=Path, default=DATA_PATHS.private_databases / "cs2_replays.sqlite")
     parser.add_argument("--sample-every", type=int, default=4)
     parser.add_argument("--decision-window-seconds", type=float, default=5.0)
     parser.add_argument("--action-window-seconds", type=float, default=2.0)

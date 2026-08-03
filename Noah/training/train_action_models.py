@@ -10,6 +10,7 @@ from typing import Any, Iterator
 from cs2_sim.core.model import ActionFrequencyModel, ZoneTransitionModel
 from Noah.training.dataset_split import dataset_fingerprint, group_id
 from Noah.training.replay_repository import ReplayRepository
+from Noah.training.data_paths import DATA_PATHS
 
 
 ACTION_SCHEMA_VERSION = "movement_tendency_v2"
@@ -93,7 +94,7 @@ def train_action_models(
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--input", type=Path, default=Path("data/full/processed/player_actions.jsonl"))
+    parser.add_argument("--input", type=Path, default=DATA_PATHS.private_processed / "player_actions.jsonl")
     parser.add_argument("--database", type=Path, default=None)
     parser.add_argument("--action-output", type=Path, default=Path("model/artifacts/action_frequency.json"))
     parser.add_argument("--transition-output", type=Path, default=Path("model/artifacts/zone_transitions.json"))

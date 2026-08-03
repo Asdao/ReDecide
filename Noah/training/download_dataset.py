@@ -2,11 +2,11 @@
 
 Examples:
 
-    python -m training.download_dataset metadata --output data/small/metadata
+    python -m training.download_dataset metadata --output data/public/metadata
     python -m training.download_dataset list
     python -m training.download_dataset files \
         --file demos/shard-example/match/map.dem \
-        --output data/full --max-gb 1
+        --output data/private/raw_demos --max-gb 1
     python -m training.download_dataset sidecars --max-files 500
     python -m training.download_dataset locked \
         --manifest training/sidecars_manifest.json
@@ -28,6 +28,8 @@ import urllib.request
 from collections.abc import Iterable
 from pathlib import Path, PurePosixPath
 from typing import BinaryIO
+
+from Noah.training.data_paths import DATA_PATHS
 
 DATASET_ID = "blanchon/cs2_dataset_demo"
 DATASET_API = "https://huggingface.co/api/datasets"
@@ -379,8 +381,8 @@ def _parse_args() -> argparse.Namespace:
     metadata_parser = subparsers.add_parser("metadata", help="download only Parquet metadata")
     metadata_parser.add_argument(
         "--output",
-        default="data/small/metadata",
-        help="small compact metadata destination",
+        default=str(DATA_PATHS.public_metadata),
+        help="public compact metadata destination",
     )
     metadata_parser.add_argument("--max-gb", type=float, default=1.0)
     metadata_parser.set_defaults(action="metadata")
@@ -389,8 +391,8 @@ def _parse_args() -> argparse.Namespace:
     files_parser.add_argument("--file", action="append", required=True, dest="files")
     files_parser.add_argument(
         "--output",
-        default="data/full",
-        help="full replay/demo destination",
+        default=str(DATA_PATHS.private_raw_demos),
+        help="private replay/demo destination",
     )
     files_parser.add_argument("--max-gb", type=float, default=1.0)
     files_parser.set_defaults(action="files")
@@ -399,8 +401,8 @@ def _parse_args() -> argparse.Namespace:
         "sidecars",
         help="download map-balanced, quality-filtered analysis JSON files",
     )
-    sidecars_parser.add_argument("--metadata", type=Path, default=Path("data/small/metadata"))
-    sidecars_parser.add_argument("--output", default="data/small/sidecars")
+    sidecars_parser.add_argument("--metadata", type=Path, default=DATA_PATHS.public_metadata)
+    sidecars_parser.add_argument("--output", default=str(DATA_PATHS.private_sidecars))
     sidecars_parser.add_argument("--max-gb", type=float, default=0.25)
     sidecars_parser.add_argument("--max-files", type=int, default=500)
     sidecars_parser.add_argument("--min-rounds", type=int, default=16)
@@ -422,7 +424,7 @@ def _parse_args() -> argparse.Namespace:
         help="download exactly the files in a checksum manifest",
     )
     locked_parser.add_argument("--manifest", required=True, type=Path)
-    locked_parser.add_argument("--output", default="data/small/sidecars")
+    locked_parser.add_argument("--output", default=str(DATA_PATHS.private_sidecars))
     locked_parser.add_argument("--max-gb", type=float, default=1.0)
     locked_parser.set_defaults(action="locked")
 

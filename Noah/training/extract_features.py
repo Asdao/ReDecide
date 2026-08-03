@@ -9,8 +9,8 @@ Example::
 
     $env:PYTHONPATH = "model/src"
     python -m training.extract_features \
-        --input data/full \
-        --output data/full/processed/analysis_snapshots.jsonl
+        --input data/private/sidecars \
+        --output data/private/processed/analysis_snapshots.jsonl
 """
 
 from __future__ import annotations
@@ -21,6 +21,8 @@ import sys
 from collections import defaultdict
 from pathlib import Path
 from typing import Any
+
+from Noah.training.data_paths import DATA_PATHS
 
 
 def _side(value: Any) -> str | None:
@@ -224,11 +226,11 @@ def extract_directory(
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--input", type=Path, default=Path("data/full"))
+    parser.add_argument("--input", type=Path, default=DATA_PATHS.private_processed)
     parser.add_argument(
         "--output",
         type=Path,
-        default=Path("data/full/processed/analysis_snapshots.jsonl"),
+        default=DATA_PATHS.private_processed / "analysis_snapshots.jsonl",
     )
     parser.add_argument("--limit", type=int, default=None)
     parser.add_argument(

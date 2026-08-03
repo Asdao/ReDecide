@@ -18,6 +18,7 @@ from Noah.training.dataset_split import dataset_fingerprint, grouped_split
 from Noah.training.metrics import multiclass_probability_metrics
 from Noah.training.replay_repository import ReplayRepository
 from Noah.training.train_action_models import ACTION_SCHEMA_VERSION, action_state_key
+from Noah.training.data_paths import DATA_PATHS
 
 
 def _load_rows(input_path: Path | None, database_path: Path | None) -> list[dict[str, Any]]:
@@ -109,7 +110,7 @@ def evaluate_actions(
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--input", type=Path, default=Path("data/full/processed/player_actions.jsonl"))
+    parser.add_argument("--input", type=Path, default=DATA_PATHS.private_processed / "player_actions.jsonl")
     parser.add_argument("--database", type=Path, default=None)
     parser.add_argument("--validation-fraction", type=float, default=0.2)
     parser.add_argument("--seed", type=int, default=7)

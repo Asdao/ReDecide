@@ -7,6 +7,8 @@ import json
 from pathlib import Path
 from typing import Any
 
+from Noah.training.data_paths import DATA_PATHS
+
 from Noah.training.replay_cleaning import CleaningOptions, clean_records
 
 
@@ -40,8 +42,8 @@ def audit_file(
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--input", type=Path, default=Path("data/full/processed/full_replays.jsonl"))
-    parser.add_argument("--report", type=Path, default=Path("data/full/processed/replay_audit.json"))
+    parser.add_argument("--input", type=Path, default=DATA_PATHS.private_processed / "full_replays.jsonl")
+    parser.add_argument("--report", type=Path, default=DATA_PATHS.private_processed / "replay_audit.json")
     parser.add_argument("--clean-output", type=Path, default=None)
     parser.add_argument("--max-round-seconds", type=float, default=180.0)
     parser.add_argument("--coordinate-limit", type=float, default=20_000.0)

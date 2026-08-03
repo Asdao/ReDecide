@@ -109,7 +109,7 @@ The main commands are:
 $env:PYTHONPATH = "model/src"
 python -m training.train_snapshot_model
 python -m training.train_full_replay `
-  --database data/full/processed/cs2_replays_v2.sqlite `
+  --database data/private/databases/cs2_replays_v2.sqlite `
   --output model/artifacts/releases/v2/full_replay_value.txt `
   --small-model-output model/artifacts/releases/v2/small_snapshot_value.json `
   --calibrator model/artifacts/releases/v2/full_replay_calibrator.json `
@@ -121,7 +121,7 @@ demo:
 
 ```powershell
 python -m training.test_replay_models `
-  --database data/full/processed/cs2_replays_v2.sqlite `
+  --database data/private/databases/cs2_replays_v2.sqlite `
   --manifest model/artifacts/releases/v2/full_replay_value.manifest.json `
   --limit 500
 ```

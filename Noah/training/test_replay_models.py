@@ -22,6 +22,7 @@ from Noah.training.parse_demos import parse_demo
 from Noah.training.replay_extractor_adapter import iter_extractor_jsonl, parse_extractor_demo
 from Noah.training.train_action_models import action_state_key
 from Noah.training.replay_repository import ReplayRepository
+from Noah.training.data_paths import DATA_PATHS
 
 
 def _active_release_root() -> Path:
@@ -50,8 +51,8 @@ def _active_release_root() -> Path:
 
 def _default_database() -> Path | None:
     for candidate in (
-        Path("data/full/processed/cs2_replays_v2.sqlite"),
-        Path("data/full/processed/cs2_replays.sqlite"),
+        DATA_PATHS.private_databases / "cs2_replays_v2.sqlite",
+        DATA_PATHS.private_databases / "cs2_replays.sqlite",
     ):
         if candidate.exists():
             return candidate
@@ -155,7 +156,7 @@ def test_models(
             source = str(demo_path)
             records = [parse_demo(demo_path, tick_interval=32)]
         else:
-            input_file = input_path or Path("data/full/processed/full_replays.jsonl")
+            input_file = input_path or (DATA_PATHS.private_processed / "full_replays.jsonl")
             source = str(input_file)
             records = _read_jsonl_records(input_file)
         rows, action_rows = _rows_from_records(

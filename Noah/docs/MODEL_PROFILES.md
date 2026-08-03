@@ -10,12 +10,13 @@ active release and `allow_fallback=True` only when Bayesian-only degraded mode
 is explicitly acceptable. The complete facade contract is in
 [`docs/MODULE_API.md`](MODULE_API.md).
 
-The matching data layout is:
+The public/private data layout is documented in [`DATA_LAYOUT.md`](DATA_LAYOUT.md).
+The matching roots are:
 
 ```text
 data/
-├── small/metadata/     # compact Parquet metadata
-└── full/               # selected raw demos and processed replay rows
+├── public/metadata/    # redistributable compact Parquet metadata
+└── private/            # selected raw demos and processed replay rows
 ```
 
 ## Small profile
@@ -91,7 +92,7 @@ python -m training.train_snapshot_model
 ```
 
 The default input is now
-`data/small/processed/analysis_snapshots.jsonl`. See `docs/TRAINING.md` for the
+`data/public/processed/analysis_snapshots.jsonl`. See `docs/TRAINING.md` for the
 quality-filtered download, leakage-safe extraction, and both training commands.
 
 The full parser is launched with:
@@ -120,5 +121,5 @@ LightGBM model can use the same leakage-safe snapshot dataset:
 
 ```powershell
 python -m training.train_full_replay `
-  --snapshot-input data/small/processed/analysis_snapshots.jsonl
+  --snapshot-input data/public/processed/analysis_snapshots.jsonl
 ```

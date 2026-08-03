@@ -10,6 +10,7 @@ from typing import Any
 
 from cs2_sim.core.model import SnapshotValueModel
 from Noah.training.metrics import binary_probability_metrics
+from Noah.training.data_paths import DATA_PATHS
 
 
 def _read_rows(path: Path) -> list[dict[str, Any]]:
@@ -108,7 +109,7 @@ def train(input_path: Path, output_path: Path, metrics_path: Path, seed: int) ->
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--input", type=Path, default=Path("data/small/processed/analysis_snapshots.jsonl"))
+    parser.add_argument("--input", type=Path, default=DATA_PATHS.public_processed / "analysis_snapshots.jsonl")
     parser.add_argument("--output", type=Path, default=Path("model/artifacts/small_snapshot_value.json"))
     parser.add_argument("--metrics", type=Path, default=Path("model/artifacts/small_snapshot_metrics.json"))
     parser.add_argument("--seed", type=int, default=7)

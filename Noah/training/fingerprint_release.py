@@ -11,10 +11,12 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from Noah.training.data_paths import DATA_PATHS
+
 
 DEFAULT_PATHS = (
-    Path("data/full/processed/full_replays.jsonl"),
-    Path("data/full/processed/cs2_replays.sqlite"),
+    DATA_PATHS.private_processed / "full_replays.jsonl",
+    DATA_PATHS.private_databases / "cs2_replays.sqlite",
     Path("model/artifacts/full_replay_value.txt"),
     Path("model/artifacts/full_replay_value.txt.json"),
     Path("model/artifacts/full_replay_value.manifest.json"),
