@@ -1,0 +1,8 @@
+vault/
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
+*.jsonl
+__pycache__/
+*.py[cod]
+.pytest_cache/

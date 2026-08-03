@@ -9,6 +9,7 @@ from collections import defaultdict
 from pathlib import Path
 from typing import Any
 
+from training.map_regions import NavRegionIndex, region_for_row
 
 def _number(value: Any, default: float = 0.0) -> float:
     try:
@@ -33,18 +34,14 @@ def _identity(row: dict[str, Any], ordinal: int) -> str:
     return f"anonymous:{ordinal}"
 
 
-def _zone(row: dict[str, Any]) -> str:
+def _zone(row: dict[str, Any], nav_index: NavRegionIndex | None = None) -> str:
     named = row.get("last_place_name") or row.get("zone")
     if named not in (None, ""):
         return str(named)
-    x = _number(row.get("X") if "X" in row else row.get("x"), float("nan"))
-    y = _number(row.get("Y") if "Y" in row else row.get("y"), float("nan"))
-    if math.isfinite(x) and math.isfinite(y):
-        # Native demos do not always expose last_place_name. A coarse spatial
-        # bucket keeps the Markov model useful without pretending it is a
-        # named map callout.
-        return f"grid:{math.floor(x / 1000.0)}:{math.floor(y / 1000.0)}"
-    return "unknown"
+    try:
+        return region_for_row(row, nav_index)
+    except (TypeError, ValueError):
+        return "unknown"
 
 
 def infer_actions(
@@ -54,6 +51,7 @@ def infer_actions(
     tick_rate: float | None = None,
     movement_threshold: float = 20.0,
     max_rows: int | None = None,
+    map_root: Path = Path("data/maps"),
 ) -> list[dict[str, Any]]:
     """Return movement labels with no future-round or terminal-state leakage."""
 
@@ -63,6 +61,8 @@ def infer_actions(
     rate = tick_rate or _number(header.get("tick_rate"), 128.0)
     if rate <= 0:
         raise ValueError("tick_rate must be positive")
+    map_name = str(header.get("map_name") or record.get("map_name") or "")
+    nav_index = NavRegionIndex.for_map(map_name, map_root=map_root) if map_name else None
     grouped: dict[tuple[int, str], list[tuple[int, dict[str, Any]]]] = defaultdict(list)
     for ordinal, row in enumerate(record.get("ticks") or []):
         round_num = int(_number(row.get("round_num"), -1))
@@ -90,8 +90,8 @@ def infer_actions(
             x2 = _number(next_row.get("X") if "X" in next_row else next_row.get("x"))
             y2 = _number(next_row.get("Y") if "Y" in next_row else next_row.get("y"))
             distance = math.hypot(x2 - x1, y2 - y1)
-            current_zone = _zone(current)
-            next_zone = _zone(next_row)
+            current_zone = _zone(current, nav_index)
+            next_zone = _zone(next_row, nav_index)
             action = "move" if distance >= movement_threshold else "hold"
             output.append(
                 {

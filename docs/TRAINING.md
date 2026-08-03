@@ -85,6 +85,24 @@ model = ReplayValueEnsemble.load("models/full_replay_value.manifest.json")
 prediction = model.predict_ct_win(snapshot)
 ```
 
+Run the end-to-end tester against SQLite, parsed JSONL, or a native demo:
+
+```powershell
+python -m training.test_replay_models `
+  --database data/full/processed/cs2_replays.sqlite `
+  --limit 500
+
+python -m training.test_replay_models `
+  --input data/full/processed/full_replays.jsonl `
+  --limit 500
+
+python -m training.test_replay_models --demo path/to/match.dem --limit 500
+```
+
+The test report includes held-out replay-value metrics, action counts, and
+nav-region transitions. `training.map_regions` uses the downloaded nav mesh
+area IDs and the Awpy radar transform for overlays.
+
 The downloader reads the compact metadata already stored under
 `data/small/metadata`. It rejects incomplete maps by requiring at least 16
 rounds and 80 kills, ranks higher-star/recent matches first, and selects maps

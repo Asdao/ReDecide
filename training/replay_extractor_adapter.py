@@ -1,0 +1,169 @@
+"""Tester-only bridge for the standalone ``replay-extractor`` package.
+
+The extractor owns ingestion and normalization.  The model pipeline still
+consumes its historical Awpy-shaped dictionaries, so this module translates
+records in memory at the tester boundary.  It deliberately does not write a
+database, alter training data, or rebuild model artifacts.
+"""
+
+from __future__ import annotations
+
+import sys
+from dataclasses import asdict, is_dataclass
+from pathlib import Path
+from typing import Any, Iterable, Iterator, Mapping
+
+
+def _load_extractor_normalizer() -> Any:
+    """Load the sibling package without making it a runtime dependency."""
+
+    package_root = Path(__file__).resolve().parents[1] / "replay-extractor" / "src"
+    if package_root.exists() and str(package_root) not in sys.path:
+        sys.path.insert(0, str(package_root))
+    try:
+        from replay_extractor.normalize import normalize_record
+    except ImportError as exc:  # pragma: no cover - only used for broken installs
+        raise RuntimeError(
+            "the replacement extractor is unavailable; keep replay-extractor in the "
+            "workspace or install it with `python -m pip install -e replay-extractor`"
+        ) from exc
+    return normalize_record
+
+
+def _value(value: Any, name: str, default: Any = None) -> Any:
+    if isinstance(value, Mapping):
+        return value.get(name, default)
+    return getattr(value, name, default)
+
+
+def _payload(value: Any) -> dict[str, Any]:
+    payload = _value(value, "payload", {})
+    return dict(payload) if isinstance(payload, Mapping) else {}
+
+
+def _canonical_to_raw(record: Any) -> dict[str, Any]:
+    """Convert a canonical ``ReplayRecord`` (or its JSON mapping) to raw rows."""
+
+    metadata = _value(record, "metadata", {})
+    header = dict(_value(metadata, "header", {}) or {})
+    map_name = _value(metadata, "map_name")
+    tick_rate = _value(metadata, "tick_rate")
+    if map_name and not header.get("map_name"):
+        header["map_name"] = map_name
+    if tick_rate and not header.get("tick_rate"):
+        header["tick_rate"] = tick_rate
+
+    raw: dict[str, Any] = {
+        "schema_version": 1,
+        "parser": _value(metadata, "parser", "replay-extractor"),
+        "demo_file": _value(metadata, "demo_file", "unknown"),
+        "source_path": _value(metadata, "source_path", "unknown"),
+        "header": header,
+        "rounds": [],
+        "kills": [],
+        "damages": [],
+        "bomb": [],
+        "events": {},
+        "ticks": [],
+    }
+
+    for round_row in _value(record, "rounds", ()) or ():
+        raw["rounds"].append(
+            {
+                "round_num": _value(round_row, "round_num", 0),
+                "start": _value(round_row, "start_tick"),
+                "end": _value(round_row, "end_tick"),
+                "winner": _value(round_row, "winner"),
+                "reason": _value(round_row, "reason"),
+                "bomb_plant": _value(round_row, "bomb_plant_tick"),
+                "bomb_site": _value(round_row, "bomb_site"),
+            }
+        )
+
+    for tick_row in _value(record, "player_ticks", ()) or ():
+        row = _payload(tick_row)
+        row.update(
+            {
+                "round_num": _value(tick_row, "round_num", row.get("round_num", 0)),
+                "tick": _value(tick_row, "tick", row.get("tick", 0)),
+                "steamid": _value(tick_row, "player_id", row.get("steamid")),
+                "player_name": _value(tick_row, "player_name", row.get("player_name")),
+                "team_name": _value(tick_row, "side", row.get("team_name")),
+                "X": _value(tick_row, "x", row.get("X")),
+                "Y": _value(tick_row, "y", row.get("Y")),
+                "Z": _value(tick_row, "z", row.get("Z")),
+                "health": _value(tick_row, "health", row.get("health")),
+                "armor_value": _value(tick_row, "armor", row.get("armor_value")),
+                "alive": _value(tick_row, "alive", row.get("alive")),
+                "zone": _value(tick_row, "zone", row.get("zone")),
+            }
+        )
+        raw["ticks"].append(row)
+
+    for event_row in _value(record, "events", ()) or ():
+        event_type = str(_value(event_row, "event_type", "event")).lower()
+        row = _payload(event_row)
+        row.update(
+            {
+                "round_num": _value(event_row, "round_num", row.get("round_num")),
+                "tick": _value(event_row, "tick", row.get("tick")),
+                "attacker_steamid": _value(event_row, "attacker_id", row.get("attacker_steamid")),
+                "victim_steamid": _value(event_row, "victim_id", row.get("victim_steamid")),
+                "steamid": _value(event_row, "actor_id", row.get("steamid")),
+                "attacker_side": _value(event_row, "side", row.get("attacker_side")),
+                "bombsite": _value(event_row, "site", row.get("bombsite")),
+                "weapon": _value(event_row, "weapon", row.get("weapon")),
+                "event": row.get("event") or event_type,
+            }
+        )
+        if event_type == "kill" or event_type.endswith("death"):
+            raw["kills"].append(row)
+        elif event_type == "damage" or event_type.endswith("hurt"):
+            raw["damages"].append(row)
+        elif event_type == "bomb" or event_type.startswith("bomb"):
+            raw["bomb"].append(row)
+        else:
+            raw["events"].setdefault(event_type, []).append(row)
+    return raw
+
+
+def normalize_extractor_record(raw: Any) -> dict[str, Any]:
+    """Normalize one replacement-extractor record for model testing."""
+
+    if isinstance(raw, Mapping) and "metadata" not in raw:
+        normalized = _load_extractor_normalizer()(dict(raw))
+    elif isinstance(raw, Mapping) and "metadata" in raw:
+        normalized = raw
+    elif is_dataclass(raw) or hasattr(raw, "metadata"):
+        normalized = raw
+    else:
+        raise TypeError("extractor record must be a mapping or ReplayRecord")
+    return _canonical_to_raw(normalized)
+
+
+def load_extractor_jsonl(path: Path, *, limit: int | None = None) -> list[dict[str, Any]]:
+    """Read and normalize replacement-extractor JSONL without persisting it."""
+
+    try:
+        from replay_extractor.extractor import load_jsonl
+    except ImportError:
+        _load_extractor_normalizer()
+        from replay_extractor.extractor import load_jsonl
+    records: list[dict[str, Any]] = []
+    for raw in load_jsonl(path):
+        records.append(normalize_extractor_record(raw))
+        if limit is not None and len(records) >= limit:
+            break
+    return records
+
+
+def parse_extractor_demo(path: Path, *, tick_interval: int = 32) -> dict[str, Any]:
+    """Parse one native demo through the replacement extractor for testing."""
+
+    try:
+        from replay_extractor.extractor import parse_demo
+    except ImportError:
+        _load_extractor_normalizer()
+        from replay_extractor.extractor import parse_demo
+    return normalize_extractor_record(parse_demo(path, tick_interval=tick_interval))
+

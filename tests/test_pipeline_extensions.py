@@ -1,10 +1,14 @@
 import unittest
+import json
+from pathlib import Path
+from tempfile import TemporaryDirectory
 
 from cs2_sim.core.model import ActionFrequencyModel, ReplayValueEnsemble, ZoneTransitionModel
 from training.calibration import PlattCalibrator
 from training.replay_cleaning import CleaningOptions, clean_record
 from training.statistical_baselines import GaussianNaiveBayes, LogisticBaseline
 from training.infer_actions import infer_actions
+from training.map_regions import NavRegionIndex, RadarTransform
 
 
 class PipelineExtensionTests(unittest.TestCase):
@@ -70,3 +74,30 @@ class PipelineExtensionTests(unittest.TestCase):
         rows = infer_actions(record, window_seconds=1.0, movement_threshold=20.0)
         self.assertEqual(rows[0]["action"], "move")
         self.assertEqual(rows[0]["next_zone"], "MID")
+
+    def test_nav_regions_and_radar_transform(self) -> None:
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            nav_path = root / "de_test.json"
+            nav_path.write_text(
+                json.dumps(
+                    {
+                        "areas": {
+                            "1": {
+                                "area_id": 1,
+                                "corners": [
+                                    {"x": 0, "y": 0, "z": 0},
+                                    {"x": 100, "y": 0, "z": 0},
+                                    {"x": 100, "y": 100, "z": 0},
+                                    {"x": 0, "y": 100, "z": 0},
+                                ],
+                            }
+                        }
+                    }
+                ),
+                encoding="utf-8",
+            )
+            index = NavRegionIndex.from_path(nav_path)
+            self.assertEqual(index.lookup(50, 50), "nav_area_1")
+            transform = RadarTransform({"de_test": {"pos_x": 0, "pos_y": 100, "scale": 2}})
+            self.assertEqual(transform.world_to_radar("de_test", 20, 40), (10.0, 30.0, 0.0))
