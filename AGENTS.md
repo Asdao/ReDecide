@@ -22,3 +22,21 @@ Required workflow:
 
 Use `rg`/`rg --files` for searches, preserve existing conventions, and update
 documentation when a workflow or user-facing command changes.
+
+## Required RE:DECIDE context
+
+Before beginning RE:DECIDE work, read:
+
+1. `Project_Context.md` for stable scope, architecture, contracts, and ownership.
+2. The numbered role brief for the task owner.
+3. `INTEGRATION_STATUS.md` for the current end-to-end repository state.
+4. The `STATUS.md` inside the component being changed.
+
+Component status files describe current operational truth, not a daily diary.
+After material work, the component owner updates their own status file with the
+implemented behavior, important paths, test commands/results, limitations,
+blockers, and integration handoff. Do not edit another owner's status file.
+
+Person 1 maintains `INTEGRATION_STATUS.md` after changes are merged and verified.
+Do not report branch-local work there as integrated before it reaches the shared
+integration branch or `main`.

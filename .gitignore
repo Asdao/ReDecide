@@ -13,6 +13,21 @@ data/*
 model/artifacts/*.json
 model/artifacts/*.txt
 
+# Track only the empty RE:DECIDE data ownership skeleton.
+!data/
+data/*
+!data/samples/
+data/samples/*
+!data/samples/.gitkeep
+!data/eval/
+data/eval/*
+!data/eval/model/
+data/eval/model/*
+!data/eval/model/.gitkeep
+!data/eval/human/
+data/eval/human/*
+!data/eval/human/.gitkeep
+
 # Keep the deployable replay-value model bundle available to users after clone.
 !Noah/model/artifacts/full_replay_value.txt
 !Noah/model/artifacts/full_replay_value.txt.json
