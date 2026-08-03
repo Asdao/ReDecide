@@ -97,25 +97,61 @@ a:focus-visible {
   position: relative;
   z-index: 1;
   min-height: 100vh;
-  width: min(100% - 3rem, 1200px);
-  margin: 0 auto;
+  width: 100%;
 }
 
 .topbar {
+  width: 100vw;
+  max-width: 100%;
   min-height: 5.5rem;
   display: flex;
   align-items: center;
   justify-content: space-between;
   border-bottom: 1px solid var(--line);
+  padding-inline: 2rem;
 }
 
 .brand {
+  position: relative;
+  display: inline-flex;
+  min-height: 2.75rem;
+  align-items: center;
+  padding: 0.5rem;
   color: var(--text);
   font-family: var(--font-interface);
   font-size: 1.05rem;
   font-weight: 800;
   letter-spacing: 0.12em;
   text-decoration: none;
+}
+
+.brand:focus-visible {
+  outline: none;
+}
+
+.brand-outline {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  pointer-events: none;
+}
+
+.brand-outline rect {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 2.5;
+  stroke-dasharray: 100;
+  stroke-dashoffset: 100;
+  stroke-linecap: square;
+  transition: stroke-dashoffset 0.2s ease-in-out
+}
+
+.brand:hover .brand-outline rect,
+.brand:focus-visible .brand-outline rect {
+  stroke-dashoffset: 0;
+  transition: stroke-dashoffset 0.2s ease-in-out
 }
 
 .brand span,
@@ -135,16 +171,18 @@ a:focus-visible {
 }
 
 .hero {
+  width: min(calc(100% - 3rem), 1360px);
   min-height: calc(100vh - 5.5rem);
   display: grid;
   grid-template-columns: minmax(0, 1.15fr) minmax(22rem, 0.85fr);
-  gap: clamp(3rem, 8vw, 7rem);
+  gap: clamp(3rem, 6vw, 6rem);
   align-items: center;
+  margin: 0 auto;
   padding: 5rem 0 7rem;
 }
 
 .hero-copy {
-  max-width: 43rem;
+  max-width: 48rem;
 }
 
 .hero h1 {
@@ -159,9 +197,10 @@ a:focus-visible {
 }
 
 .lede {
-  max-width: 39rem;
+  max-width: 44rem;
   margin: 0;
   color: #d2d6db;
+  font-family: var(--font-interface);
   font-size: clamp(1rem, 1.5vw, 1.2rem);
   line-height: 1.7;
 }
@@ -213,17 +252,11 @@ input[type="file"] {
   white-space: nowrap;
 }
 
-.setup-note,
 .privacy {
   max-width: 38rem;
   color: var(--muted);
   font-size: 0.875rem;
   line-height: 1.55;
-}
-
-.setup-note {
-  margin: 1rem 0 0;
-  color: var(--uncertainty);
 }
 
 .privacy {
@@ -337,6 +370,7 @@ input[type="file"] {
 
 .boundary-preview span {
   color: var(--muted);
+  font-family: var(--font-interface);
   font-size: 0.8rem;
   line-height: 1.45;
 }
@@ -354,7 +388,7 @@ input[type="file"] {
     opacity: 0.7;
   }
 
-  .shell {
+  .hero {
     width: min(100% - 2rem, 42rem);
   }
 
@@ -389,5 +423,9 @@ input[type="file"] {
     transition-duration: 0.01ms !important;
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
+  }
+
+  .brand-outline rect {
+    transition-delay: 0ms !important;
   }
 }
