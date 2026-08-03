@@ -16,8 +16,9 @@ export default function Home() {
             <span> Replay the decision.</span>
           </h1>
           <p className="lede">
-            We judge the choice using only what was knowable at that moment—not
-            whether you later won, died, or lost the round.
+            We judge the choice using only what was knowable at that moment.
+            <br></br>
+            Not whether you later won, died, or lost the round.
           </p>
 
           <div className="actions" aria-label="Choose an analysis source">
@@ -25,16 +26,12 @@ export default function Home() {
               Try a sample match
             </button>
             <label className="secondary" htmlFor="demo-upload" aria-describedby="upload-help setup-note">
-              Upload a .dem
+              Upload a *.dem
             </label>
             <input id="demo-upload" type="file" accept=".dem" disabled />
           </div>
-          <p className="setup-note" id="setup-note" role="status">
-            Match selection is staged while the preparation API contract is finalized.
-          </p>
           <p className="privacy" id="upload-help">
-            Replay data is sent to the configured analysis service. Provider keys stay
-            on the server and are never exposed in your browser.
+            Replay data is sent to the configured analysis service.
           </p>
         </div>
 
@@ -56,7 +53,7 @@ export default function Home() {
             </li>
             <li className="hidden-future">
               <strong>Hidden</strong>
-              <span>Everything after was hidden from the coach</span>
+              <span>Everything after is hidden from the coach</span>
             </li>
           </ol>
         </aside>
