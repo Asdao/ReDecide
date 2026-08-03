@@ -1,0 +1,31 @@
+{
+  "schema_version": "1.0",
+  "decision_id": "fixture-match-7-PlayerA-12345",
+  "title": "The second peek was the real decision",
+  "verdict": "REASONABLE_BUT_RISKY",
+  "confidence": 0.78,
+  "assessment": "The immediate re-engagement kept pressure but exposed a low-health player without confirmed support.",
+  "player_intent_summary": "PlayerA intended to take a second duel because they believed the enemy was reloading.",
+  "facts_used": ["E1", "E3", "E4"],
+  "options": [
+    {
+      "action": "Reset behind cover",
+      "tradeoff": "Gives up immediate pressure but preserves a low-health rifle",
+      "when_best": "When teammate support for the repeat peek is unconfirmed"
+    }
+  ],
+  "recommended_action": "Reset behind cover",
+  "why": "PlayerA had 34 HP at contact and then exposed again after 0.9 seconds.",
+  "execution_note": null,
+  "next_match_quest": {
+    "cue": "After taking first contact below 50 HP",
+    "action": "Break line of sight for two seconds before deciding to re-peek",
+    "success_check": "You reset before the second exposure"
+  },
+  "limitations": ["No voice communications available"],
+  "checks": {
+    "unsupported_evidence_ids": [],
+    "future_information_detected": false,
+    "contradiction_detected": false
+  }
+}
