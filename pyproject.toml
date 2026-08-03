@@ -2,7 +2,9 @@
 name = "ghackathon"
 version = "0.1.0"
 requires-python = ">=3.12"
-dependencies = []
+dependencies = [
+    "pydantic>=2.7,<3",
+]
 
 [project.optional-dependencies]
 full = ["awpy>=2.0.2", "lightgbm>=4.0", "pyarrow>=15.0"]

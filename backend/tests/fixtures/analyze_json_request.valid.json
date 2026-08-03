@@ -1,0 +1,49 @@
+{
+  "decision_packet": {
+    "schema_version": "1.0",
+    "decision_id": "fixture-match-7-PlayerA-12345",
+    "match_id": "fixture-match",
+    "map": "de_mirage",
+    "round_number": 7,
+    "player": "PlayerA",
+    "decision_type": "POST_CONTACT_RESET",
+    "decision_open_tick": 12345,
+    "decision_open_seconds": 96.45,
+    "action_close_tick": 12665,
+    "known_before_decision": [
+      {
+        "evidence_id": "E1",
+        "tick": 12345,
+        "category": "health",
+        "statement": "PlayerA had 34 HP at first damage contact",
+        "value": 34,
+        "source": "demo_parser"
+      },
+      {
+        "evidence_id": "E2",
+        "tick": 12345,
+        "category": "ammo",
+        "statement": "PlayerA had 18 rounds loaded at first damage contact",
+        "value": 18,
+        "source": "demo_parser"
+      }
+    ],
+    "observed_action": {
+      "label": "IMMEDIATE_REENGAGE",
+      "description": "PlayerA exposed again 0.9 seconds after contact",
+      "evidence_ids": ["E3", "E4"]
+    },
+    "unknowns": [
+      "Exact enemy intention is unknowable",
+      "Voice communications are unavailable"
+    ],
+    "data_quality": {
+      "score": 0.86,
+      "warnings": []
+    }
+  },
+  "intent": {
+    "tag": "TAKE_DUEL",
+    "text": "I thought the enemy was reloading"
+  }
+}
