@@ -1,0 +1,66 @@
+export default function Home() {
+  return (
+    <main className="shell">
+      <nav className="topbar" aria-label="Product">
+        <a className="brand" href="#main-content" aria-label="RE:DECIDE home">
+          <span aria-hidden="true">RE:</span>DECIDE
+        </a>
+        <span className="eyebrow">Outcome-blind decision coaching</span>
+      </nav>
+
+      <section className="hero" id="main-content" aria-labelledby="page-title">
+        <div className="hero-copy">
+          <p className="kicker">One moment. One choice. Better next time.</p>
+          <h1 id="page-title">
+            Don&apos;t replay the match.
+            <span> Replay the decision.</span>
+          </h1>
+          <p className="lede">
+            We judge the choice using only what was knowable at that moment—not
+            whether you later won, died, or lost the round.
+          </p>
+
+          <div className="actions" aria-label="Choose an analysis source">
+            <button className="primary" type="button" disabled aria-describedby="setup-note">
+              Try a sample match
+            </button>
+            <label className="secondary" htmlFor="demo-upload" aria-describedby="upload-help setup-note">
+              Upload a .dem
+            </label>
+            <input id="demo-upload" type="file" accept=".dem" disabled />
+          </div>
+          <p className="setup-note" id="setup-note" role="status">
+            Match selection is staged while the preparation API contract is finalized.
+          </p>
+          <p className="privacy" id="upload-help">
+            Replay data is sent to the configured analysis service. Provider keys stay
+            on the server and are never exposed in your browser.
+          </p>
+        </div>
+
+        <aside className="boundary-card" aria-labelledby="boundary-title">
+          <p className="eyebrow">The knowledge boundary</p>
+          <h2 id="boundary-title">Judge the moment, not the outcome.</h2>
+          <ol className="boundary-preview">
+            <li>
+              <strong>Known</strong>
+              <span>Replay facts before the choice</span>
+            </li>
+            <li>
+              <strong>Decision</strong>
+              <span>The moment an option opened</span>
+            </li>
+            <li>
+              <strong>Action</strong>
+              <span>The immediate response</span>
+            </li>
+            <li className="hidden-future">
+              <strong>Hidden</strong>
+              <span>Everything after was hidden from the coach</span>
+            </li>
+          </ol>
+        </aside>
+      </section>
+    </main>
+  );
+}
