@@ -105,7 +105,7 @@ def validate_bundle(
     payload = _load_manifest(manifest)
     bundle_root = manifest.parent.resolve()
     found_component = False
-    for name in ("booster", "bayesian", "calibrator"):
+    for name in ("booster", "bayesian", "calibrator", "engagement_model", "engagement"):
         metadata = _component_metadata(payload, name)
         if metadata is None or metadata.get("path") is None:
             continue

@@ -111,8 +111,18 @@ action_scores = model.action_probabilities(
     legal_actions=["hold", "move"],
 )
 next_zone = model.predict_next_zone("A_SITE", map_name="de_mirage", side="ct")
+match_report = model.analyse_match(replay)
+engagement_report = model.analyse_engagement(replay, tick=1234, player_id="steam-id")
+ranked = model.rank_candidate_actions([
+    {"action": "hold", "death_probability": 0.31, "round_value_delta": 0.03, "sample_count": 20, "entropy": 0.4},
+])
 print(prediction.probability, action_scores, next_zone)
 ```
+
+`analyse_engagement` and `rank_candidate_actions` are explicitly
+observational: legal candidate actions must come from the simulator/map rules,
+and a ranked alternative is an estimated outcome rather than proof that a
+player should have made that move.
 
 Callers provide structured fields and never construct internal action-state keys
 or load component files independently. `model.status` reports which optional

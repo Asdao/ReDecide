@@ -134,6 +134,83 @@ over a fixed two-second window. They are not claims about a strategically
 optimal or “best” CS2 move; the held-out action report makes that distinction
 explicit.
 
+Combat engagement windows are available as a separate, additive export. They
+anchor on damage events (or kills when no damage table exists) and emit one row
+per participant. Features stop at the anchor tick; `label_kill`,
+`label_death`, `label_trade`, `survived_after_kill`, and `round_won` inspect
+only later events inside the configured horizon. The output describes observed
+outcomes, not a tactical recommendation:
+
+```powershell
+python -m training.engagement_windows `
+  --input data/private/processed/full_replays.jsonl `
+  --output data/private/processed/engagement_windows.jsonl `
+  --horizon-seconds 1 2 5
+```
+
+This writes `engagement_windows_1s.jsonl`, `engagement_windows_2s.jsonl`, and
+`engagement_windows_5s.jsonl`. Existing SQLite events can be read directly
+with `--database`; no database rebuild or model retraining is performed.
+
+Train the dependency-free engagement prior with a whole-match held-out split:
+
+```powershell
+python -m training.train_engagement_model `
+  --input data/private/processed/engagement_windows_2s.jsonl `
+  --output model/artifacts/releases/v2/engagement_model.json `
+  --metrics model/artifacts/releases/v2/engagement_metrics.json
+```
+
+The trainer reports kill/death/trade log loss, Brier score, calibration, and
+improvement over the training prior. Sparse trade/survival targets use a
+stronger empirical-Bayes prior; this avoids treating one observed duel as a
+reliable tactical rule. If the full dependencies are installed, optional
+shallow LightGBM heads use the same grouped split:
+
+```powershell
+python -m training.train_engagement_lightgbm `
+  --input data/private/processed/engagement_windows_2s.jsonl `
+  --output model/artifacts/releases/v2/engagement_lightgbm.json `
+  --metrics model/artifacts/releases/v2/engagement_lightgbm_metrics.json
+```
+
+Refresh the checksummed release manifest after changing an artifact:
+
+```powershell
+python -m training.build_release_manifest `
+  --release model/artifacts/releases/v2
+```
+
+## Compact Parquet exports and dataset registry
+
+SQLite remains the canonical training store. When a portable, typed projection
+is useful, stream it into a new directory without loading the whole database:
+
+```powershell
+python -m training.export_parquet `
+  --database data/private/databases/cs2_replays_v2.sqlite `
+  --output data/private/features/replay-v1 `
+  --dataset-id replay-v1 `
+  --role training `
+  --visibility private `
+  --registry data/private/dataset_registry.json
+```
+
+The export writes `snapshots.parquet`, `actions.parquet`, and `metadata.json`.
+Rows retain `match_id` and replay/round/tick identity; model inputs are typed
+`feature_*` columns. Public exports omit raw source paths while retaining a
+stable source hash. The registry records checksums, row counts, feature/schema
+versions, source metadata, rejection reasons, and match groups. Its roles are
+`training`, `validation`, `benchmark`, and `rejected`; it rejects a match group
+appearing in more than one role:
+
+```powershell
+python -m training.dataset_registry validate `
+  --registry data/private/dataset_registry.json
+python -m training.dataset_registry list `
+  --registry data/private/dataset_registry.json
+```
+
 At runtime, load the single manifest and use the Bayesian fallback if the
 optional LightGBM native library is unavailable:
 
@@ -142,7 +219,13 @@ from cs2_sim import ModelConfig, ReplayModel
 
 model = ReplayModel.load(ModelConfig(version="v2"))
 prediction = model.predict_probability(snapshot)
+match_report = model.analyse_match(replay)
+engagement_report = model.analyse_engagement(replay, tick=1234, player_id="steam-id")
 ```
+
+`analyse_engagement` returns observed kill/death/trade probabilities for
+future-only windows. It marks statistical-only and LightGBM-blended results;
+it does not claim an observational replay proves a counterfactual “best move”.
 
 To install and activate a verified local release bundle:
 
@@ -267,6 +350,12 @@ baseline.
   Bayesian/LightGBM component manifest with checksums and dataset fingerprints.
 - `model/artifacts/releases/v2/action_frequency.json` and `zone_transitions.json`:
   map-aware movement-tendency tools.
+- `model/artifacts/releases/v2/engagement_model.json`: grouped, calibrated
+  Beta-smoothed kill/death/trade prior with support and entropy.
+- `model/artifacts/releases/v2/engagement_lightgbm.json`: optional compact
+  engagement heads blended only when statistical support is sufficient.
+- `model/artifacts/releases/v2/release_manifest.json`: checksums for all
+  deployable components.
 
 The event-only full model estimates round win probability. It is not yet a
 movement/action model because sidecars contain no player positions, health,

@@ -9,6 +9,18 @@ from .api import (
     TrainingPipeline,
     TrainingRunResult,
 )
+from .full_match_report import (
+    analyze_full_match,
+    build_full_match_report,
+    full_match_report,
+)
+from .contracts import (
+    EngagementAnalysis,
+    EngagementFeatures,
+    FullMatchAnalysis,
+    ModelReleaseManifest,
+    SnapshotFeatures,
+)
 
 __all__ = [
     "ActionTrainingArtifacts",
@@ -18,4 +30,12 @@ __all__ = [
     "TrainingError",
     "TrainingPipeline",
     "TrainingRunResult",
+    "analyze_full_match",
+    "build_full_match_report",
+    "full_match_report",
+    "EngagementAnalysis",
+    "EngagementFeatures",
+    "FullMatchAnalysis",
+    "ModelReleaseManifest",
+    "SnapshotFeatures",
 ]
