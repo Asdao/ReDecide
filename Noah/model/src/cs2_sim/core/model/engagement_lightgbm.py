@@ -14,7 +14,9 @@ from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
-ENGAGEMENT_LIGHTGBM_SCHEMA_VERSION = "engagement_lightgbm_v2"
+from cs2_sim.action_vocabulary import ACTION_FEATURE_NAMES, action_features
+
+ENGAGEMENT_LIGHTGBM_SCHEMA_VERSION = "engagement_lightgbm_v3"
 ENGAGEMENT_LGBM_FEATURE_NAMES_V1 = (
     "horizon_seconds",
     "damage_health",
@@ -30,7 +32,7 @@ ENGAGEMENT_LGBM_FEATURE_NAMES_V1 = (
     "side_code",
     "role_code",
 )
-ENGAGEMENT_LGBM_FEATURE_NAMES = ENGAGEMENT_LGBM_FEATURE_NAMES_V1 + (
+ENGAGEMENT_LGBM_FEATURE_NAMES_V2 = ENGAGEMENT_LGBM_FEATURE_NAMES_V1 + (
     "action_move",
     "decision_lead_seconds",
     "lookback_seconds",
@@ -52,6 +54,11 @@ ENGAGEMENT_LGBM_FEATURE_NAMES = ENGAGEMENT_LGBM_FEATURE_NAMES_V1 + (
     "nearest_teammate_distance",
     "nearest_enemy_distance",
     "zone_code",
+)
+ENGAGEMENT_LGBM_FEATURE_NAMES = ENGAGEMENT_LGBM_FEATURE_NAMES_V2 + ACTION_FEATURE_NAMES + (
+    "action_target_zone_code",
+    "action_utility_code",
+    "action_confidence",
 )
 ENGAGEMENT_TARGETS = ("kill", "death", "trade", "survival", "damage", "round_win")
 
@@ -76,6 +83,8 @@ def engagement_feature_vector(
     features = row.get("features")
     features = features if isinstance(features, Mapping) else {}
     observed_action = str(row.get("observed_action") or "").lower()
+    observed_parameters = row.get("observed_action_parameters")
+    observed_parameters = observed_parameters if isinstance(observed_parameters, Mapping) else {}
     values = {
         "horizon_seconds": _number(row.get("horizon_seconds"), 2.0),
         "damage_health": _number(features.get("damage_health")),
@@ -112,6 +121,17 @@ def engagement_feature_vector(
         "nearest_enemy_distance": _number(features.get("nearest_enemy_distance")),
         "zone_code": _code(features.get("zone")),
     }
+    values.update(action_features(observed_action))
+    values.update(
+        {
+            "action_target_zone_code": _code(
+                observed_parameters.get("target_zone")
+                or row.get("observed_action_destination")
+            ),
+            "action_utility_code": _code(observed_parameters.get("utility_type")),
+            "action_confidence": _number(row.get("observed_action_confidence")),
+        }
+    )
     return [values[name] for name in feature_names]
 
 
@@ -119,7 +139,11 @@ class EngagementLightGBMBundle:
     """Load and score independently trained compact binary target heads."""
 
     def __init__(self, boosters: Mapping[str, Any], *, feature_names: tuple[str, ...] = ENGAGEMENT_LGBM_FEATURE_NAMES) -> None:
-        if tuple(feature_names) not in {ENGAGEMENT_LGBM_FEATURE_NAMES, ENGAGEMENT_LGBM_FEATURE_NAMES_V1}:
+        if tuple(feature_names) not in {
+            ENGAGEMENT_LGBM_FEATURE_NAMES,
+            ENGAGEMENT_LGBM_FEATURE_NAMES_V2,
+            ENGAGEMENT_LGBM_FEATURE_NAMES_V1,
+        }:
             raise ValueError("engagement LightGBM feature schema does not match")
         self.boosters = dict(boosters)
         self.feature_names = tuple(feature_names)
@@ -154,10 +178,18 @@ class EngagementLightGBMBundle:
         except ImportError as exc:  # pragma: no cover - optional dependency
             raise RuntimeError("LightGBM is not installed") from exc
         payload = json.loads(Path(path).read_text(encoding="utf-8"))
-        if payload.get("schema_version") not in {"engagement_lightgbm_v1", ENGAGEMENT_LIGHTGBM_SCHEMA_VERSION}:
+        if payload.get("schema_version") not in {
+            "engagement_lightgbm_v1",
+            "engagement_lightgbm_v2",
+            ENGAGEMENT_LIGHTGBM_SCHEMA_VERSION,
+        }:
             raise ValueError("unsupported engagement LightGBM schema")
         names = tuple(payload.get("feature_names") or ())
-        if names not in {ENGAGEMENT_LGBM_FEATURE_NAMES, ENGAGEMENT_LGBM_FEATURE_NAMES_V1}:
+        if names not in {
+            ENGAGEMENT_LGBM_FEATURE_NAMES,
+            ENGAGEMENT_LGBM_FEATURE_NAMES_V2,
+            ENGAGEMENT_LGBM_FEATURE_NAMES_V1,
+        }:
             raise ValueError("engagement LightGBM feature schema does not match")
         targets = payload.get("targets") or {}
         boosters = {str(target): lgb.Booster(model_str=str(model)) for target, model in targets.items()}
@@ -166,6 +198,7 @@ class EngagementLightGBMBundle:
 
 __all__ = [
     "ENGAGEMENT_LGBM_FEATURE_NAMES",
+    "ENGAGEMENT_LGBM_FEATURE_NAMES_V2",
     "ENGAGEMENT_LIGHTGBM_SCHEMA_VERSION",
     "ENGAGEMENT_TARGETS",
     "EngagementLightGBMBundle",

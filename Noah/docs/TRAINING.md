@@ -57,7 +57,7 @@ orchestrator instead:
 python -m training.train_streamed_sidecars `
   --metadata data/public/metadata `
   --snapshot-output data/private/processed/analysis_snapshots.jsonl `
-  --release-dir Noah/model/artifacts/releases/v3 `
+  --release-dir Noah/model/artifacts/releases/v4 `
   --max-files 500 `
   --max-gb 0.25
 ```
@@ -171,23 +171,26 @@ python -m training.evaluate_actions `
   --output model/artifacts/releases/v2/action_evaluation.json
 ```
 
-Action labels are deterministic observed movement tendencies (`hold`/`move`)
-over a fixed two-second window. They are not claims about a strategically
-optimal or “best” CS2 move; the held-out action report makes that distinction
-explicit.
-
+Action labels are deterministic observations, not claims about a strategically
+optimal or “best” CS2 move. The current action vocabulary is `hold`, `peek`,
+`move_to_adjacent_zone`, `use_utility`, `plant`, `defuse`, and `unknown`.
+Movement destinations and utility types are parameters, not separate classes.
+The simulator may also expose `save`, but it is not learned until reliable
+economy/round-context labels are available. The action coverage report records
+match-separated support and identifies actions that must abstain when sparse.
 Combat engagement windows are available as a separate, additive export. Schema
-v2 places the decision cutoff one second before first damage and includes three
+v3 places the decision cutoff one second before first damage and includes three
 seconds of earlier movement, health, armor, damage, place, and team-distance
 context. The identifying hit is not an input feature. `label_kill`,
 `label_death`, `label_trade`, `label_survival`, `label_damage`, and
-`label_round_win` only inspect events after the cutoff. The observed
-`hold`/`move` action is also measured after the cutoff:
+`label_round_win` only inspect events after the cutoff. The observed action is
+measured after the cutoff and includes family, parameters, confidence, and
+evidence fields:
 
 ```powershell
 python -m training.engagement_windows `
   --input data/private/processed/full_replays.jsonl `
-  --output data/private/processed/engagement_windows_v2_5s.jsonl `
+  --output data/private/processed/engagement_windows_v3_5s.jsonl `
   --horizon-seconds 5 `
   --lookback-seconds 3 `
   --decision-lead-seconds 1 `
@@ -202,9 +205,9 @@ Train the dependency-free engagement prior with a whole-match held-out split:
 
 ```powershell
 python -m training.train_engagement_model `
-  --input data/private/processed/engagement_windows_v2_5s.jsonl `
-  --output model/artifacts/releases/v3/engagement_model.json `
-  --metrics model/artifacts/releases/v3/engagement_metrics.json
+  --input data/private/processed/engagement_windows_v3_5s.jsonl `
+  --output model/artifacts/releases/v4/engagement_model.json `
+  --metrics model/artifacts/releases/v4/engagement_metrics.json
 ```
 
 The trainer reports kill/death/trade/survival/damage/round-win log loss, Brier
@@ -215,16 +218,31 @@ shallow LightGBM heads use the same grouped split:
 
 ```powershell
 python -m training.train_engagement_lightgbm `
-  --input data/private/processed/engagement_windows_v2_5s.jsonl `
-  --output model/artifacts/releases/v3/engagement_lightgbm.json `
-  --metrics model/artifacts/releases/v3/engagement_lightgbm_metrics.json
+  --input data/private/processed/engagement_windows_v3_5s.jsonl `
+  --output model/artifacts/releases/v4/engagement_lightgbm.json `
+  --metrics model/artifacts/releases/v4/engagement_lightgbm_metrics.json
+```
+
+The LightGBM action features are generated from the shared vocabulary as
+nominal one-hot columns; adding a learned action therefore requires new labels
+and retraining, but not a second model. To add one, update
+`Noah/model/src/cs2_sim/action_vocabulary.py`, add its deterministic detector
+to `Noah/training/action_labeler.py`, add a fixture test, regenerate windows,
+and retrain the release. Do not create a separate class for a target zone or
+utility type. Review coverage before activation:
+
+```powershell
+python -m training.evaluate_action_vocabulary `
+  --input data/private/processed/engagement_windows_v3_5s.jsonl `
+  --output model/artifacts/releases/v4/action_vocabulary_coverage.json `
+  --model-metrics model/artifacts/releases/v4/engagement_lightgbm_metrics.json
 ```
 
 Refresh the checksummed release manifest after changing an artifact:
 
 ```powershell
 python -m training.build_release_manifest `
-  --release model/artifacts/releases/v3 --version v3
+  --release model/artifacts/releases/v4 --version v4
 ```
 
 ## Compact Parquet exports and dataset registry
@@ -263,19 +281,19 @@ optional LightGBM native library is unavailable:
 ```python
 from cs2_sim import ModelConfig, ReplayModel
 
-model = ReplayModel.load(ModelConfig(version="v3"))
+model = ReplayModel.load(ModelConfig(version="v4"))
 prediction = model.predict_probability(snapshot)
 match_report = model.analyse_match(replay)
 engagement_report = model.analyse_engagement(replay, tick=1234, player_id="steam-id")
 ```
 
 `analyse_engagement` returns future-only multi-head probabilities.
-`analyse_replay` scores legal simulator actions plus abstract `hold`/`move`
-choices with a coaching utility: 35% round win, 25% survival, 15% kill, 10%
-trade, 10% damage, and 5% simulator value. These are observational estimates,
-not causal proof. A "should have" label is emitted only after support and
-uncertainty checks pass. The engagement report marks statistical-only and
-LightGBM-blended results;
+`analyse_replay` scores legal simulator actions plus the shared action
+vocabulary with a coaching utility: 35% round win, 25% survival, 15% kill,
+10% trade, 10% damage, and 5% simulator value. These are observational
+estimates, not causal proof. A "should have" label is emitted only after
+support and uncertainty checks pass. The engagement report marks
+statistical-only and LightGBM-blended results;
 it does not claim an observational replay proves a counterfactual “best move”.
 
 To install and activate a verified local release bundle:
@@ -420,12 +438,12 @@ successfully and run `training.train_full_replay` without `--snapshot-input`.
 For the normal path, send a native `.dem`, extracted replay JSON, or JSONL file
 to the small runner. Native demos and canonical replacement-extractor records
 are normalized in memory; the harness does not build a database or retrain a
-model. It selects release `v2`, applies the conservative defaults, and writes
+model. It selects the active release (`v4` in the current bundle), applies the conservative defaults, and writes
 an adjacent `.analysis.json` report:
 
 ```powershell
-python Noah/training/test_harness.py data/private/processed/full_replays.jsonl
-python Noah/training/test_harness.py path/to/match.dem --all-moments
+python Noah/training/test_harness.py data/private/processed/full_replays.jsonl --version v4
+python Noah/training/test_harness.py path/to/match.dem --all-moments --version v4
 ```
 
 Use `--record-index 3` for another JSONL record or `--output path/to/report.json`
@@ -442,8 +460,9 @@ read-only with respect to the training database and model artifacts.
 
 The harness uses two model components. Its main round-value model comes from
 the selected release manifest and `full_replay_value.txt`; the action-analysis
-component comes from `candidate_action_value.txt`. The wrapper defaults to
-`Noah/model/artifacts/releases/v3`. Pass `--candidate-model` to override only
+component comes from `candidate_action_value.txt`. The wrapper follows the
+active pointer, currently `Noah/model/artifacts/releases/v4`. Pass
+`--candidate-model` to override only
 the action model. If the candidate LightGBM artifact cannot load, the loader
 falls back to that release's `small_statistical.json`; if no candidate model is
 available, the harness reports no action alternative instead of inventing one.
@@ -453,7 +472,7 @@ After training a new release, select it explicitly with `--release-dir` and
 ```powershell
 python Noah/training/test_harness.py match.json `
   --release-dir Noah/model/artifacts/releases `
-  --version v3
+  --version v4
 ```
 
 ### Advanced configuration
@@ -466,7 +485,7 @@ python -m training.analysis_harness `
   --input data/private/processed/full_replays.jsonl `
   --record-index 0 `
   --release-dir model/artifacts/releases `
-  --version v3 `
+  --version v4 `
   --max-moments 25 `
   --output data/private/processed/replay_analysis.json
 ```

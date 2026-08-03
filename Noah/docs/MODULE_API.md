@@ -67,7 +67,7 @@ from Noah.training import TrainingConfig, TrainingPipeline
 
 pipeline = TrainingPipeline(
    TrainingConfig(
-      artifact_dir="model/artifacts/releases/v3",
+      artifact_dir="model/artifacts/releases/v4",
       seed=7,
       clean_records=True,
    )
@@ -131,9 +131,11 @@ print(prediction.probability, action_scores, next_zone)
 ```
 
 `analyse_replay` combines a deterministic key-moment report with support-aware
-candidate ranking. For kills, release v3 coaches the victim from a decision
-cutoff one second before contact using three seconds of prior history. Abstract
-`hold` and `move` candidates are scored by round-win, survival, kill, trade,
+candidate ranking. For kills, release v4 coaches the victim from a decision
+cutoff one second before contact using three seconds of prior history. The
+shared learned vocabulary includes `hold`, `peek`, `move_to_adjacent_zone`,
+`use_utility`, `plant`, `defuse`, and `unknown`; target zones and utility types
+are parameters. Candidates are scored by round-win, survival, kill, trade,
 damage, and simulator-value heads. It labels `good`/`bad` only when observed
 and candidate actions have enough support; otherwise it abstains. Detailed
 simulator actions still record their default-topology legality scope.

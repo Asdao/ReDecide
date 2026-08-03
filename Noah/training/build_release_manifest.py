@@ -73,6 +73,7 @@ def build_release_manifest(release_dir: str | Path, *, version: str | None = Non
         "statistical_action_prior": "small_statistical.json",
         "engagement_metrics": "engagement_metrics.json",
         "engagement_lightgbm_metrics": "engagement_lightgbm_metrics.json",
+        "action_vocabulary_coverage": "action_vocabulary_coverage.json",
         "action_model": "action_frequency.json",
         "transition_model": "zone_transitions.json",
         "feature_schema": "feature_schema.json",
@@ -107,7 +108,7 @@ def build_release_manifest(release_dir: str | Path, *, version: str | None = Non
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--release", type=Path, default=Path("model/artifacts/releases/v2"))
+    parser.add_argument("--release", type=Path, default=Path("model/artifacts/releases/v4"))
     parser.add_argument("--version", default=None)
     args = parser.parse_args()
     output = build_release_manifest(args.release, version=args.version)

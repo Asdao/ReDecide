@@ -25,6 +25,11 @@ from enum import StrEnum
 from pathlib import Path
 from typing import Any, Protocol
 
+from cs2_sim.action_vocabulary import (
+    ABSTRACT_CANDIDATE_ACTION_NAMES,
+    action_parameters,
+    canonical_action,
+)
 from cs2_sim.actions import Action
 from cs2_sim.core.model import FullLightGBMModel, SmallStatisticalModel
 from cs2_sim.rules import legal_actions
@@ -641,6 +646,21 @@ def _movement_action(action: str) -> str:
     return "move" if action.startswith("move") else "hold" if action == "hold" else action
 
 
+def _display_action_name(observed: Mapping[str, Any]) -> str:
+    """Return the stable human-readable action name used by reports."""
+
+    action = str(observed.get("action") or "unknown")
+    parameters = observed.get("parameters")
+    parameters = parameters if isinstance(parameters, Mapping) else {}
+    target_zone = parameters.get("target_zone")
+    if target_zone not in (None, "") and action in {"move_to_adjacent_zone", "peek"}:
+        return f"{action}:{target_zone}"
+    utility_type = parameters.get("utility_type")
+    if utility_type not in (None, "") and action == "use_utility":
+        return f"{action}:{utility_type}"
+    return action
+
+
 def _augment_candidates_with_engagement(
     model: Any,
     candidates: list[dict[str, Any]],
@@ -660,7 +680,7 @@ def _augment_candidates_with_engagement(
     ]
     default_simulator_value = sum(simulator_values) / len(simulator_values) if simulator_values else 0.5
     existing_movements = {_movement_action(str(candidate.get("action") or "")) for candidate in candidates}
-    for action in ("hold", "move"):
+    for action in ABSTRACT_CANDIDATE_ACTION_NAMES:
         if action in existing_movements:
             continue
         candidates.append(
@@ -682,7 +702,12 @@ def _augment_candidates_with_engagement(
     for original in candidates:
         candidate = dict(original)
         row = dict(window)
-        row["observed_action"] = _movement_action(str(candidate.get("action") or ""))
+        candidate_action = str(candidate.get("action") or "")
+        # Keep the legacy ``move`` spelling for old custom engagement models,
+        # while exposing the canonical action and parameters to v3+ models.
+        row["observed_action"] = _movement_action(candidate_action)
+        row["observed_action_name"] = canonical_action(candidate_action)
+        row["observed_action_parameters"] = action_parameters(candidate_action)
         prediction = dict(score(row))
         death = min(1.0, max(0.0, _number(prediction.get("death_probability"), 0.5)))
         survival = min(1.0, max(0.0, _number(prediction.get("survival_probability"), 1.0 - death)))
@@ -1015,8 +1040,13 @@ def build_replay_analysis(
             destination = engagement_window.get("observed_action_destination")
             if action_name == "move" and destination not in (None, "", "unknown"):
                 action_name = f"move_to_adjacent_zone:{destination}"
+            elif action_name in {"move_to_adjacent_zone", "peek"} and destination not in (None, "", "unknown"):
+                action_name = f"{action_name}:{destination}"
+            parameters = engagement_window.get("observed_action_parameters")
+            parameters = parameters if isinstance(parameters, Mapping) else {}
             observed_action = {
                 "action": action_name,
+                "parameters": parameters,
                 "tick": decision_tick,
                 "source": "engagement_decision_window",
             }
@@ -1092,7 +1122,11 @@ def build_replay_analysis(
                 "legal_candidate_count": len(ranked),
                 "candidate_actions": ranked,
                 "observed_action": observed_candidate,
-                "observed_action_name": observed_action["action"] if observed_action else None,
+                "observed_action_name": (
+                    _display_action_name(observed_action)
+                    if observed_action
+                    else None
+                ),
                 "best_estimated_alternative": best,
                 "least_death_risk_action": least_risk,
                 "estimated_regret": regret,
@@ -1205,7 +1239,7 @@ def main() -> int:
     parser.add_argument("--input", type=Path, required=True, help="normalized replay JSONL")
     parser.add_argument("--record-index", type=int, default=0)
     parser.add_argument("--release-dir", type=Path, default=Path("model/artifacts/releases"))
-    parser.add_argument("--version", default="v3")
+    parser.add_argument("--version", default="v4")
     parser.add_argument("--candidate-model", type=Path, default=None)
     parser.add_argument("--moment-threshold", type=float, default=0.08)
     parser.add_argument("--max-moments", type=int, default=25)

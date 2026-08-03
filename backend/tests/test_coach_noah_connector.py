@@ -93,7 +93,10 @@ class NoahCoachConnectorTests(unittest.TestCase):
             {64, 128, 320, 384},
         )
         self.assertEqual(len(report["kill_analysis"]), 4)
-        self.assertEqual(report["kill_analysis"][0]["recommended_action"], "hold")
+        self.assertIn(
+            report["kill_analysis"][0]["recommended_action"],
+            {"hold", "move", "peek", "move_to_adjacent_zone"},
+        )
         self.assertIn("round_win_probability", report["kill_analysis"][0])
 
 

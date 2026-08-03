@@ -23,9 +23,10 @@ from itertools import pairwise
 from pathlib import Path
 from typing import Any
 
+from Noah.training.action_labeler import build_action_event_index, classify_action
 from Noah.training.data_paths import DATA_PATHS
 
-SCHEMA_VERSION = "engagement_windows_v2"
+SCHEMA_VERSION = "engagement_windows_v3"
 DEFAULT_TICK_RATE = 64.0
 
 
@@ -477,6 +478,7 @@ def extract_engagement_windows(
     end_ticks = _round_end_ticks(record)
     winners = _round_winners(record)
     tick_rows = _tick_index(record)
+    action_event_index = build_action_event_index(record)
     events = sorted(_iter_events(record), key=lambda item: (_event_round(item[1]), _event_tick(item[1]), item[0]))
     if not events:
         return []
@@ -554,13 +556,22 @@ def extract_engagement_windows(
                 tick_rows=tick_rows,
                 round_damages=round_damages,
             )
-            observed_action, action_destination, action_displacement = _observed_action_after_cutoff(
-                series=tick_rows.get((round_num, focal_player), []),
+            action_observation = classify_action(
+                record,
+                player_id=focal_player,
+                round_num=round_num,
                 decision_tick=anchor_tick,
                 action_end_tick=min(contact_tick, anchor_tick + action_ticks),
-                rate=rate,
+                tick_series=tick_rows.get((round_num, focal_player), []),
+                tick_rate=rate,
                 movement_threshold_per_second=movement_threshold_per_second,
+                contact_actor=attacker,
+                event_index=action_event_index,
             )
+            observed_action = action_observation["action"]
+            action_parameters = action_observation["parameters"]
+            action_destination = action_parameters.get("target_zone")
+            action_displacement = _number(action_observation.get("displacement"))
             # Contact fields are safe at a zero-lead cutoff (the historical
             # compatibility mode), but must not leak a future hit when the
             # coaching decision is intentionally placed before contact.
@@ -598,6 +609,11 @@ def extract_engagement_windows(
                 },
                 "features": features,
                 "observed_action": observed_action,
+                "observed_action_family": action_observation["action_family"],
+                "observed_action_parameters": action_parameters,
+                "observed_action_confidence": action_observation["confidence"],
+                "observed_action_evidence": action_observation["evidence"],
+                "observed_action_event_ticks": action_observation["event_ticks"],
                 "observed_action_destination": action_destination,
                 "observed_action_displacement": action_displacement,
                 "survived_after_kill": survived_after_kill,
@@ -770,7 +786,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--input", type=Path, default=DATA_PATHS.private_processed / "full_replays.jsonl")
     parser.add_argument("--database", type=Path, default=None)
-    parser.add_argument("--output", type=Path, default=DATA_PATHS.private_processed / "engagement_windows.jsonl")
+    parser.add_argument("--output", type=Path, default=DATA_PATHS.private_processed / "engagement_windows_v3_5s.jsonl")
     parser.add_argument(
         "--horizon-seconds",
         type=float,

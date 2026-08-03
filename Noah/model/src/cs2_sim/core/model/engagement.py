@@ -15,7 +15,10 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-ENGAGEMENT_SCHEMA_VERSION = "engagement_model_v1"
+from cs2_sim.action_vocabulary import action_family, canonical_action
+
+ENGAGEMENT_SCHEMA_VERSION = "engagement_model_v2"
+_LEGACY_ENGAGEMENT_SCHEMA_VERSIONS = {"engagement_model_v1", ENGAGEMENT_SCHEMA_VERSION}
 _TARGETS = (
     "kill",
     "death",
@@ -71,11 +74,36 @@ def engagement_state_key(row: Mapping[str, Any]) -> str:
         _text(features.get("weapon")),
         str(round(_number(row.get("horizon_seconds"), 5.0), 2)),
     )
-    action = _text(row.get("observed_action"), "unknown")
-    if str(row.get("schema_version") or "") != "engagement_windows_v2" and action == "unknown":
-        return "|".join(legacy)
-    if action.startswith(("move_to_", "move_to_adjacent_zone")):
-        action = "move"
+    action_value = row.get("observed_action")
+    action = _text(action_value, "unknown")
+    row_schema = str(row.get("schema_version") or "")
+    if row_schema != "engagement_windows_v3":
+        if action.startswith(("move_to_", "move_to_adjacent_zone")):
+            action = "move"
+        if action == "unknown":
+            return "|".join(legacy)
+        health_bucket = int(max(0.0, min(100.0, _number(features.get("health")))) // 25)
+        return "|".join(
+            (
+                _text(row.get("map_name")),
+                _text(row.get("side")),
+                _text(row.get("role")),
+                action,
+                _text(features.get("zone")),
+                str(health_bucket),
+                str(round(_number(row.get("horizon_seconds"), 5.0), 2)),
+            )
+        )
+    action = canonical_action(action_value)
+    family = action_family(action)
+    parameters = row.get("observed_action_parameters")
+    if not isinstance(parameters, Mapping):
+        parameters = {}
+    destination = _text(
+        parameters.get("target_zone")
+        or row.get("observed_action_destination"),
+        "unknown",
+    )
     health_bucket = int(max(0.0, min(100.0, _number(features.get("health")))) // 25)
     return "|".join(
         (
@@ -83,7 +111,8 @@ def engagement_state_key(row: Mapping[str, Any]) -> str:
             _text(row.get("side")),
             _text(row.get("role")),
             action,
-            _text(features.get("zone")),
+            family,
+            destination,
             str(health_bucket),
             str(round(_number(row.get("horizon_seconds"), 5.0), 2)),
         )
@@ -93,6 +122,16 @@ def engagement_state_key(row: Mapping[str, Any]) -> str:
 def _hierarchical_state_keys(row: Mapping[str, Any]) -> list[tuple[str, str]]:
     exact = engagement_state_key(row)
     parts = exact.split("|")
+    if len(parts) == 8:
+        map_name, side, role, action, family, _destination, _health, horizon = parts
+        return [
+            (exact, "exact"),
+            (f"{map_name}|{side}|{role}|{action}|{family}|*|*|{horizon}", "map_side_role_action"),
+            (f"{map_name}|{side}|*|{action}|{family}|*|*|{horizon}", "map_side_action"),
+            (f"*|{side}|*|{action}|{family}|*|*|{horizon}", "side_action"),
+            (f"*|*|*|{action}|{family}|*|*|{horizon}", "global_action"),
+            (f"*|*|*|*|{family}|*|*|{horizon}", "global_family"),
+        ]
     if len(parts) != 7:
         return [(exact, "legacy")]
     map_name, side, role, action, _zone, _health, horizon = parts
@@ -321,7 +360,7 @@ class EngagementModel:
 
     @classmethod
     def from_dict(cls, payload: Mapping[str, Any]) -> EngagementModel:
-        if payload.get("schema_version") != ENGAGEMENT_SCHEMA_VERSION:
+        if payload.get("schema_version") not in _LEGACY_ENGAGEMENT_SCHEMA_VERSIONS:
             raise ValueError("unsupported engagement model schema version")
         model = cls(
             alpha=float(payload.get("alpha", 1.0)),

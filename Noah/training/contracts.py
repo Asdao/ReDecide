@@ -20,7 +20,7 @@ from cs2_sim.core.model import FEATURE_NAMES, REPLAY_FEATURE_NAMES, snapshot_fea
 
 CONTRACT_SCHEMA_VERSION = "feature_contracts_v1"
 SNAPSHOT_FEATURE_SCHEMA_VERSION = 2
-ENGAGEMENT_FEATURE_SCHEMA_VERSION = "engagement_features_v2"
+ENGAGEMENT_FEATURE_SCHEMA_VERSION = "engagement_features_v3"
 CANDIDATE_ACTION_FEATURE_SCHEMA_VERSION = "candidate_action_features_v1"
 
 
@@ -52,6 +52,9 @@ SNAPSHOT_FIELD_SPECS = tuple(
 ENGAGEMENT_FIELD_SPECS = (
     FieldSpec("horizon_seconds", "float", True, 2.0, 0.001, 60.0),
     FieldSpec("observed_action", "string", True, "unknown"),
+    FieldSpec("observed_action_family", "string", True, "unknown"),
+    FieldSpec("observed_action_parameters", "object", True, {}),
+    FieldSpec("observed_action_confidence", "float", True, 0.0, 0.0, 1.0),
     FieldSpec("decision_lead_seconds", "float", True, 1.0, 0.0, 10.0),
     FieldSpec("anchor_kind", "string", True, "unknown"),
     FieldSpec("weapon", "string", True, "unknown"),
@@ -138,6 +141,9 @@ class EngagementFeatures:
         features = dict(row.get("features") or {})
         features["horizon_seconds"] = row.get("horizon_seconds", 2.0)
         features["observed_action"] = row.get("observed_action", "unknown")
+        features["observed_action_family"] = row.get("observed_action_family", "unknown")
+        features["observed_action_parameters"] = row.get("observed_action_parameters", {})
+        features["observed_action_confidence"] = row.get("observed_action_confidence", 0.0)
         features["decision_lead_seconds"] = row.get("decision_lead_seconds", 1.0)
         return cls(features)
 
