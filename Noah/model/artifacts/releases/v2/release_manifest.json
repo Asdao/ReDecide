@@ -49,8 +49,8 @@
     },
     "feature_schema": {
       "path": "feature_schema.json",
-      "bytes": 9461,
-      "sha256": "be4b9b42d515a6b73fbe35df202a749d5bbb8499096fa4b83cb74719006e476d"
+      "bytes": 13092,
+      "sha256": "ef09b4d95a05bfb2ce40a666822d3c1e27580894f967c890f78abeebb49b8bfd"
     },
     "fingerprint": {
       "path": "fingerprint.json",
@@ -60,7 +60,8 @@
   },
   "feature_schema_versions": {
     "replay": 2,
-    "engagement": "engagement_features_v1"
+    "engagement": "engagement_features_v1",
+    "candidate_action": "candidate_action_features_v1"
   },
   "dataset_manifest": null,
   "metrics": null

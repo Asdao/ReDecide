@@ -67,6 +67,8 @@ class AnalysisHarnessTests(unittest.TestCase):
         self.assertEqual(report["summary"]["moment_count"], 1)
         self.assertEqual(report["moments"][0]["decision_class"], "no_observed_action")
         self.assertEqual(report["moments"][0]["candidate_source"], "unavailable")
+        self.assertEqual(report["moments"][0]["probability_decision_class"], "insufficient_evidence")
+        self.assertEqual(report["summary"]["probability_decision_classes"], {"insufficient_evidence": 1})
 
     def test_candidate_model_scores_only_reconstructed_legal_actions(self):
         record = self._record()
@@ -93,6 +95,7 @@ class AnalysisHarnessTests(unittest.TestCase):
         self.assertEqual(moment["best_estimated_alternative"]["action"], "hold")
         self.assertEqual(moment["best_estimated_alternative"]["estimate_type"], "simulator_action_value_estimate")
         self.assertEqual(len(moment["candidate_actions"]), moment["legal_candidate_count"])
+        self.assertIn("posterior_successes", moment["best_estimated_alternative"])
         self.assertTrue(moment["best_estimated_alternative"]["legal"])
 
 

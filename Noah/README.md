@@ -126,6 +126,17 @@ python -m training.test_replay_models `
   --limit 500
 ```
 
+For the combined key-moment and candidate-action harness, pass only the
+extracted replay data:
+
+```powershell
+python Noah/training/test_harness.py data/private/processed/full_replays.jsonl
+```
+
+The runner writes an adjacent `.analysis.json` report. Use
+`--record-index` for JSONL files containing multiple replays. It falls back to
+the bundled statistical components when native LightGBM is not installed.
+
 Load the deployable ensemble in Python:
 
 ```python

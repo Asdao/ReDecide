@@ -116,6 +116,11 @@ replay_analysis = model.analyse_replay(
     replay,
     max_moments=25,
     min_support=5,
+    probability_of_improvement_threshold=0.80,
+    expected_regret_threshold=0.05,
+    credible_level=0.90,
+    posterior_samples=5000,
+    posterior_seed=7,
 )
 engagement_report = model.analyse_engagement(replay, tick=1234, player_id="steam-id")
 ranked = model.rank_candidate_actions([
@@ -131,6 +136,28 @@ model is simulator-trained, so the report marks alternatives as estimates and
 records the current default-topology legality scope. `analyse_engagement` and
 `rank_candidate_actions` are likewise observational: a ranked alternative is
 not proof that a player should have made that move.
+
+The response also contains additive probability-based fields under each
+moment. `probability_of_improvement` estimates the probability that the best
+supported candidate exceeds the observed action, and `expected_regret` is the
+posterior expected positive probability gap. `posterior_comparison` contains a
+seeded Beta-posterior Monte Carlo comparison, including the probability that
+the candidate beats the observed action by the configured margin. Each action
+has a `credible_interval` and each moment has `credible_intervals`; these are
+support-proxy, normal-approximation intervals unless posterior success/failure
+counts are supplied. They are uncertainty indicators, not guarantees.
+
+`probability_decision_class` is the thresholded label (`good`, `bad`,
+`neutral`, or `insufficient_evidence`). The legacy `decision_class` remains
+unchanged for compatibility. `probability_abstention` records whether the
+probability label abstained, the reason, and the exact thresholds used. The
+default thresholds are minimum support 5, probability of improvement 0.80,
+expected regret 0.05, 90% intervals, and maximum interval width 0.80. Clients
+must display abstention and uncertainty rather than converting them into a
+binary good/bad verdict.
+
+The Monte Carlo comparison defaults to 5,000 seeded posterior draws; callers
+can override `posterior_samples` and `posterior_seed` on `analyse_replay`.
 
 Callers provide structured fields and never construct internal action-state keys
 or load component files independently. `model.status` reports which optional

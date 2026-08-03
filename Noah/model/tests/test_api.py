@@ -105,6 +105,7 @@ class ReplayModelApiTests(unittest.TestCase):
                 max_moments=2,
             )
             self.assertEqual(combined["report_type"], "combined_replay_analysis")
+            self.assertIn("probability_decision_classes", combined["summary"])
 
             engagement_report = model.analyse_engagement(
                 {

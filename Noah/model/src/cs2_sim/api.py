@@ -106,6 +106,9 @@ class ReplayModel:
             engagement_path = selected.engagement_model_path or (release / "engagement_model.json")
             engagement_lightgbm_path = selected.engagement_lightgbm_path or (release / "engagement_lightgbm.json")
             candidate_path = selected.candidate_model_path or (release / "candidate_action_value.txt")
+            explicit_engagement_path = selected.engagement_model_path is not None
+            explicit_engagement_lightgbm_path = selected.engagement_lightgbm_path is not None
+            explicit_candidate_path = selected.candidate_model_path is not None
             release_manifest_path = release / "release_manifest.json"
             if release_manifest_path.is_file():
                 from Noah.training.contracts import ModelReleaseManifest
@@ -117,24 +120,39 @@ class ReplayModel:
             ensemble = ReplayValueEnsemble.load(manifest, allow_fallback=selected.allow_fallback)
             action_model = ActionFrequencyModel.load(action_path) if action_path.is_file() else None
             transition_model = ZoneTransitionModel.load(transition_path) if transition_path.is_file() else None
-            engagement_model = EngagementModel.load(engagement_path) if engagement_path.is_file() else None
+            if engagement_path.is_file():
+                engagement_model = EngagementModel.load(engagement_path)
+            elif explicit_engagement_path and not selected.allow_fallback:
+                raise FileNotFoundError(f"configured engagement model does not exist: {engagement_path}")
+            else:
+                engagement_model = None
             engagement_booster = None
             if engagement_lightgbm_path.is_file():
                 try:
                     engagement_booster = EngagementLightGBMBundle.load(engagement_lightgbm_path)
-                except (ImportError, RuntimeError):
+                except (ImportError, RuntimeError, OSError, ValueError, json.JSONDecodeError):
                     # The native LightGBM dependency is optional at runtime;
                     # the statistical artifact remains fully usable.
+                    if not selected.allow_fallback:
+                        raise
                     engagement_booster = None
+            elif explicit_engagement_lightgbm_path and not selected.allow_fallback:
+                raise FileNotFoundError(
+                    f"configured engagement LightGBM model does not exist: {engagement_lightgbm_path}"
+                )
             candidate_model = None
             if candidate_path.is_file():
-                from Noah.training.analysis_harness import load_candidate_model
-
                 try:
+                    from Noah.training.analysis_harness import load_candidate_model
+
                     candidate_model = load_candidate_model(candidate_path)
-                except (ImportError, RuntimeError, ValueError):
+                except (ImportError, RuntimeError, OSError, ValueError, SyntaxError, json.JSONDecodeError):
+                    if not selected.allow_fallback:
+                        raise
                     candidate_model = None
             elif (release / "small_statistical.json").is_file():
+                if explicit_candidate_path and not selected.allow_fallback:
+                    raise FileNotFoundError(f"configured candidate model does not exist: {candidate_path}")
                 candidate_model = SmallStatisticalModel.load(release / "small_statistical.json")
             return cls(
                 ensemble,
@@ -219,16 +237,37 @@ class ReplayModel:
         min_support: int = 5,
         recommendation_margin: float = 0.05,
         sample_every: int = 8,
+        probability_of_improvement_threshold: float = 0.8,
+        expected_regret_threshold: float | None = None,
+        credible_level: float = 0.9,
+        max_interval_width: float = 0.8,
+        posterior_samples: int = 5000,
+        posterior_seed: int = 7,
     ) -> dict[str, Any]:
-        """Run key-moment detection and legal-alternative analysis together."""
+        """Run key-moment and probability-thresholded alternative analysis.
+
+        Legacy ``decision_class`` values remain in the response.  Additive
+        ``probability_decision_class`` fields use uncertainty-aware
+        probability-of-improvement and expected-regret thresholds; ambiguous
+        cases explicitly abstain.
+        """
 
         try:
             from Noah.training.analysis_harness import (
                 HarnessConfig,
                 build_replay_analysis,
             )
+            from Noah.training.recommendations import (
+                ProbabilityLabelThresholds,
+                annotate_probability_labels,
+            )
 
-            return build_replay_analysis(
+            effective_expected_regret = (
+                recommendation_margin
+                if expected_regret_threshold is None
+                else expected_regret_threshold
+            )
+            report = build_replay_analysis(
                 replay,
                 self,
                 candidate_model=self._candidate_model,
@@ -238,6 +277,26 @@ class ReplayModel:
                     min_support=min_support,
                     recommendation_margin=recommendation_margin,
                     sample_every=sample_every,
+                    probability_of_improvement_threshold=probability_of_improvement_threshold,
+                    expected_regret_threshold=effective_expected_regret,
+                    credible_level=credible_level,
+                    max_interval_width=max_interval_width,
+                    posterior_samples=posterior_samples,
+                    posterior_seed=posterior_seed,
+                ),
+            )
+            if report.get("probability_label_schema_version") == "probability_labels_v1":
+                return report
+            return annotate_probability_labels(
+                report,
+                thresholds=ProbabilityLabelThresholds(
+                    min_support=min_support,
+                    probability_of_improvement=probability_of_improvement_threshold,
+                    expected_regret=effective_expected_regret,
+                    credible_level=credible_level,
+                    max_interval_width=max_interval_width,
+                    posterior_samples=posterior_samples,
+                    seed=posterior_seed,
                 ),
             )
         except Exception as exc:
@@ -418,8 +477,8 @@ class ReplayModel:
 
 def _resolve_release(config: ModelConfig) -> Path:
     if config.manifest_path is not None:
-        return config.manifest_path.parent
-    root = config.releases_dir
+        return _resolve_config_path(config.manifest_path).parent
+    root = _resolve_config_path(config.releases_dir)
     if config.version is not None:
         return root / config.version
     pointer = root / "current.json"
@@ -431,6 +490,27 @@ def _resolve_release(config: ModelConfig) -> Path:
         return root / version
     v2 = root / "v2"
     return v2 if v2.is_dir() else root
+
+
+def _resolve_config_path(path: Path) -> Path:
+    """Resolve configured paths from either the repository root or ``Noah``.
+
+    The packaged source lives under ``Noah/model`` while historical commands
+    use ``model/...`` paths.  Prefer the caller's working directory, then the
+    package's repository sibling, so default release loading works in both
+    layouts without changing explicit absolute paths.
+    """
+
+    if path.is_absolute():
+        return path
+    candidates = (
+        Path.cwd() / path,
+        Path(__file__).resolve().parents[3] / path,
+    )
+    for candidate in candidates:
+        if candidate.exists():
+            return candidate
+    return candidates[0]
 
 
 def _action_state_key(*, map_name: str, side: str, zone: str) -> str:

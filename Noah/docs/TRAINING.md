@@ -364,6 +364,24 @@ successfully and run `training.train_full_replay` without `--snapshot-input`.
 
 ## Combined replay analysis
 
+### One-command test
+
+For the normal path, send the extracted replay JSON or JSONL file to the small
+runner. It selects release `v2`, applies the conservative defaults, and writes
+an adjacent `.analysis.json` report:
+
+```powershell
+python Noah/training/test_harness.py data/private/processed/full_replays.jsonl
+```
+
+Use `--record-index 3` for another JSONL record or `--output path/to/report.json`
+to choose the report location. It permits the documented Bayesian/statistical
+fallback when optional native LightGBM dependencies are unavailable. The
+runner is only an input/output wrapper; the analysis logic remains in
+`analysis_harness.py` and the public `ReplayModel.analyse_replay` API.
+
+### Advanced configuration
+
 The deployable runtime can produce one report that combines factual replay
 evidence with estimated alternatives:
 
@@ -390,6 +408,35 @@ The current reconstructed state uses the simulator's default topology. Replay
 nav-area labels are retained, but a map-specific navigation adapter is still
 needed before movement alternatives can be treated as authoritative CS2-legal
 routes; the report records this scope in `candidate_legality`.
+
+### Probability-based decision labels
+
+The combined report keeps the original `decision_class` for compatibility and
+adds a conservative uncertainty-aware label. For each supported observed and
+candidate action it reports:
+
+- `probability_of_improvement`: estimated probability that the best candidate's
+  success probability exceeds the observed action;
+- `expected_regret`: posterior expected positive probability gap;
+- `posterior_comparison`: seeded Beta-posterior Monte Carlo comparison,
+  including the probability of beating the observed action by the configured
+  margin;
+- `credible_intervals`: approximate 90% intervals for the observed and best
+  candidate estimates;
+- `probability_abstention`: threshold values and a reason when evidence is too
+  weak or intervals are too wide.
+
+The default label thresholds are `min_support=5`,
+`probability_of_improvement=0.80`, `expected_regret=0.05`, credible level
+`0.90`, and maximum interval width `0.80`. These labels are estimates from
+observational/simulator support, not proof of a counterfactual. The interval
+method is explicitly marked as a support-proxy normal approximation unless
+posterior success/failure counts are available. `insufficient_evidence` and
+all abstention reasons must remain visible to API and UI clients.
+
+The CLI emits the same additive probability fields. Its Beta comparison uses
+5,000 seeded posterior draws by default; tune this with
+`--posterior-samples` and `--posterior-seed` when trading accuracy for speed.
 
 This keeps the two evaluation questions separate: full-match metrics measure
 round-value prediction, while candidate quality is evaluated later against a

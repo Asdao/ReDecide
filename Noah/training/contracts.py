@@ -16,11 +16,12 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from cs2_sim.core.model import REPLAY_FEATURE_NAMES, snapshot_features
+from cs2_sim.core.model import FEATURE_NAMES, REPLAY_FEATURE_NAMES, snapshot_features
 
 CONTRACT_SCHEMA_VERSION = "feature_contracts_v1"
 SNAPSHOT_FEATURE_SCHEMA_VERSION = 2
 ENGAGEMENT_FEATURE_SCHEMA_VERSION = "engagement_features_v1"
+CANDIDATE_ACTION_FEATURE_SCHEMA_VERSION = "candidate_action_features_v1"
 
 
 @dataclass(frozen=True, slots=True)
@@ -57,6 +58,9 @@ ENGAGEMENT_FIELD_SPECS = (
     FieldSpec("distance", "float", True, 0.0, 0.0, 10000.0),
     FieldSpec("attacker_health", "float", True, 0.0, 0.0, 100.0),
     FieldSpec("victim_health", "float", True, 0.0, 0.0, 100.0),
+)
+CANDIDATE_ACTION_FIELD_SPECS = tuple(
+    FieldSpec(name, "float", True, 0.0) for name in FEATURE_NAMES
 )
 
 
@@ -203,6 +207,7 @@ class ModelReleaseManifest:
         """Validate component containment and optional byte/checksum metadata."""
 
         base = Path(root).resolve()
+        resolved_components: dict[str, Path] = {}
         for name, metadata in self.components.items():
             value = metadata.get("path")
             if not isinstance(value, str) or not value:
@@ -224,10 +229,34 @@ class ModelReleaseManifest:
                 digest = hashlib.sha256(component.read_bytes()).hexdigest()
                 if str(expected_hash).lower() != digest:
                     raise ValueError(f"release component {name!r} checksum mismatch")
+            resolved_components[name] = component
+
+        schema_path = resolved_components.get("feature_schema")
+        if schema_path is not None:
+            try:
+                feature_schema = json.loads(schema_path.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError) as exc:
+                raise ValueError(f"could not read release feature schema: {schema_path}") from exc
+            if not isinstance(feature_schema, Mapping):
+                raise ValueError("release feature schema must be an object")
+            sections = {"replay": "snapshot", "engagement": "engagement", "candidate_action": "candidate_action"}
+            for version_key, section_name in sections.items():
+                expected = self.feature_schema_versions.get(version_key)
+                section = feature_schema.get(section_name)
+                if expected is None or not isinstance(section, Mapping):
+                    continue
+                actual = section.get("schema_version")
+                if str(actual) != str(expected):
+                    raise ValueError(
+                        f"release feature schema mismatch for {version_key}: "
+                        f"manifest={expected!r}, schema={actual!r}"
+                    )
 
 
 __all__ = [
     "CONTRACT_SCHEMA_VERSION",
+    "CANDIDATE_ACTION_FEATURE_SCHEMA_VERSION",
+    "CANDIDATE_ACTION_FIELD_SPECS",
     "ENGAGEMENT_FEATURE_SCHEMA_VERSION",
     "ENGAGEMENT_FIELD_SPECS",
     "SNAPSHOT_FEATURE_SCHEMA_VERSION",

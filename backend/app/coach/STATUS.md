@@ -6,11 +6,13 @@ Owner: Person 3 - AI Coach, Rubric, and Reliability
 
 ## Status
 
-**Not implemented in the new RE:DECIDE path.**
+**Noah analysis connector implemented; RE:DECIDE provider/card layer remains
+separate.**
 
-`backend/app/coach/` currently contains no provider adapter, versioned rubric,
-prompt assembly, structured-output parser, deterministic validators, or fixture
-coach.
+`backend/app/coach/noah_connector.py` accepts one normalized replay mapping and
+forwards it to Noah's deployed `ReplayModel.analyse_replay` facade. The folder
+still contains no provider adapter, versioned rubric, prompt assembly,
+structured-output parser, deterministic validators, or fixture coach.
 
 ## Required input and output
 
@@ -94,6 +96,24 @@ actions are selected by the configured policy. The label is whether the acting
 player's team wins the round. This is why the candidate score is a simulated
 round-value estimate rather than a per-event death hazard.
 
+### Backend connector
+
+The backend coach boundary can call the deployed analysis without importing
+the harness internals:
+
+```python
+from backend.app.coach.noah_connector import NoahCoachConnector
+
+connector = NoahCoachConnector()
+report = connector.analyse(normalized_replay)
+```
+
+`analyse_json` is available for a JSON request body, and `analyze` is an
+American-English alias. The connector validates that the returned object is a
+`combined_replay_analysis` report and wraps load/runtime failures in the stable
+`NoahCoachError`. It does not convert the report into a `DecisionCard` or make
+provider calls.
+
 The harness then compares the observed action with the best supported candidate.
 Its estimated regret is:
 
@@ -103,8 +123,11 @@ best_candidate_round_value - observed_action_round_value
 
 Large positive regret is classified as bad, non-positive regret as good, and
 intermediate or unsupported cases as neutral or insufficient evidence. These
-classifications are legacy simulator-analysis behavior and still require a
-cutoff-safe adapter before they can be used by RE:DECIDE.
+legacy fields remain in the report for compatibility. The probability-based
+fields use seeded Beta-posterior comparisons and require support, a meaningful
+expected gap, and a probability-of-improvement threshold before emitting a
+directional label. Unsupported cases abstain and must remain visible to the
+coach layer.
 
 ## Important paths
 
@@ -116,7 +139,15 @@ data/eval/model/**
 
 ## Tests and validation
 
-No RE:DECIDE coach tests exist in the new path yet.
+The connector tests are in `backend/tests/test_coach_noah_connector.py` and
+cover forwarding, JSON input, invalid input, and stable configuration errors.
+The RE:DECIDE coach contract itself still has no fixture tests in the new path.
+
+The user-facing Noah smoke runner is:
+
+```powershell
+python Noah/training/test_harness.py data/private/processed/full_replays.jsonl
+```
 
 Required coverage includes well-formed fixtures, nonexistent evidence IDs,
 forbidden outcome information, malformed model JSON, low-quality packets,
@@ -130,8 +161,10 @@ contradictory evidence, confidence caps, and safe abstention.
 
 ## Contract/API impact
 
-None implemented. Consume contracts owned by Person 1 and coordinate labels
-with Person 5.
+The Noah connector is an internal model-report adapter only. Consume frozen
+RE:DECIDE contracts owned by Person 1 and coordinate labels with Person 5;
+do not expose the combined report as a `DecisionCard` until that contract is
+implemented.
 
 ## Next handoff
 

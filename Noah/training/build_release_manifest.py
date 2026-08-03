@@ -9,6 +9,8 @@ from pathlib import Path
 from typing import Any
 
 from Noah.training.contracts import (
+    CANDIDATE_ACTION_FEATURE_SCHEMA_VERSION,
+    CANDIDATE_ACTION_FIELD_SPECS,
     ENGAGEMENT_FEATURE_SCHEMA_VERSION,
     ENGAGEMENT_FIELD_SPECS,
     SNAPSHOT_FEATURE_SCHEMA_VERSION,
@@ -31,25 +33,30 @@ def build_release_manifest(release_dir: str | Path, *, version: str | None = Non
         raise FileNotFoundError(root)
     release_version = version or root.name
     feature_schema_path = root / "feature_schema.json"
-    if not feature_schema_path.is_file():
-        feature_schema_path.write_text(
-            json.dumps(
-                {
-                    "schema_version": "feature_contracts_v1",
-                    "snapshot": {
-                        "schema_version": SNAPSHOT_FEATURE_SCHEMA_VERSION,
-                        "fields": [field.to_dict() for field in SNAPSHOT_FIELD_SPECS],
-                    },
-                    "engagement": {
-                        "schema_version": ENGAGEMENT_FEATURE_SCHEMA_VERSION,
-                        "fields": [field.to_dict() for field in ENGAGEMENT_FIELD_SPECS],
-                    },
-                },
-                indent=2,
-            )
-            + "\n",
-            encoding="utf-8",
-        )
+    if feature_schema_path.is_file():
+        payload = json.loads(feature_schema_path.read_text(encoding="utf-8"))
+        if not isinstance(payload, dict):
+            raise ValueError(f"feature schema must be an object: {feature_schema_path}")
+    else:
+        payload = {
+            "schema_version": "feature_contracts_v1",
+            "snapshot": {
+                "schema_version": SNAPSHOT_FEATURE_SCHEMA_VERSION,
+                "fields": [field.to_dict() for field in SNAPSHOT_FIELD_SPECS],
+            },
+            "engagement": {
+                "schema_version": ENGAGEMENT_FEATURE_SCHEMA_VERSION,
+                "fields": [field.to_dict() for field in ENGAGEMENT_FIELD_SPECS],
+            },
+        }
+    # Candidate-action probabilities are consumed by the replay harness and
+    # must be versioned alongside replay/engagement inputs.  Preserve any
+    # existing schema sections while adding this deterministic section.
+    payload["candidate_action"] = {
+        "schema_version": CANDIDATE_ACTION_FEATURE_SCHEMA_VERSION,
+        "fields": [field.to_dict() for field in CANDIDATE_ACTION_FIELD_SPECS],
+    }
+    feature_schema_path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
     components: dict[str, dict[str, Any]] = {}
     known = {
         "full_replay_manifest": "full_replay_value.manifest.json",
@@ -78,7 +85,11 @@ def build_release_manifest(release_dir: str | Path, *, version: str | None = Non
     manifest = ModelReleaseManifest(
         version=release_version,
         components=components,
-        feature_schema_versions={"replay": 2, "engagement": "engagement_features_v1"},
+        feature_schema_versions={
+            "replay": 2,
+            "engagement": ENGAGEMENT_FEATURE_SCHEMA_VERSION,
+            "candidate_action": CANDIDATE_ACTION_FEATURE_SCHEMA_VERSION,
+        },
         dataset_manifest="dataset_manifest.json" if (root / "dataset_manifest.json").is_file() else None,
         metrics="metrics.json" if (root / "metrics.json").is_file() else None,
     )

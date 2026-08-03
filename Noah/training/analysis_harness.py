@@ -7,6 +7,9 @@ The harness has two intentionally separate stages:
 
 Candidate results are estimates, not proof of a counterfactual.  If the state
 cannot be reconstructed or candidate support is too low, the harness abstains.
+Supported comparisons use seeded Beta-posterior draws to estimate the
+probability of meaningful improvement and expected regret; weak comparisons
+remain neutral or insufficient rather than being forced into good/bad labels.
 """
 
 from __future__ import annotations
@@ -27,7 +30,11 @@ from cs2_sim.state import BombState, GameState, PlayerState, Team
 
 from Noah.training.full_features import record_to_rows
 from Noah.training.infer_actions import infer_actions
-from Noah.training.recommendations import rank_candidate_actions
+from Noah.training.recommendations import (
+    ProbabilityLabelThresholds,
+    annotate_probability_labels,
+    rank_candidate_actions,
+)
 
 HARNESS_SCHEMA_VERSION = "replay_analysis_v1"
 
@@ -47,6 +54,12 @@ class HarnessConfig:
     min_support: int = 5
     recommendation_margin: float = 0.05
     sample_every: int = 8
+    probability_of_improvement_threshold: float = 0.8
+    expected_regret_threshold: float | None = None
+    credible_level: float = 0.9
+    max_interval_width: float = 0.8
+    posterior_samples: int = 5000
+    posterior_seed: int = 7
 
     def __post_init__(self) -> None:
         if not 0 < self.moment_threshold <= 1:
@@ -57,6 +70,16 @@ class HarnessConfig:
             raise ValueError("recommendation_margin must be between 0 and 1")
         if self.sample_every <= 0:
             raise ValueError("sample_every must be positive")
+        if not 0.5 < self.probability_of_improvement_threshold < 1.0:
+            raise ValueError("probability_of_improvement_threshold must be between 0.5 and 1")
+        if self.expected_regret_threshold is not None and not 0 <= self.expected_regret_threshold <= 1:
+            raise ValueError("expected_regret_threshold must be between 0 and 1")
+        if not 0 < self.credible_level < 1:
+            raise ValueError("credible_level must be between 0 and 1")
+        if not 0 < self.max_interval_width <= 1:
+            raise ValueError("max_interval_width must be between 0 and 1")
+        if self.posterior_samples <= 0:
+            raise ValueError("posterior_samples must be positive")
 
 
 class CandidateModel(Protocol):
@@ -203,6 +226,32 @@ def _action_support(model: CandidateModel, state: GameState, player_id: str, act
     return int(sum(counts.get(state_key, {}).values()))
 
 
+def _action_outcome_counts(
+    model: CandidateModel,
+    state: GameState,
+    player_id: str,
+    action: Action,
+) -> tuple[int, int] | None:
+    small = getattr(model, "small_model", model)
+    outcomes = getattr(small, "_outcomes", {})
+    state_key_fn = getattr(small, "state_key", None)
+    action_key_fn = getattr(small, "action_key", None)
+    if state_key_fn is None or action_key_fn is None:
+        return None
+    try:
+        state_key = state_key_fn(state, player_id)
+        action_key = action_key_fn(action)
+        values = outcomes.get(state_key, {}).get(action_key)
+    except (KeyError, TypeError, AttributeError):
+        return None
+    if not isinstance(values, (list, tuple)) or len(values) != 2:
+        return None
+    wins, losses = int(values[0]), int(values[1])
+    if wins < 0 or losses < 0:
+        return None
+    return wins, losses
+
+
 def _candidate_model_type(model: CandidateModel | None) -> str:
     if isinstance(model, FullLightGBMModel) and model.is_fitted:
         return "full_lightgbm_blended_with_small_statistical"
@@ -228,6 +277,7 @@ def _candidate_rows(
     for action in legal:
         success = min(1.0, max(0.0, float(scores[action])))
         support = _action_support(model, state, player_id, action)
+        outcome_counts = _action_outcome_counts(model, state, player_id, action)
         rows.append(
             {
                 "action": _action_name(action),
@@ -239,6 +289,14 @@ def _candidate_rows(
                 "entropy": 0.0,
                 "legal": True,
                 "supported": support >= min_support,
+                **(
+                    {
+                        "posterior_successes": outcome_counts[0],
+                        "posterior_failures": outcome_counts[1],
+                    }
+                    if outcome_counts is not None
+                    else {}
+                ),
             }
         )
     return rows, "simulator_action_value"
@@ -419,7 +477,7 @@ def build_replay_analysis(
     classes = defaultdict(int)
     for item in output_moments:
         classes[str(item["decision_class"])] += 1
-    return {
+    base_report = {
         "report_type": "combined_replay_analysis",
         "schema_version": HARNESS_SCHEMA_VERSION,
         "source": report.get("source", "unknown"),
@@ -448,6 +506,22 @@ def build_replay_analysis(
             ),
         },
     }
+    return annotate_probability_labels(
+        base_report,
+        thresholds=ProbabilityLabelThresholds(
+            min_support=settings.min_support,
+            probability_of_improvement=settings.probability_of_improvement_threshold,
+            expected_regret=(
+                settings.recommendation_margin
+                if settings.expected_regret_threshold is None
+                else settings.expected_regret_threshold
+            ),
+            credible_level=settings.credible_level,
+            max_interval_width=settings.max_interval_width,
+            posterior_samples=settings.posterior_samples,
+            seed=settings.posterior_seed,
+        ),
+    )
 
 
 def load_candidate_model(path: str | Path) -> CandidateModel:
@@ -485,6 +559,12 @@ def main() -> int:
     parser.add_argument("--max-moments", type=int, default=25)
     parser.add_argument("--min-support", type=int, default=5)
     parser.add_argument("--recommendation-margin", type=float, default=0.05)
+    parser.add_argument("--probability-of-improvement-threshold", type=float, default=0.8)
+    parser.add_argument("--expected-regret-threshold", type=float, default=None)
+    parser.add_argument("--credible-level", type=float, default=0.9)
+    parser.add_argument("--max-interval-width", type=float, default=0.8)
+    parser.add_argument("--posterior-samples", type=int, default=5000)
+    parser.add_argument("--posterior-seed", type=int, default=7)
     parser.add_argument("--sample-every", type=int, default=8)
     parser.add_argument("--output", type=Path, default=Path("model/artifacts/replay_analysis.json"))
     args = parser.parse_args()
@@ -511,19 +591,63 @@ def main() -> int:
     if not release_dir.is_dir() and Path("Noah").joinpath(release_dir).is_dir():
         release_dir = Path("Noah") / release_dir
     runtime = ReplayModel.load(ModelConfig(releases_dir=release_dir, version=args.version))
-    candidate = load_candidate_model(args.candidate_model) if args.candidate_model else None
-    result = build_replay_analysis(
-        selected,
-        runtime,
-        candidate_model=candidate,
-        config=HarnessConfig(
+    from Noah.training.recommendations import (
+        ProbabilityLabelThresholds,
+        annotate_probability_labels,
+    )
+
+    expected_regret_threshold = (
+        args.recommendation_margin
+        if args.expected_regret_threshold is None
+        else args.expected_regret_threshold
+    )
+    if args.candidate_model:
+        result = build_replay_analysis(
+            selected,
+            runtime,
+            candidate_model=load_candidate_model(args.candidate_model),
+            config=HarnessConfig(
+                moment_threshold=args.moment_threshold,
+                max_moments=args.max_moments,
+                min_support=args.min_support,
+                recommendation_margin=args.recommendation_margin,
+                sample_every=args.sample_every,
+                probability_of_improvement_threshold=args.probability_of_improvement_threshold,
+                expected_regret_threshold=expected_regret_threshold,
+                credible_level=args.credible_level,
+                max_interval_width=args.max_interval_width,
+                posterior_samples=args.posterior_samples,
+                posterior_seed=args.posterior_seed,
+            ),
+        )
+        if result.get("probability_label_schema_version") != "probability_labels_v1":
+            result = annotate_probability_labels(
+                result,
+                thresholds=ProbabilityLabelThresholds(
+                    min_support=args.min_support,
+                    probability_of_improvement=args.probability_of_improvement_threshold,
+                    expected_regret=expected_regret_threshold,
+                    credible_level=args.credible_level,
+                    max_interval_width=args.max_interval_width,
+                    posterior_samples=args.posterior_samples,
+                    seed=args.posterior_seed,
+                ),
+            )
+    else:
+        result = runtime.analyse_replay(
+            selected,
             moment_threshold=args.moment_threshold,
             max_moments=args.max_moments,
             min_support=args.min_support,
             recommendation_margin=args.recommendation_margin,
             sample_every=args.sample_every,
-        ),
-    )
+            probability_of_improvement_threshold=args.probability_of_improvement_threshold,
+            expected_regret_threshold=expected_regret_threshold,
+            credible_level=args.credible_level,
+            max_interval_width=args.max_interval_width,
+            posterior_samples=args.posterior_samples,
+            posterior_seed=args.posterior_seed,
+        )
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(result, indent=2) + "\n", encoding="utf-8")
     print(json.dumps(result["summary"], sort_keys=True))
