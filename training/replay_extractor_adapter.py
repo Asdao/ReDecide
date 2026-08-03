@@ -9,9 +9,9 @@ database, alter training data, or rebuild model artifacts.
 from __future__ import annotations
 
 import sys
-from dataclasses import asdict, is_dataclass
+from dataclasses import is_dataclass
 from pathlib import Path
-from typing import Any, Iterable, Iterator, Mapping
+from typing import Any, Mapping
 
 
 def _load_extractor_normalizer() -> Any:
@@ -82,49 +82,56 @@ def _canonical_to_raw(record: Any) -> dict[str, Any]:
 
     for tick_row in _value(record, "player_ticks", ()) or ():
         row = _payload(tick_row)
-        row.update(
-            {
-                "round_num": _value(tick_row, "round_num", row.get("round_num", 0)),
-                "tick": _value(tick_row, "tick", row.get("tick", 0)),
-                "steamid": _value(tick_row, "player_id", row.get("steamid")),
-                "player_name": _value(tick_row, "player_name", row.get("player_name")),
-                "team_name": _value(tick_row, "side", row.get("team_name")),
-                "X": _value(tick_row, "x", row.get("X")),
-                "Y": _value(tick_row, "y", row.get("Y")),
-                "Z": _value(tick_row, "z", row.get("Z")),
-                "health": _value(tick_row, "health", row.get("health")),
-                "armor_value": _value(tick_row, "armor", row.get("armor_value")),
-                "alive": _value(tick_row, "alive", row.get("alive")),
-                "zone": _value(tick_row, "zone", row.get("zone")),
-            }
-        )
+        _fill(row, "round_num", _value(tick_row, "round_num"))
+        _fill(row, "tick", _value(tick_row, "tick"))
+        _fill(row, "steamid", _value(tick_row, "player_id"))
+        _fill(row, "player_name", _value(tick_row, "player_name"))
+        _fill(row, "team_name", _value(tick_row, "side"))
+        _fill(row, "X", _value(tick_row, "x"))
+        _fill(row, "Y", _value(tick_row, "y"))
+        _fill(row, "Z", _value(tick_row, "z"))
+        _fill(row, "health", _value(tick_row, "health"))
+        # Preserve the parser's original spelling. The trained sidecar data
+        # uses ``armor`` while native Awpy uses ``armor_value``; adding the
+        # other alias would silently change the trained feature distribution.
+        if "armor" not in row and "armor_value" not in row:
+            _fill(row, "armor_value", _value(tick_row, "armor"))
+        _fill(row, "alive", _value(tick_row, "alive"))
+        _fill(row, "zone", _value(tick_row, "zone"))
         raw["ticks"].append(row)
 
     for event_row in _value(record, "events", ()) or ():
         event_type = str(_value(event_row, "event_type", "event")).lower()
         row = _payload(event_row)
-        row.update(
-            {
-                "round_num": _value(event_row, "round_num", row.get("round_num")),
-                "tick": _value(event_row, "tick", row.get("tick")),
-                "attacker_steamid": _value(event_row, "attacker_id", row.get("attacker_steamid")),
-                "victim_steamid": _value(event_row, "victim_id", row.get("victim_steamid")),
-                "steamid": _value(event_row, "actor_id", row.get("steamid")),
-                "attacker_side": _value(event_row, "side", row.get("attacker_side")),
-                "bombsite": _value(event_row, "site", row.get("bombsite")),
-                "weapon": _value(event_row, "weapon", row.get("weapon")),
-                "event": row.get("event") or event_type,
-            }
-        )
-        if event_type == "kill" or event_type.endswith("death"):
+        _fill(row, "round_num", _value(event_row, "round_num"))
+        _fill(row, "tick", _value(event_row, "tick"))
+        _fill(row, "attacker_steamid", _value(event_row, "attacker_id"))
+        _fill(row, "victim_steamid", _value(event_row, "victim_id"))
+        _fill(row, "steamid", _value(event_row, "actor_id"))
+        _fill(row, "attacker_side", _value(event_row, "side"))
+        _fill(row, "bombsite", _value(event_row, "site"))
+        _fill(row, "weapon", _value(event_row, "weapon"))
+        _fill(row, "event", event_type)
+        # ``player_death``, ``player_hurt`` and ``bomb_planted`` are generic
+        # event streams in the source record. They must not be promoted into
+        # kills/damages/bomb because the dedicated streams already contain
+        # those rows.
+        if event_type == "kill":
             raw["kills"].append(row)
-        elif event_type == "damage" or event_type.endswith("hurt"):
+        elif event_type == "damage":
             raw["damages"].append(row)
-        elif event_type == "bomb" or event_type.startswith("bomb"):
+        elif event_type == "bomb":
             raw["bomb"].append(row)
         else:
             raw["events"].setdefault(event_type, []).append(row)
     return raw
+
+
+def _fill(row: dict[str, Any], key: str, value: Any) -> None:
+    """Fill a canonical alias without overwriting parser-native fields."""
+
+    if key not in row and value is not None:
+        row[key] = value
 
 
 def normalize_extractor_record(raw: Any) -> dict[str, Any]:
@@ -166,4 +173,3 @@ def parse_extractor_demo(path: Path, *, tick_interval: int = 32) -> dict[str, An
         _load_extractor_normalizer()
         from replay_extractor.extractor import parse_demo
     return normalize_extractor_record(parse_demo(path, tick_interval=tick_interval))
-

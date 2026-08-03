@@ -23,6 +23,32 @@ python -m training.train_full_replay `
   --snapshot-input data/small/processed/analysis_snapshots.jsonl
 ```
 
+## Sharing the exact same sidecar data
+
+The repository includes `training/sidecars_manifest.json`, a lock file for the
+500 sidecars used by the lightweight pipeline. It records every dataset path,
+byte count, and SHA-256 checksum. A new user can download that exact set with:
+
+```powershell
+$env:PYTHONPATH = "src"
+python -m training.download_dataset locked `
+  --manifest training/sidecars_manifest.json `
+  --output data/small/sidecars
+```
+
+The command reuses a file only when its checksum matches; otherwise it
+re-downloads it and verifies the result. To check an existing directory without
+downloading anything, run:
+
+```powershell
+python -m training.download_dataset verify `
+  --manifest training/sidecars_manifest.json `
+  --input data/small/sidecars
+```
+
+If the upstream selection changes later, regenerate a new manifest explicitly
+with `download_dataset lock`; do not silently replace the checked-in one.
+
 ## SQLite replay database
 
 JSONL remains the portable parser output, but the queryable training store is
@@ -98,6 +124,31 @@ python -m training.test_replay_models `
 
 python -m training.test_replay_models --demo path/to/match.dem --limit 500
 ```
+
+The replacement extractor can be used at the tester boundary as well. This
+normalizes its JSONL in memory and reuses the existing model artifacts; it does
+not rebuild SQLite or retrain either model:
+
+```powershell
+python -m training.test_replay_models `
+  --extractor-input path/to/replacement-extractor.jsonl `
+  --limit 500 `
+  --output models/replay_model_test_extractor.json
+
+python -m training.test_replay_models `
+  --extractor-demo path/to/match.dem `
+  --limit 500
+```
+
+Install the sibling extractor only if needed:
+`python -m pip install -e replay-extractor` (use its optional `full` extra for
+native Awpy parsing).
+
+The adapter preserves the model's existing `record_to_rows` contract, including
+round labels, tick aliases, event stream separation, and parser-native armor
+field names. A regression test compares the resulting feature vectors before
+and after adaptation so extractor changes cannot silently shift the model
+input distribution.
 
 The test report includes held-out replay-value metrics, action counts, and
 nav-region transitions. `training.map_regions` uses the downloaded nav mesh

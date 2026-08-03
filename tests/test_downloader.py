@@ -2,6 +2,7 @@ import io
 import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from typing import ClassVar
 from unittest.mock import patch
 
 from training.download_dataset import (
@@ -9,7 +10,9 @@ from training.download_dataset import (
     _copy_response,
     _next_page_url,
     _validate_repo_path,
+    create_manifest,
     list_dataset_files,
+    verify_manifest,
 )
 
 
@@ -87,7 +90,7 @@ class DownloaderTests(unittest.TestCase):
 
     def test_dataset_listing_can_include_the_repository_root(self) -> None:
         class Response:
-            headers = {}
+            headers: ClassVar[dict[str, str]] = {}
 
             def __enter__(self):
                 return self
@@ -104,3 +107,30 @@ class DownloaderTests(unittest.TestCase):
                 ["demos/a.dem"],
             )
         self.assertIn("/tree/main?", open_url.call_args.args[0].full_url)
+
+    def test_manifest_records_and_verifies_exact_files(self) -> None:
+        with TemporaryDirectory() as directory:
+            root = Path(directory) / "sidecars"
+            (root / "demos" / "match").mkdir(parents=True)
+            (root / "demos" / "match" / "one.analysis.json").write_bytes(b"one")
+            manifest_path = Path(directory) / "manifest.json"
+            manifest = create_manifest(root, manifest_path, dataset_id="org/dataset")
+
+            self.assertEqual(manifest["total_bytes"], 3)
+            self.assertEqual(verify_manifest(root, manifest_path), [])
+
+            (root / "demos" / "match" / "one.analysis.json").write_bytes(b"changed")
+            self.assertEqual(
+                verify_manifest(root, manifest_path),
+                ["size mismatch: demos/match/one.analysis.json (expected 3, got 7)"],
+            )
+
+    def test_manifest_verification_rejects_unexpected_files(self) -> None:
+        with TemporaryDirectory() as directory:
+            root = Path(directory) / "data"
+            root.mkdir()
+            (root / "a.json").write_bytes(b"a")
+            manifest_path = Path(directory) / "manifest.json"
+            create_manifest(root, manifest_path)
+            (root / "extra.json").write_bytes(b"extra")
+            self.assertEqual(verify_manifest(root, manifest_path), ["unexpected: extra.json"])

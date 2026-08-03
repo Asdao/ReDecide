@@ -8,7 +8,9 @@ from training.calibration import PlattCalibrator
 from training.replay_cleaning import CleaningOptions, clean_record
 from training.statistical_baselines import GaussianNaiveBayes, LogisticBaseline
 from training.infer_actions import infer_actions
+from training.full_features import record_to_rows
 from training.map_regions import NavRegionIndex, RadarTransform
+from training.replay_extractor_adapter import normalize_extractor_record
 
 
 class PipelineExtensionTests(unittest.TestCase):
@@ -101,3 +103,51 @@ class PipelineExtensionTests(unittest.TestCase):
             self.assertEqual(index.lookup(50, 50), "nav_area_1")
             transform = RadarTransform({"de_test": {"pos_x": 0, "pos_y": 100, "scale": 2}})
             self.assertEqual(transform.world_to_radar("de_test", 20, 40), (10.0, 30.0, 0.0))
+
+    def test_replacement_extractor_adapter_is_in_memory_only(self) -> None:
+        source = {
+                "parser": "replacement",
+                "demo_file": "sample.dem",
+                "header": {"map_name": "de_mirage", "tick_rate": 10},
+                "rounds": [{"round_num": 1, "start": 0, "end": 20, "winner": "ct"}],
+                "kills": [{
+                    "round_num": 1,
+                    "tick": 0,
+                    "attacker_steamid": "p1",
+                    "victim_steamid": "p2",
+                    "weapon": "ak47",
+                }],
+                "damages": [],
+                "bomb": [],
+                "events": {"weapon_fire": [{"round_num": 1, "tick": 0, "weapon": "ak47"}]},
+                "ticks": [
+                    {
+                        "round_num": 1,
+                        "tick": 0,
+                        "steamid": "p1",
+                        "team_name": "CT",
+                        "X": 10,
+                        "Y": 20,
+                        "health": 100,
+                        "armor": 50,
+                    },
+                    {
+                        "round_num": 1,
+                        "tick": 0,
+                        "steamid": "p2",
+                        "team_name": "T",
+                        "X": 100,
+                        "Y": 120,
+                        "health": 100,
+                        "armor": 25,
+                    },
+                ],
+            }
+        record = normalize_extractor_record(source)
+        self.assertEqual(record["header"]["map_name"], "de_mirage")
+        self.assertEqual(record["ticks"][0]["steamid"], "p1")
+        self.assertEqual(record["rounds"][0]["winner"], "ct")
+        source_rows = record_to_rows(source, sample_every=1, decision_window_seconds=5, include_terminal=False)
+        adapted_rows = record_to_rows(record, sample_every=1, decision_window_seconds=5, include_terminal=False)
+        self.assertEqual(len(source_rows), len(adapted_rows))
+        self.assertEqual([row["features"] for row in source_rows], [row["features"] for row in adapted_rows])

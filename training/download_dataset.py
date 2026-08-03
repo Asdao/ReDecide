@@ -8,6 +8,8 @@ Examples:
         --file demos/shard-example/match/map.dem \
         --output data/full --max-gb 1
     python -m training.download_dataset sidecars --max-files 500
+    python -m training.download_dataset locked \
+        --manifest training/sidecars_manifest.json
 
 The raw demo files are mirrored by the dataset maintainer from public tournament
 sources. Check the source and tournament terms before redistributing them.
@@ -16,6 +18,7 @@ sources. Check the source and tournament terms before redistributing them.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import sys
@@ -31,6 +34,7 @@ DATASET_API = "https://huggingface.co/api/datasets"
 DATASET_RESOLVE = "https://huggingface.co/datasets"
 DEFAULT_MAX_BYTES = 1_000_000_000
 CHUNK_SIZE = 1024 * 1024
+MANIFEST_VERSION = 1
 
 
 class DownloadLimitError(RuntimeError):
@@ -94,6 +98,138 @@ def _validate_repo_path(repo_path: str) -> PurePosixPath:
     return path
 
 
+def _sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as source:
+        for chunk in iter(lambda: source.read(CHUNK_SIZE), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def create_manifest(
+    input_dir: str | Path,
+    manifest_path: str | Path,
+    *,
+    dataset_id: str = DATASET_ID,
+    revision: str = "main",
+) -> dict[str, object]:
+    """Record the exact files in a downloaded dataset subset.
+
+    Paths are stored relative to ``input_dir`` using POSIX separators, so the
+    manifest can be used on Windows, macOS, and Linux alike.  The normal
+    sidecar directory already contains the repository's ``demos/`` prefix.
+    """
+    root = Path(input_dir).resolve()
+    if not root.is_dir():
+        raise FileNotFoundError(f"manifest input directory does not exist: {root}")
+    files = sorted(
+        path
+        for path in root.rglob("*")
+        if path.is_file() and not path.name.endswith(".part")
+    )
+    if not files:
+        raise ValueError(f"manifest input directory is empty: {root}")
+
+    entries: list[dict[str, object]] = []
+    for path in files:
+        relative_path = path.relative_to(root).as_posix()
+        _validate_repo_path(relative_path)
+        entries.append(
+            {
+                "path": relative_path,
+                "bytes": path.stat().st_size,
+                "sha256": _sha256(path),
+            }
+        )
+    manifest = {
+        "manifest_version": MANIFEST_VERSION,
+        "dataset_id": dataset_id,
+        "revision": revision,
+        "files": entries,
+        "total_bytes": sum(int(entry["bytes"]) for entry in entries),
+    }
+    destination = Path(manifest_path)
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    temporary = destination.with_name(f"{destination.name}.part")
+    try:
+        temporary.write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
+        os.replace(temporary, destination)
+    except Exception:
+        if temporary.exists():
+            temporary.unlink()
+        raise
+    return manifest
+
+
+def load_manifest(manifest_path: str | Path) -> dict[str, object]:
+    """Load and validate a locked dataset manifest."""
+    try:
+        manifest = json.loads(Path(manifest_path).read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise ValueError(f"could not read manifest {manifest_path}: {exc}") from exc
+    if not isinstance(manifest, dict) or manifest.get("manifest_version") != MANIFEST_VERSION:
+        raise ValueError("unsupported or missing dataset manifest version")
+    dataset_id = manifest.get("dataset_id")
+    revision = manifest.get("revision", "main")
+    files = manifest.get("files")
+    if not isinstance(dataset_id, str) or not dataset_id:
+        raise ValueError("manifest dataset_id must be a non-empty string")
+    if not isinstance(revision, str) or not revision:
+        raise ValueError("manifest revision must be a non-empty string")
+    if not isinstance(files, list) or not files:
+        raise ValueError("manifest files must be a non-empty list")
+    validated: list[dict[str, object]] = []
+    seen: set[str] = set()
+    for entry in files:
+        if not isinstance(entry, dict):
+            raise TypeError("manifest file entries must be objects")
+        repo_path = entry.get("path")
+        size = entry.get("bytes")
+        digest = entry.get("sha256")
+        if not isinstance(repo_path, str) or repo_path in seen:
+            raise ValueError(f"manifest contains an invalid or duplicate path: {repo_path}")
+        _validate_repo_path(repo_path)
+        if not isinstance(size, int) or size < 0:
+            raise ValueError(f"manifest has invalid byte count for {repo_path}")
+        if not isinstance(digest, str) or len(digest) != 64:
+            raise ValueError(f"manifest has invalid SHA-256 for {repo_path}")
+        seen.add(repo_path)
+        validated.append({"path": repo_path, "bytes": size, "sha256": digest.lower()})
+    manifest["files"] = sorted(validated, key=lambda entry: str(entry["path"]))
+    return manifest
+
+
+def verify_manifest(input_dir: str | Path, manifest_path: str | Path) -> list[str]:
+    """Return differences between a local directory and a locked manifest."""
+    root = Path(input_dir).resolve()
+    manifest = load_manifest(manifest_path)
+    entries = manifest["files"]
+    assert isinstance(entries, list)
+    expected = {str(entry["path"]): entry for entry in entries}
+    actual = {
+        path.relative_to(root).as_posix(): path
+        for path in root.rglob("*")
+        if path.is_file() and not path.name.endswith(".part")
+    } if root.is_dir() else {}
+    differences: list[str] = []
+    for repo_path, entry in expected.items():
+        path = actual.get(repo_path)
+        if path is None:
+            differences.append(f"missing: {repo_path}")
+            continue
+        expected_bytes = int(entry["bytes"])
+        if path.stat().st_size != expected_bytes:
+            differences.append(
+                f"size mismatch: {repo_path} (expected {expected_bytes}, got {path.stat().st_size})"
+            )
+            continue
+        if _sha256(path) != str(entry["sha256"]).lower():
+            differences.append(f"SHA-256 mismatch: {repo_path}")
+    for repo_path in sorted(set(actual) - set(expected)):
+        differences.append(f"unexpected: {repo_path}")
+    return differences
+
+
 def _copy_response(
     response: BinaryIO,
     destination: Path,
@@ -126,6 +262,7 @@ def download_file(
     output_dir: str | Path,
     *,
     dataset_id: str = DATASET_ID,
+    revision: str = "main",
     max_bytes: int = DEFAULT_MAX_BYTES,
     already_downloaded: int = 0,
 ) -> tuple[Path, int]:
@@ -136,7 +273,8 @@ def download_file(
     destination = Path(output_dir).resolve() / Path(*relative_path.parts)
     encoded_id = urllib.parse.quote(dataset_id, safe="/")
     encoded_path = "/".join(urllib.parse.quote(part) for part in relative_path.parts)
-    url = f"{DATASET_RESOLVE}/{encoded_id}/resolve/main/{encoded_path}"
+    encoded_revision = urllib.parse.quote(revision, safe="")
+    url = f"{DATASET_RESOLVE}/{encoded_id}/resolve/{encoded_revision}/{encoded_path}"
 
     try:
         with urllib.request.urlopen(_request(url), timeout=120) as response:
@@ -159,6 +297,7 @@ def download_files(
     output_dir: str | Path,
     *,
     dataset_id: str = DATASET_ID,
+    revision: str = "main",
     max_bytes: int = DEFAULT_MAX_BYTES,
     skip_existing: bool = False,
 ) -> list[Path]:
@@ -176,6 +315,7 @@ def download_files(
             repo_path,
             output_dir,
             dataset_id=dataset_id,
+            revision=revision,
             max_bytes=max_bytes,
             already_downloaded=downloaded,
         )
@@ -183,6 +323,48 @@ def download_files(
         downloaded += size
         print(f"downloaded {repo_path} ({size:,} bytes)")
     print(f"total downloaded: {downloaded:,} bytes")
+    return destinations
+
+
+def download_manifest(
+    manifest_path: str | Path,
+    output_dir: str | Path,
+    *,
+    max_bytes: int = DEFAULT_MAX_BYTES,
+) -> list[Path]:
+    """Download exactly the files in a manifest and verify every checksum."""
+    manifest = load_manifest(manifest_path)
+    dataset_id = str(manifest["dataset_id"])
+    revision = str(manifest.get("revision", "main"))
+    entries = manifest["files"]
+    assert isinstance(entries, list)
+    downloaded = 0
+    destinations: list[Path] = []
+    for entry in entries:
+        repo_path = str(entry["path"])
+        expected_bytes = int(entry["bytes"])
+        expected_sha256 = str(entry["sha256"]).lower()
+        destination = Path(output_dir).resolve() / Path(*_validate_repo_path(repo_path).parts)
+        if destination.exists() and destination.stat().st_size == expected_bytes:
+            if _sha256(destination) == expected_sha256:
+                print(f"already verified: {repo_path}")
+                destinations.append(destination)
+                continue
+            print(f"checksum changed, re-downloading: {repo_path}")
+        destination, size = download_file(
+            repo_path,
+            output_dir,
+            dataset_id=dataset_id,
+            revision=revision,
+            max_bytes=max_bytes,
+            already_downloaded=downloaded,
+        )
+        if size != expected_bytes or _sha256(destination) != expected_sha256:
+            raise RuntimeError(f"checksum verification failed for {repo_path}")
+        destinations.append(destination)
+        downloaded += size
+        print(f"downloaded and verified {repo_path} ({size:,} bytes)")
+    print(f"manifest complete: {len(destinations):,} files, {downloaded:,} bytes downloaded")
     return destinations
 
 
@@ -225,6 +407,32 @@ def _parse_args() -> argparse.Namespace:
     sidecars_parser.add_argument("--min-kills", type=int, default=80)
     sidecars_parser.add_argument("--min-stars", type=int, default=0)
     sidecars_parser.set_defaults(action="sidecars")
+
+    lock_parser = subparsers.add_parser(
+        "lock",
+        help="write a checksum manifest for an existing downloaded directory",
+    )
+    lock_parser.add_argument("--input", required=True, type=Path)
+    lock_parser.add_argument("--output", required=True, type=Path)
+    lock_parser.add_argument("--revision", default="main")
+    lock_parser.set_defaults(action="lock")
+
+    locked_parser = subparsers.add_parser(
+        "locked",
+        help="download exactly the files in a checksum manifest",
+    )
+    locked_parser.add_argument("--manifest", required=True, type=Path)
+    locked_parser.add_argument("--output", default="data/small/sidecars")
+    locked_parser.add_argument("--max-gb", type=float, default=1.0)
+    locked_parser.set_defaults(action="locked")
+
+    verify_parser = subparsers.add_parser(
+        "verify",
+        help="verify a local directory against a checksum manifest",
+    )
+    verify_parser.add_argument("--manifest", required=True, type=Path)
+    verify_parser.add_argument("--input", required=True, type=Path)
+    verify_parser.set_defaults(action="verify")
     return parser.parse_args()
 
 
@@ -233,6 +441,25 @@ def main() -> int:
     if args.command == "list":
         for path in list_dataset_files(args.dataset, path_in_repo=""):
             print(path)
+        return 0
+
+    if args.command == "lock":
+        manifest = create_manifest(
+            args.input,
+            args.output,
+            dataset_id=args.dataset,
+            revision=args.revision,
+        )
+        print(f"manifest written: {args.output} ({len(manifest['files']):,} files)")
+        return 0
+
+    if args.command == "verify":
+        differences = verify_manifest(args.input, args.manifest)
+        if differences:
+            for difference in differences:
+                print(difference, file=sys.stderr)
+            return 2
+        print(f"verified: {args.input} matches {args.manifest}")
         return 0
 
     max_bytes = int(args.max_gb * 1_000_000_000)
@@ -244,6 +471,8 @@ def main() -> int:
         download_files(files, args.output, dataset_id=args.dataset, max_bytes=max_bytes)
     elif args.command == "files":
         download_files(args.files, args.output, dataset_id=args.dataset, max_bytes=max_bytes)
+    elif args.command == "locked":
+        download_manifest(args.manifest, args.output, max_bytes=max_bytes)
     else:
         from training.sidecar_catalog import load_candidates, select_balanced_candidates
 

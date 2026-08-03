@@ -5,3 +5,10 @@ __pycache__/
 data/
 models/*.json
 models/*.txt
+
+# Keep the deployable replay-value model bundle available to users after clone.
+!models/full_replay_value.txt
+!models/full_replay_value.txt.json
+!models/full_replay_value.manifest.json
+!models/full_replay_calibrator.json
+!models/small_snapshot_value.json
