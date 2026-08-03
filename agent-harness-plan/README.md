@@ -52,9 +52,10 @@ requirement:
 If none applies, a manual implementation would mostly reproduce solved
 infrastructure while leaving less time for useful tools and evaluation.
 
-## Proposed deliverable
+## Implemented deliverable
 
-Create a sibling implementation folder later, without changing the simulator:
+The sibling implementation is now present and keeps the simulator in
+`model/src/cs2_sim` while providing a narrow Python bridge:
 
 ```text
 agent-harness/
@@ -112,4 +113,3 @@ It proves the whole loop without granting shell access or introducing a web UI.
 - [Pi skills](https://pi.dev/docs/latest/skills)
 - [Pi security model](https://pi.dev/docs/latest/security)
 - [Pi containerization options](https://pi.dev/docs/latest/containerization)
-

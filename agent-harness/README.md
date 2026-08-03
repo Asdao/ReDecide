@@ -18,6 +18,11 @@ The CLI defaults to `src/cs2_sim/agent_bridge.py` inside this folder, uses the
 `simulate_round` tool only, and disables Pi built-in shell/filesystem tools.
 Override paths with `--bridge`, `--cwd`, `--python`, and `--skill-dir`.
 
+The bridge is a transport boundary, not the Python domain API. Python callers
+should use the package-root facades documented in
+[`../docs/MODULE_API.md`](../docs/MODULE_API.md); the harness invokes only the
+bounded bridge contract.
+
 Model selection and credentials can be supplied through environment variables
 or a local `.env` file. See [Getting started](docs/GETTING_STARTED.md) and
 [`.env.example`](.env.example). The CLI never prints API keys.

@@ -20,8 +20,12 @@ reproduce aiming, physics, or exact player movement.
 - Keep file and network I/O outside the simulation core.
 - Start with the Python standard library; add a model dependency only when the
   baseline simulation works.
+- Expose each domain through one package-level facade with a frozen config,
+  typed results, and a module-specific error type.
+- Treat files below `training/`, `extractor/`, and `model/` as implementation
+  details unless they are explicitly exported from the package root.
 
-## Proposed structure
+## Current structure
 
 ```text
 GHackathon/
@@ -33,6 +37,7 @@ GHackathon/
 |   |-- src/
 |   |   `-- cs2_sim/
 |   |       |-- __init__.py
+|   |       |-- api.py                    # ReplayModel facade
 |   |       |-- config.py               # Tick and decision interval configuration
 |   |       |-- state.py                # GameState, PlayerState, Team, BombState
 |   |       |-- actions.py              # Action types, durations, completion rules
@@ -43,17 +48,21 @@ GHackathon/
 |   |       |-- bayesian_policy.py      # Optional learned action probabilities
 |   |       `-- simulator.py            # Simulation loop and action interruption
 |-- training/
-|   |-- __init__.py
+|   |-- __init__.py                 # TrainingPipeline facade exports
+|   |-- api.py                      # Stable training boundary
 |   |-- download_dataset.py         # Stream small metadata or full demos with a byte cap
 |   |-- extract_features.py         # Converts compact match data into examples
-|   |-- train_policy.py             # Fits and saves Bayesian probability tables
+|   |-- train_snapshot_model.py     # Trains the Bayesian snapshot model
+|   |-- train_full_replay.py        # Trains the replay-value ensemble
 |   `-- train_models.py             # Monitored simulator-bootstrap training
 |-- data/                           # Downloaded data; ignored by Git
 |   |-- small/metadata/
 |   `-- full/
 |-- extractor/                     # Standalone replay parsing package
+|   `-- src/replay_extractor/api.py # ReplayExtractor facade
 |-- model/artifacts/               # Generated model data; ignored by Git
-`-- model/tests/                   # Runtime and model tests
+|-- model/tests/                   # Runtime and model tests
+`-- extractor/tests/               # Extractor contract tests
 ```
 
 Do not create all modules with placeholder code at once. Add them in the order
@@ -149,9 +158,13 @@ The detailed algorithm choices and evaluation criteria are documented in
 
 ## Implementation milestones
 
+Milestones 1 through 5 are implemented in `model/src/cs2_sim`. The current
+application boundary is `cs2_sim.ReplayModel`; the remaining milestone text is
+retained as design rationale for future simulator and policy extensions.
+
 ### 1. Domain model
 
-Create the enums and immutable value objects in `state.py`, `actions.py`, and
+The enums and immutable value objects in `state.py`, `actions.py`, and
 `events.py`. Add validation for impossible values such as negative health.
 
 Done when state objects can represent a simple five-versus-five round and their
@@ -159,14 +172,15 @@ tests pass.
 
 ### 2. Rules engine
 
-Implement pure functions in `rules.py` for legal actions and round results.
+Pure functions in `rules.py` provide legal actions and round results.
 Include elimination, timer expiry, bomb detonation, and defusal.
 
 Done when tests cover both valid and invalid actions and every round-ending path.
 
 ### 3. Action timing
 
-Implement action start, progress, completion, timeout, and interruption. Keep the
+Action start, progress, completion, timeout, and interruption are implemented.
+Keep the
 clock virtual and expose action outcomes as events.
 
 Done when tests demonstrate that a normal action ends on time and is interrupted
@@ -174,7 +188,7 @@ immediately by contact or damage.
 
 ### 4. Baseline policy
 
-Implement `ActionPolicy` and the seeded rule-based policy. Require policies to
+`ActionPolicy` and the seeded rule-based policy are implemented. Policies must
 choose only from actions supplied by the rules engine.
 
 Done when the same seed and initial state produce the same sequence of actions.

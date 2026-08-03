@@ -21,12 +21,20 @@ pnpm dev -- --prompt "Run seed 7 for the example scenario with the baseline poli
 
 Use the [tool protocol](TOOLS.md) for the current JSON contract. Do not call the planned tools below until their bridge operation and tests have been added.
 
-## Target module boundaries
+## Current and target module boundaries
 
-Keep the pipeline in the package, but separate it from Pi-specific adapters:
+The implemented repository boundaries are:
 
 ```text
-src/cs2_sim/       deterministic rules, state, actions, events
+model/src/cs2_sim/  deterministic rules, state, actions, events, ReplayModel facade
+extractor/src/      replay_extractor parsing, normalization, and segmentation
+training/           TrainingPipeline facade and offline data/model workflows
+agent-harness/src/  Pi-specific TypeScript adapters and local Python bridge
+```
+
+Keep future analysis orchestration separate from these stable facades:
+
+```text
 src/analysis/      timeline, pivotal-event detection, state diff, win score
 src/pipeline/      demo -> replay -> report orchestration
 src/tools/         policy-checked Pi adapters around bounded use cases
@@ -34,7 +42,12 @@ skills/            reviewed instructions for explaining reports
 web/ or server/    future HTTP/SSE wrapper; no simulator logic
 ```
 
-The same pipeline library can serve a CLI, Pi session, test runner, and future webapp. A separate deployable service is unnecessary until scale or isolation requires one.
+Application code should call `ReplayModel`, `ReplayExtractor`, and
+`TrainingPipeline` from their package roots. It should not reach into model
+component files, extractor repositories, or training scripts directly. The
+same facade-backed library can serve a CLI, Pi session, test runner, and future
+webapp. A separate deployable service is unnecessary until scale or isolation
+requires one.
 
 ## Recommended execution flow
 

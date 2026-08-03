@@ -4,6 +4,12 @@ The analyser has two interchangeable profiles. Both expose the existing
 `ActionPolicy` interface, so the simulator and future API do not need to know
 which model is selected.
 
+Application code should load deployed replay artifacts through
+`cs2_sim.ReplayModel` from the package root. Use `ModelConfig` to select an
+active release and `allow_fallback=True` only when Bayesian-only degraded mode
+is explicitly acceptable. The complete facade contract is in
+[`docs/MODULE_API.md`](MODULE_API.md).
+
 The matching data layout is:
 
 ```text

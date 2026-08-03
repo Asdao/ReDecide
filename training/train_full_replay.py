@@ -54,6 +54,7 @@ def train(
     seed: int,
     validation_fraction: float = 0.2,
     small_model_output: Path | None = None,
+    verbose: bool = True,
 ) -> None:
     rows: list[dict[str, Any]] = []
     event_only_rows = 0
@@ -344,9 +345,10 @@ def train(
             }
         )
         manifest_path.write_text(json.dumps(manifest_payload, indent=2) + "\n", encoding="utf-8")
-    print(f"[full] rows={len(rows)} train={len(dev_rows)} test={len(test_rows)}")
-    print(f"[full] saved {output_path}")
-    print(f"[full] held-out test {json.dumps(validation_metrics, sort_keys=True)}")
+    if verbose:
+        print(f"[full] rows={len(rows)} train={len(dev_rows)} test={len(test_rows)}")
+        print(f"[full] saved {output_path}")
+        print(f"[full] held-out test {json.dumps(validation_metrics, sort_keys=True)}")
 
 
 def main() -> int:

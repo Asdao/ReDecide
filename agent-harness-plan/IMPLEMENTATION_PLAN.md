@@ -6,6 +6,10 @@ Build a local, single-agent proof of concept that can load project skills and
 call safe CS2 simulator tools. It does not need a browser UI, multi-agent
 coordination, remote deployment, write-capable tools, or arbitrary shell access.
 
+The planned proof of concept is implemented in `agent-harness/`. Its Python
+bridge discovers the simulator under `model/src/cs2_sim`; direct Python domain
+callers use the package-root facades documented in `docs/MODULE_API.md`.
+
 ## Phase 0: Decision checks
 
 Before implementation, confirm:
@@ -19,7 +23,7 @@ Exit criterion: no requirement forces a Python-only/manual runtime.
 
 ## Phase 1: Prove Pi in isolation
 
-Create `agent-harness/` as its own TypeScript package.
+`agent-harness/` is its own TypeScript package.
 
 Tasks:
 
@@ -42,7 +46,7 @@ Estimated effort: half a day.
 
 Tasks:
 
-1. Add `src/cs2_sim/agent_bridge.py` with a fixed operation dispatch table.
+1. `src/cs2_sim/agent_bridge.py` provides a fixed operation dispatch table.
 2. Implement `simulate_round` using the existing `Simulator`, `SimConfig`, and
    policy classes.
 3. Define versioned request, success, and error envelopes.
@@ -165,4 +169,3 @@ utility.
 - Timeouts, cancellation, and output bounds are tested.
 - No secrets, sessions, or generated audit logs are committed.
 - Architecture and migration boundaries match `ARCHITECTURE.md`.
-

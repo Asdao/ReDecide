@@ -3,6 +3,10 @@
 The lightweight pipeline uses parsed `.analysis.json` sidecars. It does not
 download the very large `.dem` file for every match.
 
+For application code, use `training.TrainingPipeline` as documented in
+[`docs/MODULE_API.md`](MODULE_API.md). The commands below remain the supported
+shell interface for individual pipeline stages.
+
 ## One complete run
 
 Use the project Python and set `PYTHONPATH` first:
@@ -30,7 +34,7 @@ The repository includes `training/sidecars_manifest.json`, a lock file for the
 byte count, and SHA-256 checksum. A new user can download that exact set with:
 
 ```powershell
-$env:PYTHONPATH = "src"
+$env:PYTHONPATH = "model/src"
 python -m training.download_dataset locked `
   --manifest training/sidecars_manifest.json `
   --output data/small/sidecars
@@ -129,10 +133,10 @@ At runtime, load the single manifest and use the Bayesian fallback if the
 optional LightGBM native library is unavailable:
 
 ```python
-from cs2_sim.core.model import ReplayValueEnsemble
+from cs2_sim import ModelConfig, ReplayModel
 
-model = ReplayValueEnsemble.load("model/artifacts/releases/v2/full_replay_value.manifest.json")
-prediction = model.predict_ct_win(snapshot)
+model = ReplayModel.load(ModelConfig(version="v2"))
+prediction = model.predict_probability(snapshot)
 ```
 
 To install and activate a verified local release bundle:

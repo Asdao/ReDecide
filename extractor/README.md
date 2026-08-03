@@ -36,6 +36,22 @@ python -m pip install -e "extractor[full]"
 
 ## Usage
 
+For application code, use the package-root facade. It keeps parser, schema, and
+storage details behind one stable object:
+
+```python
+from replay_extractor import ExtractorConfig, ReplayExtractor
+
+extractor = ReplayExtractor(ExtractorConfig(tick_interval=32))
+replay = extractor.parse("match.dem")
+segments = extractor.segment(replay)
+```
+
+Use `parse_batch()` and `ingest()` for directory and JSONL workflows. Their
+typed results contain output paths, counts, and vault statistics. Catch
+`ExtractorError` at application boundaries. See
+[`docs/MODULE_API.md`](../docs/MODULE_API.md) for the complete contract.
+
 Parse native demos into JSONL (Awpy required):
 
 ```powershell
@@ -63,6 +79,7 @@ python -m replay_extractor.cli stats `
 ## Data boundaries
 
 - `extractor.py` reads `.dem` files or sidecar records and emits JSONL.
+- `api.py` exposes the stable `ReplayExtractor` facade.
 - `normalize.py` converts parser-specific fields into stable records.
 - `segmenter.py` creates round, event, player-tick, and heatmap projections.
 - `repository.py` owns SQLite persistence and bounded lookup queries.

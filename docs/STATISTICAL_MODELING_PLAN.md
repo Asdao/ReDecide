@@ -21,9 +21,14 @@ The first two model profiles are now available under `model/src/cs2_sim/core/mod
 - `FullLightGBMModel`: optional LightGBM scorer blended with the small model;
 - `features.py`: one shared feature schema for training and inference.
 
-The full profile still needs replay parsing and labelled `TrainingExample` rows
-before it can produce a trained artifact. This keeps model code separate from
-the dataset-specific parser.
+The stable runtime boundary is `cs2_sim.ReplayModel`; callers do not load these
+component classes or artifact files directly. Training is exposed through
+`training.TrainingPipeline`, and replay parsing through
+`replay_extractor.ReplayExtractor`.
+
+The full profile is trained from replay-derived labelled rows and saved as a
+versioned artifact bundle. Training remains separate from the dataset-specific
+parser; runtime callers load the bundle through `ReplayModel`.
 
 The snapshot path is now available through `training/train_snapshot_model.py`.
 It trains `SnapshotValueModel` from `analysis_snapshots.jsonl`; this is a round-

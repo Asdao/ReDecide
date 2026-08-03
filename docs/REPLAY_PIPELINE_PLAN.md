@@ -24,11 +24,15 @@ larger Bayesian prior.
 - Round-value and action-value models remain separate modules.
 - Every model artifact includes its feature schema, cleaning version, split,
   metrics, and random seed.
+- Application code uses the package-root facades `ReplayExtractor`,
+  `TrainingPipeline`, and `ReplayModel`; implementation modules remain
+  replaceable behind those boundaries.
 
-## Intended module layout
+## Current module layout
 
 ```text
 training/
+|-- api.py                      # Stable TrainingPipeline facade
 |-- audit_replays.py          # Read-only data-quality report
 |-- replay_cleaning.py        # Shared cleaning policy and pure functions
 |-- build_replay_db.py        # JSONL -> versioned SQLite database
@@ -40,14 +44,26 @@ training/
 |-- calibrate_model.py        # Platt or beta calibration
 `-- evaluate_models.py        # Grouped comparison and reports
 
-model/src/cs2_sim/core/model/
-|-- replay_value.py           # Deployable Bayesian + LightGBM ensemble
-|-- action_value.py           # Future action recommendation model
-`-- transitions.py            # Future first-order Markov movement model
+extractor/src/replay_extractor/
+|-- api.py                     # Stable ReplayExtractor facade
+|-- extractor.py               # Parser adapters and JSONL helpers
+|-- normalize.py               # Canonical record conversion
+`-- segmenter.py               # Ordered projections and heatmaps
+
+model/src/cs2_sim/
+|-- api.py                     # Stable ReplayModel facade
+`-- core/model/
+    |-- replay_value.py        # Deployable Bayesian + LightGBM ensemble
+    |-- action_value.py        # Observed movement-tendency model
+    `-- transitions.py         # Future first-order Markov movement model
+
+model/artifacts/releases/      # Versioned runtime bundles
 ```
 
-The existing `cs2_sim.models` package remains as a compatibility shim while
-new model code is added under `cs2_sim.core.model`.
+The existing `cs2_sim.models` package remains as a compatibility shim. Runtime
+callers should import `ReplayModel` from `cs2_sim`; training callers should use
+`TrainingPipeline` from `training`; extraction callers should use
+`ReplayExtractor` from `replay_extractor`.
 
 ## Implementation status
 
@@ -64,14 +80,16 @@ The first implementation pass is complete through action inference:
 - `ReplayValueEnsemble` provides Bayesian fallback, blending, calibration, and
   uncertainty; and
 - fixed-window movement labels plus Dirichlet action and zone-transition
-  models are available.
+  models are available; and
+- the three package-root OOP facades and their contract tests are available.
 
 The remaining work is deeper feature quality (utility/visibility/weapon state)
 and larger-scale action-value validation once more native demos are available.
 
-## Phase 1: Audit and cleaning
+## Phase 1: Audit and cleaning (implemented)
 
-Create `training/audit_replays.py` and `training/replay_cleaning.py`.
+The audit and cleaning modules are implemented in
+`training/audit_replays.py` and `training/replay_cleaning.py`.
 
 Audit checks:
 
@@ -108,7 +126,7 @@ excluded row has a counted reason.
 
 ## Phase 2: Canonical SQLite schema
 
-Upgrade `training/build_replay_db.py` to schema version 2.
+`training/build_replay_db.py` implements schema version 2.
 
 Tables:
 
@@ -141,8 +159,8 @@ training keys.
 
 ## Phase 3: Connect SQLite to training
 
-Create `training/replay_repository.py` and change
-`training/train_full_replay.py` to accept:
+`training/replay_repository.py` exists, and
+`training/train_full_replay.py` accepts:
 
 ```powershell
 python -m training.train_full_replay `
@@ -218,7 +236,8 @@ the simplest model that satisfies the selection rules.
 
 ## Phase 5: Deployable replay-value ensemble
 
-Create `model/src/cs2_sim/core/model/replay_value.py`.
+`model/src/cs2_sim/core/model/replay_value.py` provides the deployable replay
+value implementation behind the `ReplayModel` facade.
 
 The class must:
 
@@ -230,8 +249,8 @@ The class must:
 - fall back to the Bayesian model when the booster is unavailable; and
 - load one manifest rather than several unrelated files.
 
-This closes the current gap where validation blends the models but the saved
-runtime artifact contains only the LightGBM booster.
+The saved release manifest now records the Bayesian model, booster, optional
+calibrator, feature schema, and checksums as one runtime bundle.
 
 Done when a round-trip test saves, loads and reproduces the same probability.
 
@@ -239,17 +258,10 @@ Done when a round-trip test saves, loads and reproduces the same probability.
 
 Do not train action recommendations directly from round-winner rows.
 
-Create player-level fixed-window labels from native ticks:
-
-- hold;
-- move to adjacent zone;
-- rotate;
-- peek/engage;
-- retreat;
-- throw utility;
-- plant;
-- defuse; and
-- save.
+Player-level fixed-window labels from native ticks are implemented by
+`training/infer_actions.py`. The current deterministic labels are `hold` and
+`move`; richer labels such as peeking, rotating, utility use, planting, and
+defusing require additional reliable event and inventory evidence.
 
 Start with a two-second action window and make it configurable. Each action row
 must include the state before the action, the observed action, the legal action

@@ -129,9 +129,9 @@ python -m training.test_replay_models `
 Load the deployable ensemble in Python:
 
 ```python
-from cs2_sim.core.model import ReplayValueEnsemble
+from cs2_sim import ModelConfig, ReplayModel
 
-model = ReplayValueEnsemble.load("model/artifacts/releases/v2/full_replay_value.manifest.json")
+model = ReplayModel.load(ModelConfig(version="v2"))
 prediction = model.predict(snapshot)
 print(prediction.probability, prediction.uncertainty)
 ```
@@ -151,6 +151,18 @@ smoke check.
 - `docs/` — detailed plans, training notes, reliability guidance, and target
   analysis architecture.
 - `training/tests/`, `model/tests/`, and `extractor/tests/` — tests grouped by ownership.
+
+## Programmatic API
+
+Application code should use the object-oriented facades exported by each package:
+
+- `replay_extractor.ReplayExtractor` for parsing and normalization.
+- `training.TrainingPipeline` for database preparation and training.
+- `cs2_sim.ReplayModel` for runtime inference.
+
+The supported imports, lifecycle, error types, and examples are documented in
+[`docs/MODULE_API.md`](docs/MODULE_API.md). Lower-level files remain available to
+the facades and CLI commands but are not the stable application interface.
 
 ## What is not implemented yet
 
