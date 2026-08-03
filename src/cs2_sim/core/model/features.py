@@ -8,8 +8,8 @@ silently drifting apart.
 from __future__ import annotations
 
 from ._types import ActionLike
-from ..actions import ActionType
-from ..state import DEFAULT_ADJACENCY, BombState, GameState
+from ...actions import ActionType
+from ...state import DEFAULT_ADJACENCY, BombState, GameState
 
 
 _ZONES = tuple(

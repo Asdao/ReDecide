@@ -8,7 +8,7 @@ import random
 from pathlib import Path
 from typing import Any
 
-from cs2_sim.models import SnapshotValueModel
+from cs2_sim.core.model import SnapshotValueModel
 from training.full_features import (
     FULL_FEATURE_NAMES,
     record_to_event_rows,

@@ -1,19 +1,8 @@
-"""Model profiles for the CS2 analyser."""
+"""Backward-compatible import path for :mod:`cs2_sim.core.model`.
 
-from .features import FEATURE_NAMES, feature_dict, state_action_features
-from .full import FullLightGBMModel, TrainingExample
-from .profiles import ModelProfile, create_model
-from .small import SmallStatisticalModel
-from .snapshot import SnapshotValueModel
+New code should import models from ``cs2_sim.core.model``.  Keeping this
+shim avoids breaking existing notebooks and downstream integrations.
+"""
 
-__all__ = [
-    "FEATURE_NAMES",
-    "FullLightGBMModel",
-    "ModelProfile",
-    "SmallStatisticalModel",
-    "SnapshotValueModel",
-    "TrainingExample",
-    "create_model",
-    "feature_dict",
-    "state_action_features",
-]
+from cs2_sim.core.model import *  # noqa: F401,F403
+from cs2_sim.core.model import __all__

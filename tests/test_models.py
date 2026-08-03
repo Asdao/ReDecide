@@ -2,12 +2,13 @@ import unittest
 from tempfile import TemporaryDirectory
 
 from cs2_sim.actions import Action, ActionType
-from cs2_sim.models import (
+from cs2_sim.core.model import (
     FullLightGBMModel,
     SmallStatisticalModel,
     SnapshotValueModel,
     TrainingExample,
 )
+from cs2_sim.models import SnapshotValueModel as LegacySnapshotValueModel
 from cs2_sim.state import BombState, GameState, PlayerState, Team
 from training.train_models import small_decision_metrics
 
@@ -68,6 +69,9 @@ class ModelTests(unittest.TestCase):
         model.observe(snapshot)
         self.assertEqual(model.sample_count(snapshot), 1)
         self.assertGreater(model.predict_ct_win(snapshot), 0.5)
+
+    def test_legacy_model_import_path_is_compatible(self) -> None:
+        self.assertIs(SnapshotValueModel, LegacySnapshotValueModel)
 
     def test_snapshot_model_backs_off_for_an_unseen_exact_state(self) -> None:
         model = SnapshotValueModel()

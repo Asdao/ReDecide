@@ -13,5 +13,5 @@ requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools]
-packages = ["cs2_sim", "cs2_sim.models", "training"]
+packages = ["cs2_sim", "cs2_sim.core", "cs2_sim.core.model", "cs2_sim.models", "training"]
 package-dir = {"cs2_sim" = "src/cs2_sim", "training" = "training"}

@@ -15,7 +15,7 @@ outcomes and player behaviour; they do not replace deterministic rules.
 
 ## Current implementation status
 
-The first two model profiles are now available under `src/cs2_sim/models/`:
+The first two model profiles are now available under `src/cs2_sim/core/model/`:
 
 - `SmallStatisticalModel`: dependency-free Beta/Dirichlet scorer with entropy;
 - `FullLightGBMModel`: optional LightGBM scorer blended with the small model;

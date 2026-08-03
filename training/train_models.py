@@ -23,7 +23,7 @@ from pathlib import Path
 from cs2_sim.actions import Action
 from cs2_sim.baseline_policy import BaselinePolicy
 from cs2_sim.config import SimConfig
-from cs2_sim.models import FullLightGBMModel, SmallStatisticalModel, TrainingExample
+from cs2_sim.core.model import FullLightGBMModel, SmallStatisticalModel, TrainingExample
 from cs2_sim.policy import ActionPolicy
 from cs2_sim.rules import legal_actions
 from cs2_sim.simulator import Simulator

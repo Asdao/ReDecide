@@ -12,9 +12,9 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable, Sequence
 
-from ..actions import Action
-from ..policy import ActionPolicy
-from ..state import GameState
+from ...actions import Action
+from ...policy import ActionPolicy
+from ...state import GameState
 from .features import FEATURE_NAMES, state_action_features
 from .small import SmallStatisticalModel
 

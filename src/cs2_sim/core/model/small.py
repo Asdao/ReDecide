@@ -12,10 +12,10 @@ import math
 from pathlib import Path
 from typing import Iterable
 
-from ..actions import Action
-from ..bayesian_policy import BayesianPolicy
-from ..policy import ActionPolicy
-from ..state import GameState
+from ...actions import Action
+from ...bayesian_policy import BayesianPolicy
+from ...policy import ActionPolicy
+from ...state import GameState
 
 
 class SmallStatisticalModel(ActionPolicy):

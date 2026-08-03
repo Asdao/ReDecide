@@ -23,6 +23,22 @@ python -m training.train_full_replay `
   --snapshot-input data/small/processed/analysis_snapshots.jsonl
 ```
 
+## SQLite replay database
+
+JSONL remains the portable parser output, but the queryable training store is
+SQLite. Build it after native parsing:
+
+```powershell
+python -m training.build_replay_db `
+  --input data/full/processed/full_replays.jsonl `
+  --output data/full/processed/cs2_replays.sqlite `
+  --replace
+```
+
+The database contains `replays`, `rounds`, and leakage-safe `snapshots` tables,
+with indexes for map/round and replay/round queries. It uses Python's built-in
+`sqlite3`, so no database server is required.
+
 The downloader reads the compact metadata already stored under
 `data/small/metadata`. It rejects incomplete maps by requiring at least 16
 rounds and 80 kills, ranks higher-star/recent matches first, and selects maps

@@ -1,0 +1,8 @@
+node_modules/
+dist/
+.audit/
+*.log
+.env
+sessions/
+__pycache__/
+*.pyc

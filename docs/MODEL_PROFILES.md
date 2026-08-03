@@ -40,7 +40,7 @@ pip install -e ".[full]"
 
 The model is trained on one row per `(state, candidate_action)` and a binary
 success label. Training examples are represented by
-`cs2_sim.models.TrainingExample`. The native LightGBM dependency is imported
+`cs2_sim.core.model.TrainingExample`. The native LightGBM dependency is imported
 only when `fit()` or `load()` is called. Pass a separately trained
 `SmallStatisticalModel` into the constructor so the two dataset tiers remain
 independent; the full model then combines both predictions at inference time.
@@ -48,7 +48,7 @@ independent; the full model then combines both predictions at inference time.
 ## Selecting a profile
 
 ```python
-from cs2_sim.models import create_model
+from cs2_sim.core.model import create_model
 
 model = create_model("small")  # current compact data
 model = create_model("full")   # larger replay dataset after parsing
