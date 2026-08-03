@@ -134,6 +134,83 @@ over a fixed two-second window. They are not claims about a strategically
 optimal or “best” CS2 move; the held-out action report makes that distinction
 explicit.
 
+Combat engagement windows are available as a separate, additive export. They
+anchor on damage events (or kills when no damage table exists) and emit one row
+per participant. Features stop at the anchor tick; `label_kill`,
+`label_death`, `label_trade`, `survived_after_kill`, and `round_won` inspect
+only later events inside the configured horizon. The output describes observed
+outcomes, not a tactical recommendation:
+
+```powershell
+python -m training.engagement_windows `
+  --input data/private/processed/full_replays.jsonl `
+  --output data/private/processed/engagement_windows.jsonl `
+  --horizon-seconds 1 2 5
+```
+
+This writes `engagement_windows_1s.jsonl`, `engagement_windows_2s.jsonl`, and
+`engagement_windows_5s.jsonl`. Existing SQLite events can be read directly
+with `--database`; no database rebuild or model retraining is performed.
+
+Train the dependency-free engagement prior with a whole-match held-out split:
+
+```powershell
+python -m training.train_engagement_model `
+  --input data/private/processed/engagement_windows_2s.jsonl `
+  --output model/artifacts/releases/v2/engagement_model.json `
+  --metrics model/artifacts/releases/v2/engagement_metrics.json
+```
+
+The trainer reports kill/death/trade log loss, Brier score, calibration, and
+improvement over the training prior. Sparse trade/survival targets use a
+stronger empirical-Bayes prior; this avoids treating one observed duel as a
+reliable tactical rule. If the full dependencies are installed, optional
+shallow LightGBM heads use the same grouped split:
+
+```powershell
+python -m training.train_engagement_lightgbm `
+  --input data/private/processed/engagement_windows_2s.jsonl `
+  --output model/artifacts/releases/v2/engagement_lightgbm.json `
+  --metrics model/artifacts/releases/v2/engagement_lightgbm_metrics.json
+```
+
+Refresh the checksummed release manifest after changing an artifact:
+
+```powershell
+python -m training.build_release_manifest `
+  --release model/artifacts/releases/v2
+```
+
+## Compact Parquet exports and dataset registry
+
+SQLite remains the canonical training store. When a portable, typed projection
+is useful, stream it into a new directory without loading the whole database:
+
+```powershell
+python -m training.export_parquet `
+  --database data/private/databases/cs2_replays_v2.sqlite `
+  --output data/private/features/replay-v1 `
+  --dataset-id replay-v1 `
+  --role training `
+  --visibility private `
+  --registry data/private/dataset_registry.json
+```
+
+The export writes `snapshots.parquet`, `actions.parquet`, and `metadata.json`.
+Rows retain `match_id` and replay/round/tick identity; model inputs are typed
+`feature_*` columns. Public exports omit raw source paths while retaining a
+stable source hash. The registry records checksums, row counts, feature/schema
+versions, source metadata, rejection reasons, and match groups. Its roles are
+`training`, `validation`, `benchmark`, and `rejected`; it rejects a match group
+appearing in more than one role:
+
+```powershell
+python -m training.dataset_registry validate `
+  --registry data/private/dataset_registry.json
+python -m training.dataset_registry list `
+  --registry data/private/dataset_registry.json
+```
+
 At runtime, load the single manifest and use the Bayesian fallback if the
 optional LightGBM native library is unavailable:
 
@@ -142,7 +219,13 @@ from cs2_sim import ModelConfig, ReplayModel
 
 model = ReplayModel.load(ModelConfig(version="v2"))
 prediction = model.predict_probability(snapshot)
+match_report = model.analyse_match(replay)
+engagement_report = model.analyse_engagement(replay, tick=1234, player_id="steam-id")
 ```
+
+`analyse_engagement` returns observed kill/death/trade probabilities for
+future-only windows. It marks statistical-only and LightGBM-blended results;
+it does not claim an observational replay proves a counterfactual “best move”.
 
 To install and activate a verified local release bundle:
 
@@ -267,8 +350,210 @@ baseline.
   Bayesian/LightGBM component manifest with checksums and dataset fingerprints.
 - `model/artifacts/releases/v2/action_frequency.json` and `zone_transitions.json`:
   map-aware movement-tendency tools.
+- `model/artifacts/releases/v2/engagement_model.json`: grouped, calibrated
+  Beta-smoothed kill/death/trade prior with support and entropy.
+- `model/artifacts/releases/v2/engagement_lightgbm.json`: optional compact
+  engagement heads blended only when statistical support is sufficient.
+- `model/artifacts/releases/v2/release_manifest.json`: checksums for all
+  deployable components.
 
 The event-only full model estimates round win probability. It is not yet a
 movement/action model because sidecars contain no player positions, health,
 utility inventory, visibility, or velocity. For that model, parse native demos
 successfully and run `training.train_full_replay` without `--snapshot-input`.
+
+## Combined replay analysis
+
+### One-command test
+
+For the normal path, send a native `.dem`, extracted replay JSON, or JSONL file
+to the small runner. Native demos go through the replacement extractor in
+memory; the harness does not build a database or retrain a model. It selects
+release `v2`, applies the conservative defaults, and writes an adjacent
+`.analysis.json` report:
+
+```powershell
+python Noah/training/test_harness.py data/private/processed/full_replays.jsonl
+python Noah/training/test_harness.py path/to/match.dem --all-moments
+```
+
+Use `--record-index 3` for another JSONL record or `--output path/to/report.json`
+to choose the report location. It permits the documented Bayesian/statistical
+fallback when optional native LightGBM dependencies are unavailable. The
+runner is only an input/output wrapper; the analysis logic remains in
+`analysis_harness.py` and the public `ReplayModel.analyse_replay` API.
+
+### Advanced configuration
+
+The deployable runtime can produce one report that combines factual replay
+evidence with estimated alternatives:
+
+```powershell
+python -m training.analysis_harness `
+  --input data/private/processed/full_replays.jsonl `
+  --record-index 0 `
+  --release-dir model/artifacts/releases `
+  --version v2 `
+  --max-moments 25 `
+  --output data/private/processed/replay_analysis.json
+```
+
+Use `--all-moments` for a complete event audit. This removes the default
+25-moment coaching cap; the embedded `full_match` report already retains all
+deduplicated kill/death/bomb evidence in every mode:
+
+```powershell
+python Noah/training/test_harness.py backend/tests/fixtures/coach_full_replay.json `
+  --all-moments --sample-every 1 `
+  --output data/private/processed/coach_fixture.analysis.json
+```
+
+Each kill line and JSON row contains both estimates when legal candidate
+actions are available: `best_estimated_alternative` is the round-value model's
+counterfactual, while `least_death_risk_action` is a conservative fallback
+selected by the lowest smoothed `death_probability` upper bound. The latter is
+currently a round-loss proxy (not literal player-death probability), and it
+includes support, outcome-variance, interval-level/method, and `risk_source`
+metadata. If the model
+has no candidate state, the fallback is `null`; low-support fallbacks should
+be treated as suggestions for review rather than proven best moves. The JSON
+also reports `least_risk_fallback_count` (selected while the primary label
+abstained), `least_risk_candidate_count`, and `least_risk_usable_count`.
+
+To test a newly trained candidate model before promoting it into a release,
+pass its standalone artifact explicitly:
+
+```powershell
+python Noah/training/test_harness.py `
+  backend/tests/fixtures/coach_full_replay.json `
+  --candidate-model data/private/artifacts/candidate_v3/candidate_action_value.txt `
+  --all-moments --sample-every 1
+```
+
+To check whether a replay is covered by the candidate-action model without
+running training, inspect the canonical replay or the combined report with the
+read-only coverage diagnostic:
+
+```powershell
+python Noah/training/candidate_coverage.py `
+  data/private/processed/coach_fixture.analysis.json `
+  --min-support 5
+```
+
+The JSON summary reports total/analyzed kills, supported and unsupported
+candidate rows, and missing support grouped by map, side, zone, bomb state,
+alive-count difference, and round-time bucket. High-entropy states are
+reported separately from low sample support, and a kill is counted as fully
+supported only when every candidate row is supported. Passing a JSONL file
+aggregates the counts across records; no input file is modified.
+
+The same diagnostic accepts the extractor output. In that mode it reports
+strict pre-event rows emitted and skip reasons (for example, missing snapshots)
+before any model-support threshold is applied:
+
+```powershell
+python Noah/training/candidate_coverage.py `
+  data/private/processed/candidate_states.json
+```
+
+To build a private candidate-action dataset from training-only demos, first
+extract strictly pre-kill states, then aggregate simulator outcomes:
+
+```powershell
+python Noah/training/candidate_states.py `
+  data/private/processed/full_replays.jsonl `
+  data/private/processed/candidate_states.json
+
+python Noah/training/candidate_rollouts.py `
+  data/private/processed/candidate_states.json `
+  data/private/processed/candidate_rollouts.jsonl `
+  --rollouts 8
+
+python Noah/training/split_candidate_dataset.py `
+  data/private/processed/candidate_states.json `
+  data/private/processed/candidate_rollouts.jsonl `
+  data/private/processed/candidate_split
+
+python Noah/training/train_candidate_value.py `
+  data/private/processed/candidate_split/train_candidate_states.json `
+  data/private/processed/candidate_split/train_candidate_rollouts.jsonl `
+  data/private/artifacts/candidate_v3
+
+python Noah/training/evaluate_candidate_value.py `
+  data/private/processed/candidate_split/heldout_candidate_states.json `
+  data/private/processed/candidate_split/heldout_candidate_rollouts.jsonl `
+  data/private/artifacts/candidate_v3 `
+  data/private/processed/candidate_v3_evaluation.json
+```
+
+The state extractor excludes same-tick and future outcomes. Rollout files keep
+aggregate wins/losses per legal action rather than storing simulation traces.
+The trainer always writes the compact Bayesian model and writes the LightGBM
+candidate model when the optional full dependencies are available.
+The held-out evaluator reports Brier score, log loss, top-action agreement and
+support coverage; held-out demos must remain separate from training inputs.
+The trainer splits by complete `record_index` groups. With only one replay it
+writes a prior for inspection but refuses to produce a promotable full model;
+add a second complete training demo before measuring generalisation.
+The training metrics also report whether rollout outcomes vary across actions.
+If the compact simulator has no action-outcome variance, the resulting model
+is useful for plumbing and priors but is not evidence that one tactical action
+is causally better. Its current survival field is explicitly marked as a
+no-combat simulator diagnostic; use real damage/death horizons before treating
+it as death-risk probability.
+
+The command prints one line per kill with its round/tick, observed action,
+best estimated action, lowest-risk fallback, proxy probabilities, support,
+fallback status, and probability label. Use `--show-moments` when keeping the normal 25-moment cap
+but still wanting the detailed table. `summary.kill_count` is the total kill
+count in the replay; `summary.kill_analysis_count` is the number scored by the
+current moment cap.
+
+The report first selects key moments from round-value swings and kill/death/
+bomb events. It then reconstructs the nearest legal simulator state, scores
+only actions accepted by `cs2_sim.rules.legal_actions`, and stores the complete
+ranked `candidate_actions` list. `best_estimated_alternative` is therefore a
+simulator action-value estimate, not a proven counterfactual. A moment is
+classified as `good`, `bad`, or `neutral` only when both the observed action
+and the best candidate have at least `--min-support` observations; otherwise
+the harness emits `insufficient_evidence` or `no_observed_action`.
+
+The current reconstructed state uses the simulator's default topology. Replay
+nav-area labels are retained, but a map-specific navigation adapter is still
+needed before movement alternatives can be treated as authoritative CS2-legal
+routes; the report records this scope in `candidate_legality`.
+
+### Probability-based decision labels
+
+The combined report keeps the original `decision_class` for compatibility and
+adds a conservative uncertainty-aware label. For each supported observed and
+candidate action it reports:
+
+- `probability_of_improvement`: estimated probability that the best candidate's
+  success probability exceeds the observed action;
+- `expected_regret`: posterior expected positive probability gap;
+- `posterior_comparison`: seeded Beta-posterior Monte Carlo comparison,
+  including the probability of beating the observed action by the configured
+  margin;
+- `credible_intervals`: approximate 90% intervals for the observed and best
+  candidate estimates;
+- `probability_abstention`: threshold values and a reason when evidence is too
+  weak or intervals are too wide.
+
+The default label thresholds are `min_support=5`,
+`probability_of_improvement=0.80`, `expected_regret=0.05`, credible level
+`0.90`, and maximum interval width `0.80`. These labels are estimates from
+observational/simulator support, not proof of a counterfactual. The interval
+method is explicitly marked as a support-proxy normal approximation unless
+posterior success/failure counts are available. `insufficient_evidence` and
+all abstention reasons must remain visible to API and UI clients.
+
+The CLI emits the same additive probability fields. Its Beta comparison uses
+5,000 seeded posterior draws by default; tune this with
+`--posterior-samples` and `--posterior-seed` when trading accuracy for speed.
+
+This keeps the two evaluation questions separate: full-match metrics measure
+round-value prediction, while candidate quality is evaluated later against a
+held-out tactical benchmark or human-reviewed labels. The harness does not
+claim that an estimated alternative was objectively better when the replay
+does not contain enough state or outcome support.

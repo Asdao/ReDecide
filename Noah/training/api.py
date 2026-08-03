@@ -2,12 +2,16 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Mapping
+from typing import Any
 
 from Noah.training.build_replay_db import build_database
 from Noah.training.train_action_models import train_action_models
+from Noah.training.train_candidate_value import (
+    train_candidate_models as train_candidate_value_models,
+)
 from Noah.training.train_full_replay import train as train_replay_value
 
 
@@ -60,6 +64,14 @@ class ReplayTrainingArtifacts:
 class ActionTrainingArtifacts:
     action_model: Path
     transition_model: Path
+    metrics: Path
+    summary: Mapping[str, Any]
+
+
+@dataclass(frozen=True, slots=True)
+class CandidateTrainingArtifacts:
+    small_model: Path
+    full_model: Path | None
     metrics: Path
     summary: Mapping[str, Any]
 
@@ -171,6 +183,39 @@ class TrainingPipeline:
             return ActionTrainingArtifacts(action_model, transition_model, metrics, summary)
         except Exception as exc:
             raise TrainingError(f"could not train action models from {database}: {exc}") from exc
+
+    def train_candidate_value_models(
+        self,
+        candidate_states_path: str | Path,
+        rollout_path: str | Path,
+        *,
+        artifact_dir: str | Path | None = None,
+        train_full: bool = True,
+        max_examples: int | None = None,
+    ) -> CandidateTrainingArtifacts:
+        """Train support-aware strategic candidate-action models."""
+
+        states = Path(candidate_states_path)
+        rollouts = Path(rollout_path)
+        output = Path(artifact_dir) if artifact_dir is not None else self.config.artifact_dir / "candidate"
+        try:
+            summary = train_candidate_value_models(
+                states,
+                rollouts,
+                output,
+                train_full=train_full,
+                max_examples=max_examples,
+                seed=self.config.seed,
+            )
+            full_model = output / "candidate_action_value.txt"
+            return CandidateTrainingArtifacts(
+                output / "small_statistical.json",
+                full_model if full_model.is_file() else None,
+                output / "candidate_training_metrics.json",
+                summary,
+            )
+        except Exception as exc:
+            raise TrainingError(f"could not train candidate-action models from {states}: {exc}") from exc
 
     def run(
         self,

@@ -1,5 +1,5 @@
 {
-  "source": "data\\full\\processed\\cs2_replays_v2.sqlite",
+  "source": "data\\private\\databases\\cs2_replays_v2.sqlite",
   "train_rows": 894,
   "test_rows": 274,
   "test_groups": [
@@ -53,7 +53,7 @@
   "feature_schema_version": 2,
   "small_model_blend": 0.2,
   "training_mode": "sqlite",
-  "database": "data\\full\\processed\\cs2_replays_v2.sqlite",
+  "database": "data\\private\\databases\\cs2_replays_v2.sqlite",
   "event_only_rows": 0,
   "decision_window_seconds": 5.0,
   "tick_rate": 64.0,

@@ -58,8 +58,79 @@ class ReplayModelApiTests(unittest.TestCase):
                 model.predict_next_zone("A_SITE", map_name="de_mirage", side="ct"),
                 "A_MAIN",
             )
+            ranked = model.rank_candidate_actions(
+                [
+                    {"action": "hold", "death_probability": 0.2, "round_value_delta": 0.1, "sample_count": 10, "entropy": 0.2},
+                    {"action": "peek", "death_probability": 0.7, "round_value_delta": -0.1, "sample_count": 10, "entropy": 0.2},
+                ]
+            )
+            self.assertEqual(ranked[0]["action"], "hold")
             self.assertTrue(model.status.has_action_model)
             self.assertTrue(model.status.has_transition_model)
+            self.assertFalse(model.status.has_engagement_model)
+            self.assertFalse(model.status.has_engagement_booster)
+            self.assertFalse(model.status.has_candidate_model)
+
+            report = model.analyse_match(
+                {
+                    "demo_file": "fixture.dem",
+                    "header": {"map_name": "de_mirage", "tick_rate": 10},
+                    "rounds": [{"round_num": 1, "start": 0, "end": 10, "winner": "ct"}],
+                    "ticks": [
+                        {"round_num": 1, "tick": 0, "team_name": "CT", "health": 100},
+                        {"round_num": 1, "tick": 0, "team_name": "T", "health": 100},
+                    ],
+                    "kills": [],
+                    "damages": [],
+                    "bomb": [],
+                },
+                max_timeline_points=2,
+            )
+            self.assertEqual(report["report_type"], "full_match_timeline")
+
+            combined = model.analyse_replay(
+                {
+                    "demo_file": "fixture.dem",
+                    "header": {"map_name": "de_mirage", "tick_rate": 10},
+                    "rounds": [{"round_num": 1, "start": 0, "end": 10, "winner": "ct"}],
+                    "ticks": [
+                        {"round_num": 1, "tick": 0, "steamid": "ct1", "team_name": "CT", "health": 100},
+                        {"round_num": 1, "tick": 10, "steamid": "ct1", "team_name": "CT", "health": 100},
+                    ],
+                    "kills": [],
+                    "damages": [],
+                    "bomb": [],
+                },
+                sample_every=1,
+                max_moments=2,
+            )
+            self.assertEqual(combined["report_type"], "combined_replay_analysis")
+            self.assertIn("probability_decision_classes", combined["summary"])
+
+            engagement_report = model.analyse_engagement(
+                {
+                    "demo_file": "fixture.dem",
+                    "header": {"map_name": "de_mirage", "tick_rate": 10},
+                    "rounds": [{"round_num": 1, "start": 0, "end": 20, "winner": "ct"}],
+                    "damages": [
+                        {
+                            "round_num": 1,
+                            "tick": 1,
+                            "attacker_steamid": "t1",
+                            "victim_steamid": "ct1",
+                            "attacker_side": "t",
+                            "victim_side": "ct",
+                            "weapon": "ak47",
+                        }
+                    ],
+                    "kills": [],
+                },
+                player_id="t1",
+                horizon_seconds=(1.0,),
+            )
+            self.assertEqual(engagement_report["report_type"], "engagement_analysis")
+            self.assertEqual(engagement_report["summary"]["row_count"], 1)
+            self.assertFalse(engagement_report["model_available"])
 
 
 if __name__ == "__main__":

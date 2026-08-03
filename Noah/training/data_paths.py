@@ -51,6 +51,10 @@ class DataPaths:
         return self.public / "benchmark_evaluation.json"
 
     @property
+    def public_dataset_registry(self) -> Path:
+        return self.public / "dataset_registry.json"
+
+    @property
     def private_raw_demos(self) -> Path:
         return self.private / "raw_demos"
 
@@ -77,6 +81,10 @@ class DataPaths:
     @property
     def private_user_uploads(self) -> Path:
         return self.private / "user_uploads"
+
+    @property
+    def private_dataset_registry(self) -> Path:
+        return self.private / "dataset_registry.json"
 
 
 def get_data_paths() -> DataPaths:

@@ -6,25 +6,25 @@ import argparse
 import hashlib
 import json
 import platform
-import sys
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
 from Noah.training.data_paths import DATA_PATHS
 
-
 DEFAULT_PATHS = (
     DATA_PATHS.private_processed / "full_replays.jsonl",
-    DATA_PATHS.private_databases / "cs2_replays.sqlite",
-    Path("model/artifacts/full_replay_value.txt"),
-    Path("model/artifacts/full_replay_value.txt.json"),
-    Path("model/artifacts/full_replay_value.manifest.json"),
-    Path("model/artifacts/full_replay_calibrator.json"),
-    Path("model/artifacts/small_snapshot_value.json"),
-    Path("model/artifacts/action_frequency.json"),
-    Path("model/artifacts/zone_transitions.json"),
-    Path("model/artifacts/statistical_baselines.json"),
+    DATA_PATHS.private_databases / "cs2_replays_v2.sqlite",
+    Path("model/artifacts/releases/v2/full_replay_value.txt"),
+    Path("model/artifacts/releases/v2/full_replay_value.txt.json"),
+    Path("model/artifacts/releases/v2/full_replay_value.manifest.json"),
+    Path("model/artifacts/releases/v2/full_replay_calibrator.json"),
+    Path("model/artifacts/releases/v2/small_snapshot_value.json"),
+    Path("model/artifacts/releases/v2/action_frequency.json"),
+    Path("model/artifacts/releases/v2/zone_transitions.json"),
+    Path("model/artifacts/releases/v2/engagement_model.json"),
+    Path("model/artifacts/releases/v2/engagement_lightgbm.json"),
+    Path("model/artifacts/releases/v2/feature_schema.json"),
 )
 
 
@@ -56,7 +56,7 @@ def fingerprint(
         )
     return {
         "release_version": release_version,
-        "created_at": datetime.now(timezone.utc).isoformat(),
+        "created_at": datetime.now(UTC).isoformat(),
         "python": platform.python_version(),
         "platform": platform.platform(),
         "files": entries,
