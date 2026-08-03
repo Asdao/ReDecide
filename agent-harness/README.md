@@ -31,6 +31,7 @@ No credentials, sessions, or audit logs belong in this directory's source.
 - [Getting started](docs/GETTING_STARTED.md) — install, run, configure, and use the CLI or bridge directly.
 - [Architecture](docs/ARCHITECTURE.md) — runtime flow, ownership boundaries, and lifecycle.
 - [Tool protocol](docs/TOOLS.md) — `simulate_round` inputs, envelopes, limits, and errors.
+- [Analysis pipeline](docs/ANALYSIS_PIPELINE.md) — demo-to-timeline workflow, target contracts, and webapp usage.
 - [Skills](docs/SKILLS.md) — how reviewed `SKILL.md` instructions are discovered and loaded.
 - [Security](docs/SECURITY.md) — threat model, controls, and production hardening checklist.
 

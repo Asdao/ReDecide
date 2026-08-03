@@ -1,7 +1,14 @@
 import { describe, expect, it } from "vitest";
-import { createConfiguredModel, readModelOverrideConfig } from "../src/model-config.js";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { createConfiguredModel, loadDotEnv, readModelOverrideConfig } from "../src/model-config.js";
 
 describe("model configuration", () => {
+  it("leaves Pi's normal provider selection untouched when unset", () => {
+    expect(readModelOverrideConfig({})).toBeUndefined();
+  });
+
   it("uses DeepSeek defaults when only its standard key is configured", () => {
     const config = readModelOverrideConfig({ DEEPSEEK_API_KEY: "secret" });
     expect(config).toEqual({
@@ -40,5 +47,23 @@ describe("model configuration", () => {
       HARNESS_MODEL: "deepseek-v4-pro",
     });
     expect(configured?.model).toMatchObject({ provider: "deepseek", id: "deepseek-v4-pro" });
+  });
+
+  it("loads quoted dotenv values without overwriting deployment env", () => {
+    const directory = mkdtempSync(join(tmpdir(), "cs2-harness-"));
+    const path = join(directory, ".env");
+    const original = process.env.HARNESS_TEST_EXISTING;
+    process.env.HARNESS_TEST_EXISTING = "deployment-value";
+    try {
+      writeFileSync(path, "HARNESS_TEST_QUOTED=\"hello world\"\nHARNESS_TEST_EXISTING=local-value\n");
+      loadDotEnv([path]);
+      expect(process.env.HARNESS_TEST_QUOTED).toBe("hello world");
+      expect(process.env.HARNESS_TEST_EXISTING).toBe("deployment-value");
+    } finally {
+      delete process.env.HARNESS_TEST_QUOTED;
+      if (original === undefined) delete process.env.HARNESS_TEST_EXISTING;
+      else process.env.HARNESS_TEST_EXISTING = original;
+      rmSync(directory, { recursive: true, force: true });
+    }
   });
 });

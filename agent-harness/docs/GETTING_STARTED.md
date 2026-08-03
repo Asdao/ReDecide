@@ -53,6 +53,15 @@ Pi already includes a DeepSeek provider, so this selects the model and can redir
 
 For a different built-in Pi provider, set `HARNESS_MODEL_PROVIDER`, `HARNESS_MODEL`, and optionally `HARNESS_MODEL_BASE_URL`. The provider and model must exist in the installed Pi catalog. The harness creates an in-memory `ModelRuntime` and explicitly selects the configured model, so it does not depend on a user's interactive Pi settings files.
 
+Codex is also a supported provider. For a local CLI using Pi's existing Codex authentication, select it explicitly without putting an API key in `.env`:
+
+```dotenv
+HARNESS_MODEL_PROVIDER=openai-codex
+HARNESS_MODEL=gpt-5.5
+```
+
+If neither `DEEPSEEK_API_KEY` nor any `HARNESS_MODEL_*` override is set, the harness preserves Pi's normal provider/model selection, so existing Codex configuration continues to work. A future multi-user webapp should keep each user's authorization on the server; never send Codex credentials to browser JavaScript.
+
 DeepSeek's official OpenAI-compatible endpoint is `https://api.deepseek.com`; check its current model catalog before pinning a model in production: [DeepSeek models and pricing](https://api-docs.deepseek.com/quick_start/pricing).
 
 ## Calling the bridge directly
@@ -65,6 +74,8 @@ The bridge accepts one JSON request on stdin and emits one JSON response on stdo
 ```
 
 The response is a versioned envelope. A successful response contains `data` with the winner, event count, bounded key events, and final state; a failed response contains a stable `error.code` and safe message. See [Tool protocol](TOOLS.md) for the complete contract.
+
+The planned demo-to-analysis workflow is documented in [Analysis pipeline](ANALYSIS_PIPELINE.md). It is intentionally separate from the current `simulate_round` tool until replay storage, death/loss events, and deterministic scoring are implemented.
 
 ## Development notes
 

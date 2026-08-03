@@ -71,6 +71,7 @@ def parse_demo(path: Path, *, tick_interval: int = 32) -> dict[str, Any]:
         "schema_version": 1,
         "parser": "awpy",
         "demo_file": path.name,
+        "source_path": path.as_posix(),
         "header": demo.header,
         "rounds": _rows(demo.rounds),
         "kills": _rows(demo.kills),
@@ -89,6 +90,7 @@ def sidecar_record(path: Path) -> dict[str, Any]:
 
     record = json.loads(path.read_text(encoding="utf-8"))
     record["parser"] = "analysis_sidecar"
+    record.setdefault("source_path", path.with_suffix(".dem").as_posix())
     return record
 
 

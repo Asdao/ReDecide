@@ -6,23 +6,13 @@ import hashlib
 from collections import defaultdict
 from typing import Any
 
+from cs2_sim.core.model.replay_value import REPLAY_FEATURE_NAMES
 from training.extract_features import extract_snapshots
 
-FULL_FEATURE_NAMES = (
-    "map_code",
-    "time_seconds",
-    "ct_alive",
-    "t_alive",
-    "alive_difference",
-    "ct_avg_health",
-    "t_avg_health",
-    "kills_seen",
-    "bomb_planted",
-    "bomb_site_code",
-    "ct_avg_x",
-    "ct_avg_y",
-    "t_avg_x",
-    "t_avg_y",
+FULL_FEATURE_NAMES = REPLAY_FEATURE_NAMES
+_MAP_NAMES = tuple(name.removeprefix("map_is_") for name in FULL_FEATURE_NAMES if name.startswith("map_is_"))
+_BOMB_SITES = tuple(
+    name.removeprefix("bomb_site_is_") for name in FULL_FEATURE_NAMES if name.startswith("bomb_site_is_")
 )
 
 
@@ -54,8 +44,77 @@ def _real_kill(kill: dict[str, Any]) -> bool:
 
 
 def _average(players: list[dict[str, Any]], field: str) -> float:
-    values = [_number(player.get(field)) for player in players]
+    values = [
+        _number(player.get(field))
+        for player in players
+        if _number(player.get("health"), 100.0) > 0
+    ]
     return sum(values) / len(values) if values else 0.0
+
+
+def _total(players: list[dict[str, Any]], field: str) -> float:
+    return sum(_number(player.get(field)) for player in players if _number(player.get("health"), 100.0) > 0)
+
+
+def _events_before(events: list[dict[str, Any]], tick: int) -> list[dict[str, Any]]:
+    return [event for event in events if int(_number(event.get("tick"))) <= tick]
+
+
+def _event_rows_before(event_groups: dict[str, list[dict[str, Any]]], tick: int) -> list[tuple[str, dict[str, Any]]]:
+    return [
+        (str(name), event)
+        for name, values in event_groups.items()
+        for event in _events_before(values or [], tick)
+    ]
+
+
+def _feature_row(
+    *,
+    snapshot: dict[str, Any],
+    map_name: str,
+    bomb_site: str,
+    sides: dict[str, list[dict[str, Any]]],
+    kills_seen: int,
+    damage_events_seen: int,
+    shots_seen: int,
+    utility_events_seen: int,
+    bomb_time_remaining: float,
+) -> dict[str, float]:
+    ct_players = sides["ct"]
+    t_players = sides["t"]
+    values: dict[str, float] = {
+        "map_code": _code(map_name),
+        "time_seconds": float(snapshot["elapsed_seconds"]),
+        "ct_alive": float(snapshot["ct_alive"]),
+        "t_alive": float(snapshot["t_alive"]),
+        "alive_difference": float(snapshot["ct_alive"] - snapshot["t_alive"]),
+        "ct_avg_health": _average(ct_players, "health"),
+        "t_avg_health": _average(t_players, "health"),
+        "kills_seen": float(kills_seen),
+        "bomb_planted": float(snapshot["bomb_planted"]),
+        "bomb_site_code": _code(bomb_site),
+        "ct_avg_x": _average(ct_players, "X"),
+        "ct_avg_y": _average(ct_players, "Y"),
+        "t_avg_x": _average(t_players, "X"),
+        "t_avg_y": _average(t_players, "Y"),
+        "ct_total_health": _total(ct_players, "health"),
+        "t_total_health": _total(t_players, "health"),
+        "ct_avg_armor": _average(ct_players, "armor_value"),
+        "t_avg_armor": _average(t_players, "armor_value"),
+        "damage_events_seen": float(damage_events_seen),
+        "shots_seen": float(shots_seen),
+        "utility_events_seen": float(utility_events_seen),
+        "bomb_time_remaining": float(bomb_time_remaining),
+        "ct_avg_z": _average(ct_players, "Z"),
+        "t_avg_z": _average(t_players, "Z"),
+        "ct_norm_x": _average(ct_players, "X") / 10_000.0,
+        "ct_norm_y": _average(ct_players, "Y") / 10_000.0,
+        "t_norm_x": _average(t_players, "X") / 10_000.0,
+        "t_norm_y": _average(t_players, "Y") / 10_000.0,
+    }
+    values.update({f"map_is_{name}": float(map_name == name) for name in _MAP_NAMES})
+    values.update({f"bomb_site_is_{name}": float(bomb_site == name) for name in _BOMB_SITES})
+    return {name: values.get(name, 0.0) for name in FULL_FEATURE_NAMES}
 
 
 def record_to_rows(
@@ -78,7 +137,9 @@ def record_to_rows(
     tick_rate = _number(header.get("tick_rate") or record.get("tick_rate"), 128.0)
     map_name = header.get("map_name") or "unknown"
     kills = [kill for kill in record.get("kills") or [] if _real_kill(kill)]
+    damages = [damage for damage in record.get("damages") or [] if _real_kill(damage)]
     bomb_events = record.get("bomb") or []
+    event_groups = record.get("events") or {}
     ticks_by_round: dict[int, dict[int, list[dict[str, Any]]]] = defaultdict(lambda: defaultdict(list))
     for tick_row in ticks:
         round_num = int(_number(tick_row.get("round_num")))
@@ -94,9 +155,11 @@ def record_to_rows(
         start_tick = int(_number(round_info.get("start")))
         selected_ticks = sorted(ticks_by_round.get(round_num, {}))[::sample_every]
         round_kills = [kill for kill in kills if int(_number(kill.get("round_num"))) == round_num]
+        round_damages = [damage for damage in damages if int(_number(damage.get("round_num"))) == round_num]
         round_bombs = [event for event in bomb_events if int(_number(event.get("round_num"))) == round_num]
+        contact_events = round_damages or round_kills
         first_contact_tick = min(
-            (int(_number(kill.get("tick"))) for kill in round_kills),
+            (int(_number(event.get("tick"))) for event in contact_events),
             default=None,
         )
         for tick in selected_ticks:
@@ -125,6 +188,25 @@ def record_to_rows(
             if prior_bombs:
                 bomb_site = str(prior_bombs[-1].get("bombsite") or prior_bombs[-1].get("site") or "none")
             kills_seen = sum(int(_number(kill.get("tick"))) <= tick for kill in round_kills)
+            damage_seen = len(_events_before(round_damages, tick))
+            prior_event_rows = _event_rows_before(event_groups, tick)
+            shots_seen = sum("fire" in name.lower() for name, _ in prior_event_rows)
+            utility_seen = sum(
+                any(token in (name.lower() + " " + str(event.get("weapon") or "").lower())
+                    for token in ("grenade", "flash", "smoke", "molotov", "incendiary", "inferno", "decoy"))
+                for name, event in prior_event_rows
+            )
+            plant_ticks = [
+                int(_number(event.get("tick")))
+                for event in round_bombs
+                if "plant" in str(event.get("event") or "").lower()
+                and int(_number(event.get("tick"))) <= tick
+            ]
+            bomb_time_remaining = (
+                max(0.0, 40.0 - (tick - max(plant_ticks)) / max(tick_rate, 1.0))
+                if plant_ticks
+                else 0.0
+            )
             snapshot = {
                 "map_name": map_name,
                 "event_type": "tick",
@@ -134,6 +216,12 @@ def record_to_rows(
                 "bomb_site": bomb_site,
                 "elapsed_seconds": max(0.0, (tick - start_tick) / tick_rate),
                 "kills_seen": kills_seen,
+                "ct_avg_health": _average(sides["ct"], "health"),
+                "t_avg_health": _average(sides["t"], "health"),
+                "ct_avg_x": _average(sides["ct"], "X"),
+                "ct_avg_y": _average(sides["ct"], "Y"),
+                "t_avg_x": _average(sides["t"], "X"),
+                "t_avg_y": _average(sides["t"], "Y"),
             }
             rows.append(
                 {
@@ -142,22 +230,17 @@ def record_to_rows(
                     "tick": tick,
                     "label_ct_win": int(winner == "ct"),
                     "snapshot": snapshot,
-                    "features": {
-                        "map_code": _code(map_name),
-                        "time_seconds": snapshot["elapsed_seconds"],
-                        "ct_alive": float(ct_alive),
-                        "t_alive": float(t_alive),
-                        "alive_difference": float(ct_alive - t_alive),
-                        "ct_avg_health": _average(sides["ct"], "health"),
-                        "t_avg_health": _average(sides["t"], "health"),
-                        "kills_seen": float(kills_seen),
-                        "bomb_planted": float(bomb_planted),
-                        "bomb_site_code": _code(bomb_site),
-                        "ct_avg_x": _average(sides["ct"], "X"),
-                        "ct_avg_y": _average(sides["ct"], "Y"),
-                        "t_avg_x": _average(sides["t"], "X"),
-                        "t_avg_y": _average(sides["t"], "Y"),
-                    },
+                    "features": _feature_row(
+                        snapshot=snapshot,
+                        map_name=str(map_name),
+                        bomb_site=bomb_site,
+                        sides=sides,
+                        kills_seen=kills_seen,
+                        damage_events_seen=damage_seen,
+                        shots_seen=shots_seen,
+                        utility_events_seen=utility_seen,
+                        bomb_time_remaining=bomb_time_remaining,
+                    ),
                 }
             )
     return rows
@@ -198,14 +281,12 @@ def snapshot_to_event_row(snapshot: dict[str, Any]) -> dict[str, Any]:
     winner = snapshot.get("label_round_winner")
     if winner not in {"ct", "t"}:
         raise ValueError("snapshot has no valid round winner label")
-    return {
-        "source": snapshot.get("source") or "unknown",
-        "round_num": snapshot.get("round_num"),
-        "tick": snapshot.get("tick"),
-        "label_ct_win": int(winner == "ct"),
-        "snapshot": snapshot,
-        "features": {
-            "map_code": _code(snapshot.get("map_name")),
+    map_name = str(snapshot.get("map_name") or "unknown")
+    bomb_site = str(snapshot.get("bomb_site") or "none").lower()
+    features = {name: 0.0 for name in FULL_FEATURE_NAMES}
+    features.update(
+        {
+            "map_code": _code(map_name),
             "time_seconds": _number(snapshot.get("elapsed_seconds")),
             "ct_alive": float(snapshot.get("ct_alive") or 0),
             "t_alive": float(snapshot.get("t_alive") or 0),
@@ -214,10 +295,18 @@ def snapshot_to_event_row(snapshot: dict[str, Any]) -> dict[str, Any]:
             "t_avg_health": 100.0,
             "kills_seen": float(snapshot.get("kills_seen") or 0),
             "bomb_planted": float(bool(snapshot.get("bomb_planted"))),
-            "bomb_site_code": _code(snapshot.get("bomb_site")),
-            "ct_avg_x": 0.0,
-            "ct_avg_y": 0.0,
-            "t_avg_x": 0.0,
-            "t_avg_y": 0.0,
-        },
+            "bomb_site_code": _code(bomb_site),
+        }
+    )
+    for name in _MAP_NAMES:
+        features[f"map_is_{name}"] = float(map_name == name)
+    for name in _BOMB_SITES:
+        features[f"bomb_site_is_{name}"] = float(bomb_site == name)
+    return {
+        "source": snapshot.get("source") or "unknown",
+        "round_num": snapshot.get("round_num"),
+        "tick": snapshot.get("tick"),
+        "label_ct_win": int(winner == "ct"),
+        "snapshot": snapshot,
+        "features": features,
     }

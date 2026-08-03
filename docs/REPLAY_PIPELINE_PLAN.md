@@ -49,6 +49,26 @@ src/cs2_sim/core/model/
 The existing `cs2_sim.models` package remains as a compatibility shim while
 new model code is added under `cs2_sim.core.model`.
 
+## Implementation status
+
+The first implementation pass is complete through action inference:
+
+- `training.audit_replays` and `training.replay_cleaning` provide deterministic,
+  non-destructive reports and versioned cleaned copies;
+- SQLite schema version 2 now stores matches, replay checksums, player ticks,
+  events, snapshots, and inferred actions;
+- `training.train_full_replay --database` reads SQLite directly and weights
+  rows so each round contributes equal total training weight;
+- Gaussian Naive Bayes, regularized logistic regression, Platt calibration,
+  and grouped model comparison are available;
+- `ReplayValueEnsemble` provides Bayesian fallback, blending, calibration, and
+  uncertainty; and
+- fixed-window movement labels plus Dirichlet action and zone-transition
+  models are available.
+
+The remaining work is deeper feature quality (utility/visibility/weapon state)
+and larger-scale action-value validation once more native demos are available.
+
 ## Phase 1: Audit and cleaning
 
 Create `training/audit_replays.py` and `training/replay_cleaning.py`.
@@ -94,13 +114,13 @@ Tables:
 
 - `dataset_metadata`: schema and cleaning versions;
 - `matches`: match ID, date, event, patch, and teams;
-- `replays`: relative source path, checksum, map, parser, and tick rate;
+- `replays`: source path, checksum, map, parser, match ID, and tick rate;
 - `rounds`: timing, winner, reason, bomb result, and score;
 - `players`: stable player and team identity;
-- `player_snapshots`: per-player health, armor, position, inventory and state;
+- `player_ticks`: per-player health, armor, position, zone and state;
 - `events`: kills, damage, fire, utility, bomb, and other event types;
-- `training_snapshots`: one row per cleaned decision state with real feature
-  columns; and
+- `snapshots`: one row per cleaned decision state with real feature columns and
+  an optional JSON debugging payload; and
 - `inferred_actions`: future fixed-window action labels.
 
 Required constraints:
@@ -115,8 +135,9 @@ Do not store primary training features only inside JSON. JSON may remain as an
 optional debugging payload, but health, alive counts, positions, time, map,
 bomb state and labels must be normal columns.
 
-Done when rebuilding produces 23 unique replays, 505 rounds, no duplicate
-training keys, and the audit report can be reproduced from SQLite alone.
+Done for the current dataset: rebuilding produces 23 unique replays, 505
+rounds, 2,513 snapshots, and 1,168,262 player-tick rows with no duplicate
+training keys.
 
 ## Phase 3: Connect SQLite to training
 

@@ -32,12 +32,58 @@ SQLite. Build it after native parsing:
 python -m training.build_replay_db `
   --input data/full/processed/full_replays.jsonl `
   --output data/full/processed/cs2_replays.sqlite `
+  --action-window-seconds 2 `
   --replace
 ```
 
-The database contains `replays`, `rounds`, and leakage-safe `snapshots` tables,
-with indexes for map/round and replay/round queries. It uses Python's built-in
-`sqlite3`, so no database server is required.
+The database contains `matches`, `replays`, `rounds`, `players`, `player_ticks`,
+`events`, `inferred_actions`, and leakage-safe `snapshots` tables, with foreign
+keys and indexes for replay/round/player/action queries. It uses Python's
+built-in `sqlite3`, so no database server is required.
+
+Run a read-only audit before rebuilding:
+
+```powershell
+python -m training.audit_replays `
+  --input data/full/processed/full_replays.jsonl `
+  --report data/full/processed/replay_audit.json
+```
+
+For normal training, read SQLite directly instead of rebuilding features from
+the full JSONL:
+
+```powershell
+python -m training.train_full_replay `
+  --database data/full/processed/cs2_replays.sqlite `
+  --calibrator models/full_replay_calibrator.json `
+  --manifest models/full_replay_value.manifest.json
+```
+
+The lightweight baselines can be compared with:
+
+```powershell
+python -m training.train_baselines --database data/full/processed/cs2_replays.sqlite
+python -m training.evaluate_models `
+  models/full_replay_metrics.json `
+  models/statistical_baseline_metrics.json
+```
+
+Train the movement-frequency and zone-transition tools from SQLite:
+
+```powershell
+python -m training.train_action_models `
+  --database data/full/processed/cs2_replays.sqlite
+```
+
+At runtime, load the single manifest and use the Bayesian fallback if the
+optional LightGBM native library is unavailable:
+
+```python
+from cs2_sim.core.model import ReplayValueEnsemble
+
+model = ReplayValueEnsemble.load("models/full_replay_value.manifest.json")
+prediction = model.predict_ct_win(snapshot)
+```
 
 The downloader reads the compact metadata already stored under
 `data/small/metadata`. It rejects incomplete maps by requiring at least 16
@@ -67,6 +113,8 @@ win-rate baseline.
   Bayesian prior during evaluation.
 - `models/small_snapshot_metrics.json` and
   `models/full_replay_metrics.json`: demo-separated validation results.
+- `models/full_replay_value.manifest.json`: deployable Bayesian/LightGBM
+  component manifest.
 
 The event-only full model estimates round win probability. It is not yet a
 movement/action model because sidecars contain no player positions, health,

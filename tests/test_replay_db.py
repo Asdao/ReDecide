@@ -5,6 +5,8 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 
 from training.build_replay_db import build_database
+from training.full_features import record_to_rows
+from training.replay_repository import ReplayRepository
 
 
 class ReplayDatabaseTests(unittest.TestCase):
@@ -38,10 +40,23 @@ class ReplayDatabaseTests(unittest.TestCase):
             database_path = root / "replays.sqlite"
             stats = build_database(input_path, database_path, sample_every=1)
             self.assertEqual(stats["replays"], 1)
+            self.assertEqual(stats["players"], 2)
+            self.assertEqual(stats["player_ticks"], 2)
+            self.assertEqual(stats["events"], 1)
             connection = sqlite3.connect(database_path)
             try:
                 self.assertEqual(connection.execute("SELECT COUNT(*) FROM replays").fetchone()[0], 1)
                 self.assertEqual(connection.execute("SELECT COUNT(*) FROM rounds").fetchone()[0], 1)
                 self.assertEqual(connection.execute("SELECT COUNT(*) FROM snapshots").fetchone()[0], 1)
+                self.assertEqual(connection.execute("SELECT COUNT(*) FROM player_ticks").fetchone()[0], 2)
+                self.assertEqual(connection.execute("SELECT COUNT(*) FROM events").fetchone()[0], 1)
             finally:
                 connection.close()
+            with ReplayRepository(database_path) as repository:
+                rows = list(repository.iter_snapshot_rows())
+                self.assertEqual(len(rows), 1)
+                self.assertEqual(rows[0]["source"], "sample.dem")
+                self.assertEqual(len(list(repository.iter_player_ticks())), 2)
+                self.assertEqual(len(list(repository.iter_events())), 1)
+                json_rows = record_to_rows(record, sample_every=1)
+                self.assertEqual(rows[0]["features"], json_rows[0]["features"])
