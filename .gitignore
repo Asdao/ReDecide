@@ -4,6 +4,12 @@ __pycache__/
 *.egg-info/
 .env
 
+# Local Python environments and test caches.
+.venv/
+.venv-wsl/
+venv/
+.pytest_cache/
+
 # Node projects live under frontend/ and agent-harness/. Ignore dependency
 # trees everywhere and accidental package-manager files created at repo root.
 node_modules/
