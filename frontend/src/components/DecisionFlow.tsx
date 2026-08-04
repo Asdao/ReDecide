@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useReducer } from "react";
+import { useEffect, useReducer, useRef } from "react";
 import { loadSavedExample } from "@/adapters/saved-example";
 import {
   analysisFlowReducer,
@@ -12,6 +12,7 @@ import { ProductHeader } from "./ProductHeader";
 
 export function DecisionFlow() {
   const [state, dispatch] = useReducer(analysisFlowReducer, initialAnalysisFlowState);
+  const previousStatus = useRef(state.status);
 
   useEffect(() => {
     if (state.status !== "loading-example") {
@@ -27,6 +28,11 @@ export function DecisionFlow() {
   }, [state.status]);
 
   useEffect(() => {
+    if (previousStatus.current === state.status) {
+      return;
+    }
+
+    previousStatus.current = state.status;
     const headingId = state.status === "choose" ? "page-title" : "progress-title";
     document.getElementById(headingId)?.focus();
   }, [state.status]);

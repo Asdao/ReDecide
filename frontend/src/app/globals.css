@@ -145,13 +145,13 @@ a:focus-visible {
   stroke-dasharray: 100;
   stroke-dashoffset: 100;
   stroke-linecap: square;
-  transition: stroke-dashoffset 0.2s ease-in-out
+  transition: stroke-dashoffset 0.3s cubic-bezier(0.22, 0.61, 0.36, 1)
 }
 
 .brand:hover .brand-outline rect,
 .brand:focus-visible .brand-outline rect {
   stroke-dashoffset: 0;
-  transition: stroke-dashoffset 0.2s ease-in-out
+  transition: stroke-dashoffset 0.3s cubic-bezier(0.22, 0.61, 0.36, 1)
 }
 
 .brand span,
@@ -226,10 +226,58 @@ a:focus-visible {
 }
 
 .primary {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
   border: 1px solid var(--accent);
   background: var(--accent);
   color: #1d1307;
   cursor: pointer;
+}
+
+.primary::before,
+.primary::after {
+  --shine-offset: 0rem;
+  --shine-width: 1.75rem;
+
+  position: absolute;
+  top: -65%;
+  left: calc(-30% + var(--shine-offset));
+  width: var(--shine-width);
+  height: 230%;
+  background: rgb(255 242 215 / 62%);
+  content: "";
+  opacity: 0;
+  pointer-events: none;
+  transform: rotate(22deg);
+  transform-origin: center;
+}
+
+.primary::after {
+  --shine-offset: 4.5rem;
+  --shine-width: 0.95rem;
+}
+
+.primary:is(:hover, :focus-visible)::before,
+.primary:is(:hover, :focus-visible)::after {
+  animation: sample-button-shine 0.5s cubic-bezier(0.22, 0.61, 0.36, 1);
+}
+
+@keyframes sample-button-shine {
+  0% {
+    left: calc(-30% + var(--shine-offset));
+    opacity: 0;
+  }
+
+  18%,
+  72% {
+    opacity: 0.75;
+  }
+
+  100% {
+    left: calc(125% + var(--shine-offset));
+    opacity: 0;
+  }
 }
 
 .secondary {
@@ -606,5 +654,10 @@ input[type="file"] {
 
   .brand-outline rect {
     transition-delay: 0ms !important;
+  }
+
+  .primary::before,
+  .primary::after {
+    display: none;
   }
 }
