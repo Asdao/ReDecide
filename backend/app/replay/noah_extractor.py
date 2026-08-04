@@ -3,7 +3,7 @@
 This module deliberately stops at Noah's stable canonical replay types.  The
 RE:DECIDE ``DecisionPacket`` does not yet have an executable shared schema, so
 packet selection, evidence IDs, and knowledge-boundary filtering belong in the
-next adapter layer rather than being invented here.
+next adapter layer rather than being invented here....
 """
 
 from __future__ import annotations
