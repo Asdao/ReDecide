@@ -47,6 +47,28 @@ class Verdict(StrEnum):
     INSUFFICIENT_EVIDENCE = "INSUFFICIENT_EVIDENCE"
 
 
+class AnalysisStage(StrEnum):
+    PLAYER_SELECTION_REQUIRED = "PLAYER_SELECTION_REQUIRED"
+    INTENT_REQUIRED = "INTENT_REQUIRED"
+
+
+class APIErrorCode(StrEnum):
+    INVALID_REQUEST = "INVALID_REQUEST"
+    SAMPLE_NOT_FOUND = "SAMPLE_NOT_FOUND"
+    INVALID_DEMO = "INVALID_DEMO"
+    UNSUPPORTED_DEMO = "UNSUPPORTED_DEMO"
+    FILE_TOO_LARGE = "FILE_TOO_LARGE"
+    PLAYER_NOT_FOUND = "PLAYER_NOT_FOUND"
+    NO_ELIGIBLE_DECISION = "NO_ELIGIBLE_DECISION"
+    PARSER_FAILURE = "PARSER_FAILURE"
+    MODEL_UNAVAILABLE = "MODEL_UNAVAILABLE"
+    MODEL_API_KEY_MISSING = "MODEL_API_KEY_MISSING"
+    MODEL_TIMEOUT = "MODEL_TIMEOUT"
+    MALFORMED_MODEL_OUTPUT = "MALFORMED_MODEL_OUTPUT"
+    REQUEST_TIMEOUT = "REQUEST_TIMEOUT"
+    CONTRACT_VALIDATION_FAILED = "CONTRACT_VALIDATION_FAILED"
+
+
 class EvidenceItem(ContractModel):
     evidence_id: str = Field(min_length=1)
     tick: int = Field(ge=0)
@@ -179,3 +201,111 @@ class AnalyzeJsonRequest(ContractModel):
 
     decision_packet: DecisionPacket
     intent: IntentInput
+
+    @model_validator(mode="after")
+    def enforce_transport_intent_limit(self) -> "AnalyzeJsonRequest":
+        if self.intent.text is not None and len(self.intent.text) > 240:
+            raise ValueError("intent text cannot exceed 240 characters")
+        if self.intent.text == "":
+            self.intent = self.intent.model_copy(update={"text": None})
+        return self
+
+
+class HealthResponse(ContractModel):
+    status: str
+    service: str
+    schema_version: str = Field(pattern=r"^1\.0$")
+    mode: str
+
+
+class SampleSummary(ContractModel):
+    sample_id: str = Field(min_length=1)
+    display_name: str = Field(min_length=1)
+    description: str = Field(min_length=1)
+    map: str = Field(min_length=1)
+    players: list[str]
+    recommended_player: str | None
+    available: bool
+
+    @model_validator(mode="after")
+    def recommended_player_is_available(self) -> "SampleSummary":
+        if len(self.players) != len(set(self.players)):
+            raise ValueError("sample players must be unique")
+        if self.recommended_player not in (None, *self.players):
+            raise ValueError("recommended_player must appear in players")
+        return self
+
+
+class SamplesResponse(ContractModel):
+    samples: list[SampleSummary]
+
+
+class AnalyzeRequest(ContractModel):
+    """Pre-intent preparation request for a bundled sample."""
+
+    sample_id: str | None = None
+    analysis_id: str | None = None
+    player: str | None = None
+
+    @model_validator(mode="after")
+    def require_one_source(self) -> "AnalyzeRequest":
+        sources = [self.sample_id is not None, self.analysis_id is not None]
+        if sum(sources) != 1:
+            raise ValueError("provide exactly one of sample_id or analysis_id")
+        return self
+
+
+class NeutralDecisionSummary(ContractModel):
+    timestamp_seconds: float = Field(ge=0.0)
+    text: str = Field(min_length=1)
+
+
+class AnalysisPreparationResponse(ContractModel):
+    stage: AnalysisStage
+    analysis_id: str = Field(min_length=1)
+    players: list[str]
+    decision_packet: DecisionPacket | None
+    neutral_summary: NeutralDecisionSummary | None
+
+    @model_validator(mode="after")
+    def enforce_stage_payload(self) -> "AnalysisPreparationResponse":
+        if self.stage == AnalysisStage.PLAYER_SELECTION_REQUIRED:
+            if self.decision_packet is not None or self.neutral_summary is not None:
+                raise ValueError(
+                    "player-selection response cannot expose a decision packet"
+                )
+        elif self.decision_packet is None or self.neutral_summary is None:
+            raise ValueError(
+                "intent-required response must include packet and neutral summary"
+            )
+        return self
+
+
+class AnalysisResponse(ContractModel):
+    decision_packet: DecisionPacket
+    decision_card: DecisionCard
+
+    @model_validator(mode="after")
+    def validate_packet_card_relationship(self) -> "AnalysisResponse":
+        if self.decision_packet.decision_id != self.decision_card.decision_id:
+            raise ValueError("packet and card decision_id values must match")
+
+        unsupported = set(self.decision_card.facts_used) - (
+            self.decision_packet.available_evidence_ids()
+        )
+        if unsupported:
+            raise ValueError(
+                f"DecisionCard contains unsupported evidence IDs: {sorted(unsupported)}"
+            )
+        return self
+
+
+class APIErrorDetail(ContractModel):
+    code: APIErrorCode
+    message: str = Field(min_length=1)
+    retryable: bool
+    decision_id: str | None = None
+
+
+class APIErrorResponse(ContractModel):
+    error: APIErrorDetail

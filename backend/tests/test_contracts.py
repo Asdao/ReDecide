@@ -8,7 +8,9 @@ import unittest
 from pydantic import ValidationError
 
 from backend.app.contracts import (
+    AnalysisResponse,
     AnalyzeJsonRequest,
+    AnalyzeRequest,
     DecisionCard,
     DecisionPacket,
     IntentInput,
@@ -102,6 +104,40 @@ class ContractFixtureTests(unittest.TestCase):
 
         with self.assertRaises(ValidationError):
             IntentInput.model_validate(payload)
+
+    def test_analyze_request_requires_exactly_one_source(self) -> None:
+        with self.assertRaisesRegex(ValidationError, "exactly one"):
+            AnalyzeRequest.model_validate(
+                {
+                    "sample_id": "fixture-mirage-01",
+                    "analysis_id": "sample:fixture-mirage-01",
+                }
+            )
+
+    def test_analyze_json_normalizes_blank_intent_text(self) -> None:
+        payload = load_fixture("analyze_json_request.valid.json")
+        payload["intent"]["text"] = "   "
+
+        request = AnalyzeJsonRequest.model_validate(payload)
+
+        self.assertIsNone(request.intent.text)
+
+    def test_analyze_json_rejects_long_intent_text(self) -> None:
+        payload = load_fixture("analyze_json_request.valid.json")
+        payload["intent"]["text"] = "x" * 241
+
+        with self.assertRaisesRegex(ValidationError, "240 characters"):
+            AnalyzeJsonRequest.model_validate(payload)
+
+    def test_analysis_response_rejects_unsupported_fact_reference(self) -> None:
+        packet = load_fixture("decision_packet.valid.json")
+        card = load_fixture("decision_card.valid.json")
+        card["facts_used"].append("E999")
+
+        with self.assertRaisesRegex(ValidationError, "unsupported evidence IDs"):
+            AnalysisResponse.model_validate(
+                {"decision_packet": packet, "decision_card": card}
+            )
 
 
 if __name__ == "__main__":
