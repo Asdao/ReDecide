@@ -263,24 +263,29 @@ Skills should guide communication:
 
 Do not put the pipeline algorithm in `SKILL.md`, and do not ask Pi to calculate the score from prose.
 
-## Webapp usage
+## FastAPI usage
 
-A backend endpoint can expose the pipeline as a streamed job:
+The backend exposes a two-stage job. The replay is accepted once; selecting a
+player references the prepared job and never reparses the source:
 
 ```text
-POST /api/rounds              { seed, scenario, policy }
-  <- { replay_id, status: "started" }
+POST /api/analysis/prepare       { replay: <processed replay JSON> }
+  <- { analysis_id, status, players_url, events_url, result_url }
 
-GET /api/rounds/{id}/events   Server-Sent Events:
-  stage: timeline
-  stage: pivotal_event
-  stage: analysis
-  stage: recommendation
+GET /api/analysis/{id}/players   selector-ready player names and IDs
+GET /api/analysis/{id}/events    SSE log/progress stream
 
-GET /api/rounds/{id}          final structured report
+POST /api/analysis/{id}/run      { player_id }
+GET /api/analysis/{id}/result    final player-filtered UI JSON
+GET /api/analysis/{id}/logs      persisted JSONL log
 ```
 
-Keep API keys, replay storage, and simulator execution on the server. The browser receives structured results and rendered explanations, never provider credentials or unrestricted tool access.
+The player view filters events and first-contact decision candidates by the
+selected player. The `win_estimator` remains global to preserve the distinct
+CT/T team context. The FastAPI adapter is in `backend/app/main.py`; its
+transport-neutral job state and JSONL logging are in
+`backend/app/orchestration.py`. Keep API keys, replay storage, and model calls
+on the server.
 
 ## Implementation order
 

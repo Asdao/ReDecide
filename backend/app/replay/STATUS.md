@@ -84,8 +84,11 @@ warnings, and typed invalid-demo errors.
 
 - The native `.dem` parser still depends on the workstation's optional parser
   environment; processed JSONL is the deterministic local integration input.
-- No FastAPI/SSE route currently invokes the pipeline and Pi adapter together;
-  the route should call `merge_pi_output` after receiving the model response.
+- `backend/app/main.py` now exposes the two-stage FastAPI job transport:
+  `/api/analysis/prepare` creates a replay job and selector, `/run` accepts the
+  selected player, `/events` streams progress, and `/logs` persists JSONL
+  records. The coach adapter is injected at this boundary; the live Pi adapter
+  still needs to be wired into the production service.
 - The frozen `DecisionPacket`/`DecisionCard` API contracts remain a separate
   integration surface owned by Person 1 and Person 3.
 
