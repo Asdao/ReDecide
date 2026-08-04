@@ -8,9 +8,9 @@ Owner: Person 2 - CS2 Replay Data and Decision Detection
 
 **Replay selector/progress pipeline and UI coaching merge are implemented.**
 
-`backend/app/replay/noah_extractor.py` now wraps Blackbox's public
+`backend/app/replay/replay_engine_extractor.py` now wraps the replay engine's public
 `ReplayExtractor` facade. It parses or normalizes a replay, segments it, and
-returns Blackbox's canonical `ReplayRecord` plus `SegmentedReplay` through a stable
+returns the replay engine's canonical `ReplayRecord` plus `SegmentedReplay` through a stable
 backend error boundary. `pipeline.py` now indexes first-damage decisions for
 all players, streams progress, keeps the global win estimator unfiltered, and
 provides `merge_pi_output` for attaching redacted Pi coaching to the original
@@ -26,14 +26,14 @@ UI result without mutating the replay file.
 
 ## Existing work to review
 
-`Blackbox/extractor/` is the canonical parsing, normalization, and segmentation
-implementation used by the connector. `Blackbox/training/` contains potentially
+`backend/replay_engine/extractor/` is the canonical parsing, normalization, and segmentation
+implementation used by the connector. `backend/replay_engine/training/` contains potentially
 reusable replay-processing and feature-extraction work. Person 2 must review
 capability, licensing, evidence semantics, and future-information leakage
 before using either path to build a packet.
 
-Do not modify or relocate `Blackbox/**` without coordinating with the
-Blackbox owner.
+Do not modify `backend/replay_engine/**` without coordinating with the replay
+engine owner.
 
 ## Important paths
 
@@ -48,15 +48,15 @@ data/samples/**
 Focused connector tests:
 
 ```powershell
-uv run pytest backend/tests/test_replay_noah_connector.py
+uv run pytest backend/tests/test_replay_replay_engine_connector.py
 ```
 
 The source paths are configured directly in `pyproject.toml` for the renamed
-`Blackbox` package:
+`backend.replay_engine` package:
 
 ```powershell
-$env:PYTHONPATH = "Blackbox/extractor/src;Blackbox/model/src;."
-uv run pytest backend/tests/test_replay_noah_connector.py -q
+$env:PYTHONPATH = "backend/replay_engine/extractor/src;backend/replay_engine/model/src;."
+uv run pytest backend/tests/test_replay_replay_engine_connector.py -q
 ```
 
 Result: 3 tests passed. The current tests

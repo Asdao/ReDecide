@@ -3,7 +3,7 @@
 ## `analyze_replay`
 
 Loads one server-side replay path (`.dem`, `.json`, or `.jsonl`) through the
-Noah extractor and returns an outcome-blind, bounded pipeline report. The
+Replay Engine extractor and returns an outcome-blind, bounded pipeline report. The
 selector creates one candidate per player and round using the first damage
 contact as the coaching anchor. Kills are retained in the source replay for
 UI/replay markers; they are not used as the only selection filter.

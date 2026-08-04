@@ -1,0 +1,59 @@
+# RE:DECIDE
+
+Upload a Counter-Strike 2 `.dem` replay, choose a player, and receive coaching
+for their post-contact decisions.
+
+## First-time setup
+
+You need Python 3.12+, `uv`, Node.js 24, and `pnpm` 11.
+
+Run these commands from the repository root:
+
+```powershell
+uv sync --extra full
+
+cd agent-harness
+pnpm install
+cd ..
+
+cd frontend
+pnpm install
+cd ..
+
+Copy-Item .env.example .env
+Set-Content frontend/.env.local 'NEXT_PUBLIC_API_BASE_URL=http://127.0.0.1:8000'
+```
+
+Open `.env` and add your coaching API key:
+
+```powershell
+notepad .env
+```
+
+```text
+DEEPSEEK_API_KEY=your-real-key-here
+```
+
+Never put the API key in `frontend/.env.local`.
+
+## Start the product
+
+Backend - run from the repository root:
+
+```powershell
+uv run uvicorn backend.app.main:app --reload --port 8000
+```
+
+Frontend - run in a second PowerShell window:
+
+```powershell
+cd frontend
+pnpm dev
+```
+
+Open:
+
+- Product: `http://localhost:3000`
+- Backend API: `http://127.0.0.1:8000/docs`
+
+Press `Ctrl+C` in both windows to stop.

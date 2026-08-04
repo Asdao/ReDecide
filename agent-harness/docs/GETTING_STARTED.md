@@ -26,7 +26,7 @@ pnpm dev -- --prompt "Run seed 7 for the example scenario with the baseline poli
 The CLI defaults to `src/cs2_sim/agent_bridge.py`, Python executable `python`, in-memory sessions, and the read-only `simulate_round` tool. Pass `--replay <path>` to enable the bounded `analyze_replay` pipeline automatically.
 
 The bridge is intentionally separate from the domain facades. For direct Python
-integration, use [`../../docs/MODULE_API.md`](../../Blackbox/docs/MODULE_API.md) and call
+integration, use [`../../backend/replay_engine/docs/MODULE_API.md`](../../backend/replay_engine/docs/MODULE_API.md) and call
 `cs2_sim.ReplayModel`, `replay_extractor.ReplayExtractor`, or
 `training.TrainingPipeline` from their package roots.
 

@@ -1,18 +1,15 @@
-"""FastAPI transports for the frozen API and replay-pipeline integration.
+"""Integration-owned FastAPI gateway for RE:DECIDE.
 
-``app`` is the default RE:DECIDE application.  It exposes only the four
-endpoints agreed with the frontend and remains fixture-backed until the replay
-pipeline emits a frozen ``DecisionPacket``.
-
-``create_app(service=...)`` preserves the incoming replay-job transport for
-pipeline integration tests.  That transport returns an internal replay report,
-not the frozen packet/card response, so it is deliberately not mounted on the
-default application yet.
+The exported ``app`` exposes replay upload, asynchronous player analysis, and
+the neutral fixture preparation routes through one process. The replay
+engine's replay service remains independently testable; this module reuses its
+public routes without duplicating its parser, artifact store, or model logic.
 """
 
 from __future__ import annotations
 
 import json
+import os
 import time
 from typing import Any
 
@@ -156,8 +153,8 @@ def create_fixture_app(
     return fixture_app
 
 
-def create_app(*, service: AnalysisService | None = None) -> FastAPI:
-    """Create the internal asynchronous replay-job transport.
+def create_analysis_app(*, service: AnalysisService | None = None) -> FastAPI:
+    """Create the asynchronous replay-analysis transport.
 
     The transport accepts either normalized replay JSON or a ``replay_id``
     created by the upload API. Tests may inject a deterministic service;
@@ -281,6 +278,92 @@ def create_app(*, service: AnalysisService | None = None) -> FastAPI:
     return analysis_app
 
 
-app = create_fixture_app()
+def _copy_api_routes(
+    target: FastAPI,
+    source: FastAPI,
+    *,
+    prefixes: tuple[str, ...],
+    excluded_paths: frozenset[str] = frozenset(),
+) -> None:
+    """Expose selected teammate-owned routes through the public gateway."""
 
-__all__ = ["app", "create_app", "create_fixture_app"]
+    for route in source.router.routes:
+        path = str(getattr(route, "path", ""))
+        if path not in excluded_paths and any(
+            path.startswith(prefix) for prefix in prefixes
+        ):
+            target.router.routes.append(route)
+
+
+def create_app(
+    *,
+    service: AnalysisService | None = None,
+    orchestrator: FixtureOrchestrator | None = None,
+) -> FastAPI:
+    """Create the single public API while preserving component ownership.
+
+    Replay routes come from ``backend.replay_api`` unchanged, analysis routes
+    come from this module's injected-service factory, and the neutral fixture
+    preparation routes remain available as a deterministic fallback. The
+    obsolete fixture-only ``POST /api/analyze-json`` route stays available to
+    ``create_fixture_app()`` for frozen-contract tests but is deliberately not
+    exposed by this public gateway.
+    """
+
+    gateway = FastAPI(title="RE:DECIDE API", version="1.0")
+    allowed_origins = [
+        origin.strip()
+        for origin in os.getenv(
+            "REDECIDE_API_ALLOWED_ORIGINS",
+            "http://localhost:3000,http://127.0.0.1:3000",
+        ).split(",")
+        if origin.strip()
+    ]
+    gateway.add_middleware(
+        CORSMiddleware,
+        allow_origins=allowed_origins,
+        allow_credentials=False,
+        allow_methods=["GET", "POST"],
+        allow_headers=["*"],
+    )
+
+    @gateway.get("/api/health")
+    def health() -> dict[str, str]:
+        return {"status": "ok"}
+
+    fixture_app = create_fixture_app(orchestrator=orchestrator)
+    analysis_app = create_analysis_app(service=service)
+
+    # Preserve the typed frozen-contract error handlers on the unified app.
+    gateway.exception_handlers.update(fixture_app.exception_handlers)
+
+    _copy_api_routes(
+        gateway,
+        fixture_app,
+        prefixes=("/api/samples", "/api/analyze"),
+        excluded_paths=frozenset({"/api/analyze-json"}),
+    )
+    _copy_api_routes(gateway, analysis_app, prefixes=("/api/analysis",))
+
+    # Import lazily to keep the teammate-owned replay service independently
+    # importable and to avoid loading its native parser during module import.
+    from backend.replay_api.main import create_app as create_replay_app
+
+    replay_app = create_replay_app()
+    _copy_api_routes(gateway, replay_app, prefixes=("/api/replay",))
+
+    # Keep Vercel Blob ingestion absent until explicitly enabled. This is safer
+    # than commented-out code because the route remains executable and tested.
+    from backend.app.blob_import import (
+        blob_import_enabled,
+        create_blob_import_router,
+    )
+
+    if blob_import_enabled():
+        gateway.include_router(create_blob_import_router())
+    return gateway
+
+
+app = create_app()
+
+__all__ = ["app", "create_analysis_app", "create_app", "create_fixture_app"]

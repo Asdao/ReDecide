@@ -1,15 +1,18 @@
+# Python-generated files, local environments, and test caches.
 __pycache__/
-.venv/
 *.py[cod]
-*.part
 *.egg-info/
-.env
-
-# Local Python environments and test caches.
+.pytest_cache/
 .venv/
 .venv-wsl/
 venv/
-.pytest_cache/
+*.part
+
+# Local editor and IDE state.
+.idea/
+
+# Local secrets.
+.env
 
 # Node projects live under frontend/ and agent-harness/. Ignore dependency
 # trees everywhere and accidental package-manager files created at repo root.
@@ -47,8 +50,8 @@ data/eval/human/*
 !data/eval/human/.gitkeep
 
 # Keep the deployable replay-value model bundle available to users after clone.
-!Blackbox/model/artifacts/full_replay_value.txt
-!Blackbox/model/artifacts/full_replay_value.txt.json
-!Blackbox/model/artifacts/full_replay_value.manifest.json
-!Blackbox/model/artifacts/full_replay_calibrator.json
-!Blackbox/model/artifacts/small_snapshot_value.json
+!backend/replay_engine/model/artifacts/full_replay_value.txt
+!backend/replay_engine/model/artifacts/full_replay_value.txt.json
+!backend/replay_engine/model/artifacts/full_replay_value.manifest.json
+!backend/replay_engine/model/artifacts/full_replay_calibrator.json
+!backend/replay_engine/model/artifacts/small_snapshot_value.json

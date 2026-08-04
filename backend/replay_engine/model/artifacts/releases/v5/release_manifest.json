@@ -1,0 +1,108 @@
+{
+  "schema_version": "model_release_manifest_v1",
+  "version": "v5",
+  "components": {
+    "full_replay_manifest": {
+      "path": "full_replay_value.manifest.json",
+      "bytes": 3380,
+      "sha256": "3c15a309d4661e3c7df60d31d699d771801338f6d1a000238f37d48013bafd30"
+    },
+    "full_replay_booster": {
+      "path": "full_replay_value.txt",
+      "bytes": 88466,
+      "sha256": "d438f3ef759e69ff580a5332894630c3db14eadaa0be6118cf51f75488268941"
+    },
+    "full_replay_bayesian": {
+      "path": "small_snapshot_value.json",
+      "bytes": 19172,
+      "sha256": "11d8659f26600afd1f444e47fdddec8767999b4f906289673dd98f4b5775dc8a"
+    },
+    "full_replay_calibrator": {
+      "path": "full_replay_calibrator.json",
+      "bytes": 135,
+      "sha256": "c8bea66527752d50406bdf86eb2dc8173e107ffed03d204aef36ddca6aa63635"
+    },
+    "full_replay_metrics": {
+      "path": "full_replay_metrics.json",
+      "bytes": 4501,
+      "sha256": "10f07b9feb798c3ba9d29e9515ea2dec12a7398291f315434de6e71214297cb9"
+    },
+    "full_replay_booster_metadata": {
+      "path": "full_replay_value.txt.json",
+      "bytes": 1209,
+      "sha256": "7d24f31f9821520811b9a43c95f62d1db375e349e057b93ff38959da42f08f52"
+    },
+    "engagement_model": {
+      "path": "engagement_model.json",
+      "bytes": 3079983,
+      "sha256": "400595f6b574ea60aed1959e46653d4535f3a2940f642a2b99cbb2badf07d7d9"
+    },
+    "engagement_lightgbm": {
+      "path": "engagement_lightgbm.json",
+      "bytes": 593079,
+      "sha256": "54cdc5f0d305da06e9ce5ce7f5308b875c4609a5dffffad2619bb3001c8f5a95"
+    },
+    "candidate_action_value": {
+      "path": "candidate_action_value.txt",
+      "bytes": 142419,
+      "sha256": "e86eee65a9e1b2ef104e7b8f21ece93131b17cf1794d04b639dd1099186a76e1"
+    },
+    "candidate_action_metadata": {
+      "path": "candidate_action_value.txt.json",
+      "bytes": 222566,
+      "sha256": "c6e2844eefab9d23b97a2251333f2618c73284d87c6127de76815349b88a82f9"
+    },
+    "candidate_training_metrics": {
+      "path": "candidate_training_metrics.json",
+      "bytes": 896,
+      "sha256": "27f2d1af04ae7944ee9fa3714c62e9aab1a323f5ab6ba974772d803ee7a94aaf"
+    },
+    "statistical_action_prior": {
+      "path": "small_statistical.json",
+      "bytes": 194369,
+      "sha256": "fa0209b879ec5713ac807945acce894b67b8953c0a94d8ed3d0a1ddaf7369adb"
+    },
+    "engagement_metrics": {
+      "path": "engagement_metrics.json",
+      "bytes": 5597,
+      "sha256": "f4a72cf01d68e2d4aab2c6abc1559406c97797dcca54c6554ae6d50708569619"
+    },
+    "engagement_lightgbm_metrics": {
+      "path": "engagement_lightgbm_metrics.json",
+      "bytes": 6129,
+      "sha256": "42343920ab1fc0a45c821d0f5882a78e473a6d6d50d9099e54a3e2718f3e415d"
+    },
+    "action_vocabulary_coverage": {
+      "path": "action_vocabulary_coverage.json",
+      "bytes": 10141,
+      "sha256": "215a8ff01a2ad9d68a21d02563cdc66cf573fdc5ce366e3cb6df5316199923b5"
+    },
+    "action_model": {
+      "path": "action_frequency.json",
+      "bytes": 1243055,
+      "sha256": "568eec3677dd84743e52d543aea8e456adcfd600131d11346c062f391cdb71bd"
+    },
+    "transition_model": {
+      "path": "zone_transitions.json",
+      "bytes": 5286034,
+      "sha256": "9547372163721b7206505feac75cea4c4f9effca9d560a18dff0aa1f76964ffb"
+    },
+    "feature_schema": {
+      "path": "feature_schema.json",
+      "bytes": 17166,
+      "sha256": "388aea341e2b23d9c378f182608efb4d35246a6fa978257129329eb76abf455a"
+    },
+    "fingerprint": {
+      "path": "fingerprint.json",
+      "bytes": 1411,
+      "sha256": "53b5778a1d14276f1ee14ec8993ebba5845ff7436c62ab89a571743762491d20"
+    }
+  },
+  "feature_schema_versions": {
+    "replay": 2,
+    "engagement": "engagement_features_v3",
+    "candidate_action": "candidate_action_features_v1"
+  },
+  "dataset_manifest": null,
+  "metrics": null
+}

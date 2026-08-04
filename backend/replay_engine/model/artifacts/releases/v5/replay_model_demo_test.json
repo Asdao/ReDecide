@@ -1,0 +1,36 @@
+{
+  "schema_version": "portable_demo_test_v1",
+  "description": "Clean-clone regression specification for the sanitized replay fixture and deployed v5 model release.",
+  "input": "backend/tests/fixtures/coach_full_replay.json",
+  "release_dir": "backend/replay_engine/model/artifacts/releases",
+  "version": "v5",
+  "runner": {
+    "moment_threshold": 0.08,
+    "max_moments": 25,
+    "sample_every": 8
+  },
+  "expected": {
+    "report_type": "combined_replay_analysis",
+    "report_schema_version": "replay_analysis_v1",
+    "source": "coach-full-fixture.dem",
+    "map_name": "de_mirage",
+    "summary": {
+      "moment_count": 4,
+      "kill_count": 4,
+      "kill_analysis_count": 4,
+      "least_risk_fallback_count": 0,
+      "least_risk_candidate_count": 0,
+      "least_risk_usable_count": 0,
+      "decision_classes": {
+        "bad": 2,
+        "insufficient_evidence": 2
+      },
+      "recommendations_are_counterfactual_estimates": true,
+      "candidate_model_type": "full_lightgbm_blended_with_small_statistical_rubric_suitability",
+      "probability_decision_classes": {
+        "insufficient_evidence": 4
+      },
+      "probability_labels_are_thresholded_estimates": true
+    }
+  }
+}

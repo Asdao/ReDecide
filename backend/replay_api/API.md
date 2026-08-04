@@ -1,6 +1,6 @@
 # Replay FastAPI
 
-This service accepts a native CS2 `.dem`, calls Blackbox's loader once, and
+This service accepts a native CS2 `.dem`, calls the replay engine's loader once, and
 creates three artifacts under `REDECIDE_REPLAY_STORE`:
 
 ```text
@@ -74,7 +74,7 @@ Manifest variables:
 Upload errors:
 
 - `415`: filename is not a `.dem`.
-- `422`: Blackbox could not parse the demo.
+- `422`: replay engine could not parse the demo.
 
 The application does not impose a demo-size limit. Reverse proxies, hosting
 platforms, or the operating system may still impose their own limits.

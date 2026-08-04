@@ -182,9 +182,9 @@ def _finish_visualization(record: Mapping[str, Any], replay_id: str, manifest: M
 
 
 def _load_native_demo(path: Path) -> Mapping[str, Any]:
-    """Use Blackbox's existing public native-demo loader."""
+    """Use the replay engine's existing public native-demo loader."""
 
-    from Blackbox.harness import load_replay_record
+    from backend.replay_engine.harness import load_replay_record
 
     record = load_replay_record(path)
     if not isinstance(record, Mapping):

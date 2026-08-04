@@ -21,18 +21,23 @@ build-backend = "setuptools.build_meta"
 
 [tool.setuptools]
 packages = [
-    "Blackbox",
-    "Blackbox.training",
-    "Blackbox.training.tests",
+    "backend",
+    "backend.app",
+    "backend.app.coach",
+    "backend.app.replay",
+    "backend.replay_api",
+    "backend.replay_engine",
+    "backend.replay_engine.training",
+    "backend.replay_engine.training.tests",
     "replay_extractor",
     "cs2_sim",
     "cs2_sim.core",
     "cs2_sim.core.model",
     "cs2_sim.models",
 ]
-package-dir = {"Blackbox" = "Blackbox", "replay_extractor" = "Blackbox/extractor/src/replay_extractor", "cs2_sim" = "Blackbox/model/src/cs2_sim"}
+package-dir = {"replay_extractor" = "backend/replay_engine/extractor/src/replay_extractor", "cs2_sim" = "backend/replay_engine/model/src/cs2_sim"}
 
 [tool.pytest.ini_options]
-testpaths = ["backend/tests", "Blackbox/tests", "Blackbox/model/tests", "Blackbox/training/tests", "Blackbox/extractor/tests", "Blackbox/backend demo", "agent-harness/tests"]
+testpaths = ["backend/tests", "backend/replay_engine/tests", "backend/replay_engine/model/tests", "backend/replay_engine/training/tests", "backend/replay_engine/extractor/tests", "backend/replay_engine/backend demo", "agent-harness/tests"]
 addopts = ["--import-mode=importlib"]
-pythonpath = ["Blackbox/model/src", "Blackbox/extractor/src", "."]
+pythonpath = ["backend/replay_engine/model/src", "backend/replay_engine/extractor/src", "."]
