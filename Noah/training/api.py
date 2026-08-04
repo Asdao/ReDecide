@@ -198,8 +198,9 @@ class TrainingPipeline:
     def train_candidate_value_models(
         self,
         candidate_states_path: str | Path,
-        rollout_path: str | Path,
+        rollout_path: str | Path | None = None,
         *,
+        labels_path: str | Path | None = None,
         artifact_dir: str | Path | None = None,
         train_full: bool = True,
         max_examples: int | None = None,
@@ -207,13 +208,15 @@ class TrainingPipeline:
         """Train support-aware strategic candidate-action models."""
 
         states = Path(candidate_states_path)
-        rollouts = Path(rollout_path)
+        rollouts = Path(rollout_path) if rollout_path is not None else None
+        labels = Path(labels_path) if labels_path is not None else None
         output = Path(artifact_dir) if artifact_dir is not None else self.config.artifact_dir / "candidate"
         try:
             summary = train_candidate_value_models(
                 states,
                 rollouts,
                 output,
+                labels_path=labels,
                 train_full=train_full,
                 max_examples=max_examples,
                 seed=self.config.seed,

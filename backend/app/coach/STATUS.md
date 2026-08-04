@@ -12,12 +12,22 @@ separate.**
 `backend/app/coach/noah_connector.py` accepts one normalized replay mapping and
 forwards it to Noah's package-root `analyze_replay` function. With no explicit
 model configuration, that function follows
-`Noah/model/artifacts/releases/current.json` and currently loads release `v4`.
+`Noah/model/artifacts/releases/current.json` and loads the active release.
 Native `.dem` parsing belongs to `Noah/training/test_harness.py` and the
 replacement-extractor adapter; the backend connector intentionally receives
 normalized JSON only. The folder still contains no provider adapter, versioned
 rubric, prompt assembly, structured-output parser, deterministic validators, or
 fixture coach.
+
+The harness default follows the active release pointer in
+`Noah/model/artifacts/releases/current.json`; pin `version` or pass an explicit
+`model_config` when reproducible release selection is required.
+
+The connector is an internal backend boundary. The browser must not import
+Noah, load model artifacts, or call this class directly. A future HTTP route
+should call the connector from backend orchestration, then return a validated
+RE:DECIDE response (`DecisionPacket` plus `DecisionCard`) rather than Noah's
+combined report.
 
 ## Required input and output
 
@@ -76,7 +86,11 @@ Input rules:
 - The provider must not generate or receive `checks`; validators compute those
   fields after parsing the response.
 
-The model response must be JSON matching the frozen `DecisionCard` shape:
+The planned provider response must be JSON matching the frozen `DecisionCard`
+shape; the canonical example is
+`backend/tests/fixtures/decision_card.valid.json`. The following is instead a
+representative current Noah combined-report response, included to make the
+connector boundary explicit:
 
 ```json
 {
@@ -137,11 +151,13 @@ The model response must be JSON matching the frozen `DecisionCard` shape:
 }
 ```
 
-`checks` is shown here to document the final API output, but it is appended or
-overwritten by deterministic backend validation. A response with invalid JSON,
-unknown evidence IDs, forbidden future information, contradictions, or weak
-evidence is rejected, repaired at most once when appropriate, or converted to
-`INSUFFICIENT_EVIDENCE`.
+This Noah report intentionally does not contain `DecisionCard` fields or
+`checks`. Deterministic evidence, future-information, contradiction,
+confidence, and abstention validation belongs to the future RE:DECIDE coach
+layer. A provider response with invalid JSON, unknown evidence IDs, forbidden
+future information, contradictions, or weak evidence must be rejected,
+repaired at most once when appropriate, or converted to
+`INSUFFICIENT_EVIDENCE` by that layer.
 
 ### Current Noah connector I/O
 
@@ -161,6 +177,40 @@ Engagement-window rows also retain `observed_action` as a canonical string and
 add `observed_action_family`, `observed_action_parameters`,
 `observed_action_confidence`, and `observed_action_evidence`. Parameter values
 such as `target_zone` and `utility_type` are not separate action classes.
+
+#### Public connector methods
+
+| Method | Input | Output | Notes |
+| --- | --- | --- | --- |
+| `NoahCoachConnector.analyse(replay, **options)` | `Mapping[str, Any]` normalized replay | Noah combined report | Main backend call; rejects non-mappings. |
+| `NoahCoachConnector.analyze(replay, **options)` | Same as `analyse` | Same as `analyse` | American-English alias. |
+| `NoahCoachConnector.analyse_json(payload, **options)` | UTF-8 JSON `str` or `bytes` | Noah combined report | Decodes JSON, then applies the same mapping checks. |
+| `NoahCoachConnector.analyse_outcome_blind(replay, **options)` | Same as `analyse` | Redacted combined report | Safe projection for an API/UI boundary. |
+
+The constructor accepts either an injected runtime (useful for deterministic
+tests) or `model_config`, but not both. Without either, the connector lazily
+imports `Noah.analyze_replay`, so importing the backend module does not load the
+model. Keyword options are forwarded to the harness; common controls include
+`max_moments`, `sample_every`, `min_support`, `version`, and seeded posterior
+options. The connector validates `report_type ==
+"combined_replay_analysis"` before returning the report.
+
+Failures are normalized to `NoahCoachError`. Invalid JSON, a non-object JSON
+payload, model-loading failures, harness failures, and invalid report shapes
+must not be passed through as successful API responses. The original exception
+is retained as the cause for server-side diagnostics; callers should expose a
+typed, non-sensitive API error instead of the exception text.
+
+The connector does not accept a native `.dem` path or upload, select a player,
+detect the product decision packet, collect intent, call a provider, or build a
+`DecisionCard`. Those responsibilities belong to replay/API/coach
+orchestration layers around this adapter.
+
+For an API/UI response, call `analyse_outcome_blind()` (or the American-English
+`analyze_outcome_blind()` alias). It removes `full_match` and known future-label
+fields, drops flattened kill-analysis rows and post-decision events, and adds
+`outcome_blind: true`; the regular `analyse()` method remains
+for internal evaluation reports that intentionally retain terminal context.
 
 ## Existing work to review
 
@@ -358,6 +408,31 @@ The command also prints a per-kill table; the JSON report exposes the same
 rows under `kill_analysis`. `summary.kill_count` remains the total replay kill
 count, while `summary.kill_analysis_count` reports how many received candidate
 analysis under the selected cap.
+
+### UI/API handoff
+
+The connector should sit behind the API, not behind a TypeScript-to-Python
+runtime bridge in the browser:
+
+```text
+Next.js UI
+  -> frontend TypeScript adapter (fetch + Zod validation)
+  -> backend prepare route
+  -> replay extractor + NoahCoachConnector
+  -> neutral prepared DecisionPacket
+  -> player intent
+  -> backend analyze route
+  -> validated DecisionPacket + DecisionCard
+```
+
+The preferred flow is two-stage so the UI can collect intent before revealing
+judgement. `prepare` may accept a sample identifier or multipart `.dem` upload,
+but it must return a neutral prepared decision and player choices only. The
+second request accepts the prepared decision (or an opaque server-side ID) and
+`IntentInput`; it is the only response that may contain coaching prose,
+verdict, alternatives, or a practice quest. Until those routes and envelopes
+are frozen, the frontend should use its explicit fixture adapter and must not
+pretend that the Noah combined report is a `DecisionCard`.
 
 Required coverage includes well-formed fixtures, nonexistent evidence IDs,
 forbidden outcome information, malformed model JSON, low-quality packets,

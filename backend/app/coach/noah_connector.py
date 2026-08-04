@@ -62,6 +62,28 @@ class NoahCoachConnector:
 
         return self.analyse(replay, **kwargs)
 
+    def analyse_outcome_blind(
+        self, replay: Mapping[str, Any], **kwargs: Any
+    ) -> dict[str, Any]:
+        """Return the harness report after removing future outcome fields.
+
+        This is the safe projection for an API/UI boundary.  The regular
+        ``analyse`` method remains available for internal evaluation reports
+        that intentionally retain terminal match context.
+        """
+
+        report = self.analyse(replay, **kwargs)
+        from Noah.training.analysis_report import outcome_blind_report
+
+        return outcome_blind_report(report)
+
+    def analyze_outcome_blind(
+        self, replay: Mapping[str, Any], **kwargs: Any
+    ) -> dict[str, Any]:
+        """American-English alias for :meth:`analyse_outcome_blind`."""
+
+        return self.analyse_outcome_blind(replay, **kwargs)
+
     def analyse_json(self, payload: str | bytes, **kwargs: Any) -> dict[str, Any]:
         """Decode one JSON request body and analyze it."""
 

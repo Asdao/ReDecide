@@ -12,6 +12,103 @@ from __future__ import annotations
 from collections.abc import Iterable, Mapping
 from typing import Any
 
+_OUTCOME_FIELDS = frozenset(
+    {
+        "winner",
+        "round_winner",
+        "label_round_winner",
+        "round_won",
+        "label_round_win",
+        "label_kill",
+        "label_death",
+        "label_trade",
+        "label_survival",
+        "label_damage",
+        "kill_tick",
+        "death_tick",
+        "trade_tick",
+        "future_damage_dealt",
+        "future_damage_taken",
+        "survived_after_kill",
+        "outcome",
+        "parse_warning",
+        "contact_tick",
+        "label_end_tick",
+        "label_cutoff_tick",
+        "label_horizon_ticks",
+        "label_horizon_seconds",
+        "observed_action_event_ticks",
+    }
+)
+
+
+def _redact_outcome_fields(value: Any) -> Any:
+    if isinstance(value, Mapping):
+        return {
+            key: _redact_outcome_fields(item)
+            for key, item in value.items()
+            if str(key) not in _OUTCOME_FIELDS
+        }
+    if isinstance(value, list):
+        return [_redact_outcome_fields(item) for item in value]
+    if isinstance(value, tuple):
+        return tuple(_redact_outcome_fields(item) for item in value)
+    return value
+
+
+def outcome_blind_report(report: Mapping[str, Any]) -> dict[str, Any]:
+    """Project an evaluation report into a safe, outcome-blind payload.
+
+    The offline report intentionally retains ``full_match`` and future labels
+    for evaluation.  API/UI callers must use this projection before exposing
+    a report outside the model boundary.  The projection is conservative and
+    removes the complete terminal timeline plus known future-label fields.
+    """
+
+    if not isinstance(report, Mapping):
+        raise TypeError("analysis report must be a mapping")
+    projected = _redact_outcome_fields(dict(report))
+    projected.pop("full_match", None)
+    projected.pop("kill_analysis", None)
+    summary = projected.get("summary")
+    if isinstance(summary, Mapping):
+        summary = dict(summary)
+        for key in ("kill_count", "kill_analysis_count", "moment_count"):
+            summary.pop(key, None)
+        projected["summary"] = summary
+
+    moments = projected.get("moments")
+    if isinstance(moments, list):
+        safe_moments: list[dict[str, Any]] = []
+        for moment in moments:
+            if not isinstance(moment, Mapping):
+                continue
+            safe_moment = dict(moment)
+            cutoff = _int(safe_moment.get("decision_tick"), -1)
+            if cutoff < 0:
+                safe_moment.pop("events", None)
+                safe_moment.pop("tick", None)
+            else:
+                moment_tick = _int(safe_moment.get("tick"), -1)
+                if moment_tick > cutoff:
+                    safe_moment.pop("tick", None)
+                events = safe_moment.get("events")
+                if isinstance(events, list):
+                    safe_events = [
+                        event
+                        for event in events
+                        if isinstance(event, Mapping)
+                        and 0 <= _int(event.get("tick"), -1) <= cutoff
+                    ]
+                    if safe_events:
+                        safe_moment["events"] = safe_events
+                    else:
+                        safe_moment.pop("events", None)
+            safe_moments.append(safe_moment)
+        projected["moments"] = safe_moments
+    projected["outcome_blind"] = True
+    return dict(projected)
+
 
 def _number(value: Any, default: float = 0.0) -> float:
     """Coerce a replay value to ``float`` while tolerating missing fields."""
@@ -314,4 +411,5 @@ __all__ = [
     "_movement_action",
     "_observed_action",
     "_snapshot_for_event",
+    "outcome_blind_report",
 ]

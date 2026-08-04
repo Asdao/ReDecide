@@ -31,7 +31,7 @@ def run_replay_test(
     *,
     record_index: int = 0,
     release_dir: str | Path | None = None,
-    version: str = "v4",
+    version: str | None = None,
     candidate_model_path: str | Path | None = None,
     moment_threshold: float = 0.08,
     max_moments: int | None = 25,
@@ -113,7 +113,11 @@ def main() -> int:
         default=None,
         help="release bundle root (defaults to Noah/model/artifacts/releases)",
     )
-    parser.add_argument("--version", default="v4", help="release version directory")
+    parser.add_argument(
+        "--version",
+        default=None,
+        help="release version directory (defaults to the active current.json pointer)",
+    )
     parser.add_argument(
         "--candidate-model",
         type=Path,

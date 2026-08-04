@@ -137,10 +137,12 @@ candidate ranking. For kills, release v4 coaches the victim from a decision
 cutoff one second before contact using three seconds of prior history. The
 shared learned vocabulary includes `hold`, `peek`, `move_to_adjacent_zone`,
 `use_utility`, `plant`, `defuse`, and `unknown`; target zones and utility types
-are parameters. Candidates are scored by round-win, survival, kill, trade,
-damage, and simulator-value heads. It labels `good`/`bad` only when observed
-and candidate actions have enough support; otherwise it abstains. Detailed
-simulator actions still record their default-topology legality scope.
+are parameters. Existing releases may score candidates with simulator-value
+heads; candidate releases trained from `candidate_label_v1` instead expose a
+pre-event suitability score. The harness preserves that estimate type and
+does not project it into a death-risk or round-win claim. It labels `good`/`bad`
+only when the selected target has the required evidence; otherwise it abstains.
+Detailed simulator actions still record their default-topology legality scope.
 `analyse_engagement`, `score_engagement`, and `rank_candidate_actions` remain
 observational: a ranked alternative is not proof that a player should have
 made that move.

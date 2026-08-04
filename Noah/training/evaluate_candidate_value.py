@@ -19,6 +19,12 @@ for _path in (_NOAH_ROOT / "model" / "src", _WORKSPACE_ROOT):
 
 from cs2_sim.core.model import FullLightGBMModel, SmallStatisticalModel
 
+from Noah.training.candidate_labels import (
+    CANDIDATE_LABEL_SCHEMA_VERSION,
+    TRAINING_LABELS,
+    candidate_decision_key,
+    load_candidate_labels,
+)
 from Noah.training.candidate_rollouts import (
     _action_from_name,
     deserialize_state,
@@ -42,13 +48,7 @@ def _load_rollouts(path: str | Path) -> list[dict[str, Any]]:
 
 
 def _state_key(row: Mapping[str, Any]) -> tuple[str, str, str]:
-    group = row.get("record_index")
-    group_value = str(group) if group is not None else str(row.get("source") or "")
-    return (
-        group_value,
-        str((row.get("event") or {}).get("event_id") or row.get("event_id") or ""),
-        str(row.get("actor_id") or ""),
-    )
+    return candidate_decision_key(row)
 
 
 def _load_model(model_dir: str | Path) -> Any:
@@ -74,13 +74,121 @@ def _load_training_metrics(model_dir: str | Path) -> dict[str, Any] | None:
     return payload if isinstance(payload, dict) else None
 
 
-def evaluate_candidate_value(
+def evaluate_candidate_labels(
     candidate_states_path: str | Path,
-    rollout_path: str | Path,
+    labels_path: str | Path,
     model_dir: str | Path,
     *,
     min_support: int = 5,
 ) -> dict[str, Any]:
+    """Evaluate candidate suitability probabilities against rubric labels."""
+
+    states = load_candidate_rows(candidate_states_path)
+    labels = load_candidate_labels(labels_path)
+    model = _load_model(model_dir)
+    training_metrics = _load_training_metrics(model_dir)
+    heldout_split_valid = (
+        bool(training_metrics.get("heldout_split_valid"))
+        if training_metrics is not None
+        else None
+    )
+    state_map = {_state_key(row): row for row in states}
+    total = 0
+    brier_sum = 0.0
+    logloss_sum = 0.0
+    supported_rows = 0
+    label_counts: defaultdict[str, int] = defaultdict(int)
+    groups: defaultdict[tuple[str, str, str], list[tuple[str, str, float]]] = defaultdict(list)
+    for row in labels:
+        label = str(row.get("label") or "")
+        label_counts[label] += 1
+        if label not in TRAINING_LABELS:
+            continue
+        state_row = state_map.get(_state_key(row))
+        if state_row is None:
+            continue
+        state = deserialize_state(state_row.get("state") or {})
+        action = _action_from_name(str(row.get("action") or ""))
+        player_id = str(row.get("actor_id") or "")
+        if hasattr(model, "predict_probability"):
+            probability = float(model.predict_probability(state, player_id, action))
+        else:
+            probability = float(model.score_actions(state, player_id, (action,))[action])
+        probability = min(1.0 - 1e-7, max(1e-7, probability))
+        target = 1.0 if label == "preferred" else 0.0
+        total += 1
+        brier_sum += (probability - target) ** 2
+        logloss_sum += -(target * math.log(probability) + (1.0 - target) * math.log(1.0 - probability))
+        support_info = getattr(getattr(model, "small_model", model), "action_support_info", None)
+        support = support_info(state, player_id) if callable(support_info) else {"support": 0}
+        supported_rows += int(int(support.get("support", 0)) >= min_support)
+        key = _state_key(row)
+        groups[key].append((str(row.get("action") or ""), label, probability))
+
+    comparable_groups = 0
+    top1_matches = 0
+    for candidates in groups.values():
+        labels_in_group = {label for _action, label, _probability in candidates}
+        if not TRAINING_LABELS.issubset(labels_in_group):
+            continue
+        comparable_groups += 1
+        predicted = max(candidates, key=lambda item: (item[2], item[0]))[0]
+        preferred = {action for action, label, _probability in candidates if label == "preferred"}
+        top1_matches += int(predicted in preferred)
+
+    if heldout_split_valid is False:
+        quality_status = "not_comparable_no_heldout_split"
+    elif comparable_groups == 0:
+        quality_status = "not_comparable_no_label_variance"
+    else:
+        quality_status = "comparable"
+    return {
+        "schema_version": "candidate_evaluation_v2",
+        "evaluation_target": "pre_event_suitability",
+        "label_schema": CANDIDATE_LABEL_SCHEMA_VERSION,
+        "model_type": type(model).__name__,
+        "min_support": min_support,
+        "candidate_states": len(states),
+        "label_rows": len(labels),
+        "evaluated_action_rows": total,
+        "supported_action_rows": supported_rows,
+        "support_rate": supported_rows / total if total else 0.0,
+        "state_groups": len(groups),
+        "comparable_state_groups": comparable_groups,
+        "label_variance_rate": comparable_groups / len(groups) if groups else 0.0,
+        "label_counts": dict(sorted(label_counts.items())),
+        "quality_status": quality_status,
+        "quality_warnings": (
+            ["training_artifact_has_no_heldout_match_split"]
+            if heldout_split_valid is False
+            else ["no_action_label_variance: rubric labels cannot rank actions in these states"]
+            if groups and comparable_groups == 0
+            else []
+        ),
+        "heldout_split_valid": heldout_split_valid,
+        "top1_label_match_rate": top1_matches / comparable_groups if comparable_groups else None,
+        "brier": brier_sum / total if total else None,
+        "log_loss": logloss_sum / total if total else None,
+    }
+
+
+def evaluate_candidate_value(
+    candidate_states_path: str | Path,
+    rollout_path: str | Path | None,
+    model_dir: str | Path,
+    *,
+    labels_path: str | Path | None = None,
+    min_support: int = 5,
+) -> dict[str, Any]:
+    if labels_path is not None:
+        return evaluate_candidate_labels(
+            candidate_states_path,
+            labels_path,
+            model_dir,
+            min_support=min_support,
+        )
+    if rollout_path is None:
+        raise ValueError("either rollout_path or labels_path is required")
     states = load_candidate_rows(candidate_states_path)
     rollouts = _load_rollouts(rollout_path)
     state_map = {
@@ -191,19 +299,31 @@ def evaluate_candidate_value(
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("candidate_states", type=Path)
-    parser.add_argument("rollouts", type=Path)
-    parser.add_argument("model_dir", type=Path)
-    parser.add_argument("output", type=Path)
+    parser.add_argument("rollouts_or_model", type=Path)
+    parser.add_argument("model_or_output", type=Path)
+    parser.add_argument("output", type=Path, nargs="?")
+    parser.add_argument("--labels", type=Path, default=None)
     parser.add_argument("--min-support", type=int, default=5)
     args = parser.parse_args()
+    if args.labels is not None and args.output is None:
+        rollout_path = None
+        model_dir = args.rollouts_or_model
+        output_path = args.model_or_output
+    elif args.output is not None:
+        rollout_path = args.rollouts_or_model
+        model_dir = args.model_or_output
+        output_path = args.output
+    else:
+        parser.error("output is required unless --labels is supplied")
     result = evaluate_candidate_value(
         args.candidate_states,
-        args.rollouts,
-        args.model_dir,
+        rollout_path,
+        model_dir,
         min_support=args.min_support,
+        labels_path=args.labels,
     )
-    args.output.parent.mkdir(parents=True, exist_ok=True)
-    args.output.write_text(json.dumps(result, indent=2) + "\n", encoding="utf-8")
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_text(json.dumps(result, indent=2) + "\n", encoding="utf-8")
     print(json.dumps(result, sort_keys=True))
     return 0
 
@@ -212,4 +332,9 @@ if __name__ == "__main__":
     raise SystemExit(main())
 
 
-__all__ = ["EVALUATION_SCHEMA_VERSION", "evaluate_candidate_value", "main"]
+__all__ = [
+    "EVALUATION_SCHEMA_VERSION",
+    "evaluate_candidate_labels",
+    "evaluate_candidate_value",
+    "main",
+]

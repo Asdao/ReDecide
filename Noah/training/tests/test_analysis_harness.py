@@ -8,6 +8,7 @@ from Noah.training.analysis_harness import (
     build_replay_analysis,
     reconstruct_game_state,
 )
+from Noah.training.replay_state import bomb_state
 
 
 class _ReportModel:
@@ -189,6 +190,29 @@ class AnalysisHarnessTests(unittest.TestCase):
         self.assertGreaterEqual(moment["best_estimated_alternative"]["entropy"], 0.0)
         self.assertLessEqual(moment["best_estimated_alternative"]["entropy"], 1.0)
 
+    def test_rubric_candidate_model_does_not_become_death_risk(self):
+        record = self._record()
+        state = reconstruct_game_state(record, round_num=1, tick=10)
+        self.assertIsNotNone(state)
+        model = SmallStatisticalModel()
+        model.training_target = "pre_event_suitability"
+        for action in legal_actions(state, "ct1"):
+            model.observe(state, "ct1", action, success=action.action_type.value == "hold")
+        report = build_replay_analysis(
+            record,
+            _ReportModel(),
+            candidate_model=model,
+            config=HarnessConfig(sample_every=1),
+        )
+        moment = report["moments"][0]
+        self.assertEqual(moment["candidate_source"], "rubric_action_suitability")
+        self.assertEqual(moment["candidate_model_type"], "small_statistical_rubric_suitability")
+        self.assertEqual(
+            moment["best_estimated_alternative"]["estimate_type"],
+            "rubric_action_suitability",
+        )
+        self.assertEqual(moment["least_death_risk_action"], None)
+
     def test_simultaneous_kills_keep_actor_specific_context(self):
         record = self._record()
         record["ticks"].extend(
@@ -310,6 +334,52 @@ class AnalysisHarnessTests(unittest.TestCase):
         record["ticks"] = [row for row in record["ticks"] if row["tick"] == 10]
         self.assertIsNone(
             reconstruct_game_state(record, round_num=1, tick=10, before_event=True)
+        )
+
+    def test_before_event_excludes_same_tick_bomb_and_uses_elapsed_timer(self):
+        record = {
+            "header": {"tick_rate": 64},
+            "rounds": [{"round_num": 1, "start": 0, "end": 1000}],
+            "bomb": [
+                {"round_num": 1, "tick": 100, "event": "bomb_planted", "bombsite": "B"},
+            ],
+            "ticks": [
+                {
+                    "round_num": 1,
+                    "tick": 90,
+                    "steamid": "t1",
+                    "team_name": "T",
+                    "health": 100,
+                    "place": "B_SITE",
+                    "has_bomb": True,
+                },
+                {
+                    "round_num": 1,
+                    "tick": 100,
+                    "steamid": "t1",
+                    "team_name": "T",
+                    "health": 100,
+                    "place": "B_SITE",
+                    "has_bomb": True,
+                },
+            ],
+        }
+
+        before = reconstruct_game_state(record, round_num=1, tick=100, before_event=True)
+        self.assertIsNotNone(before)
+        self.assertEqual(before.bomb_state.value, "none")
+        self.assertEqual(before.bomb_site, "UNKNOWN_SITE")
+        self.assertIsNone(before.bomb_time_remaining)
+
+        after = reconstruct_game_state(record, round_num=1, tick=228)
+        self.assertIsNotNone(after)
+        self.assertEqual(after.bomb_state.value, "planted")
+        self.assertEqual(after.bomb_site, "B_SITE")
+        self.assertAlmostEqual(after.bomb_time_remaining or 0.0, 38.0)
+
+        self.assertEqual(
+            bomb_state(record, round_num=1, tick=100, strict_before=True),
+            (before.bomb_state, before.bomb_site, before.bomb_time_remaining),
         )
 
 
