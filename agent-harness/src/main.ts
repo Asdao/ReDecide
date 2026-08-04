@@ -79,7 +79,7 @@ async function main(): Promise<void> {
   }
 }
 
-function parseArgs(argv: readonly string[], packageRoot: string): CliArgs {
+export function parseArgs(argv: readonly string[], packageRoot: string): CliArgs {
   const result: CliArgs = {
     cwd: process.env.HARNESS_CWD ? resolve(process.env.HARNESS_CWD) : packageRoot,
     bridge: process.env.HARNESS_BRIDGE ? resolve(process.env.HARNESS_BRIDGE) : resolve(packageRoot, "src", "cs2_sim", "agent_bridge.py"),
@@ -104,9 +104,13 @@ function parseArgs(argv: readonly string[], packageRoot: string): CliArgs {
         result.tools = next().split(",").map((tool) => tool.trim()).filter(Boolean);
         result.toolsExplicit = true;
         break;
+      case "--no-tools":
+        result.tools = [];
+        result.toolsExplicit = true;
+        break;
       case "--skill-dir": result.skillDirs.push(resolve(next())); break;
       case "--help":
-        process.stdout.write("Usage: npm run dev -- --prompt <text> [--replay path] [--bridge path] [--tool name]\n");
+        process.stdout.write("Usage: npm run dev -- --prompt <text> [--replay path] [--bridge path] [--tool name | --no-tools]\n");
         process.exit(0);
         break;
       default:

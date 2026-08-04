@@ -1,0 +1,4 @@
+# LightGBM text models contain byte offsets and release manifests checksum the
+# exact on-disk bytes. Never let Git rewrite their line endings on Windows.
+/backend/replay_engine/model/artifacts/**/*.txt text eol=lf
+/backend/replay_engine/model/artifacts/**/*.json text eol=lf

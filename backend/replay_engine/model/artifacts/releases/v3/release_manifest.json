@@ -1,0 +1,98 @@
+{
+  "schema_version": "model_release_manifest_v1",
+  "version": "v3",
+  "components": {
+    "full_replay_manifest": {
+      "path": "full_replay_value.manifest.json",
+      "bytes": 3380,
+      "sha256": "3c15a309d4661e3c7df60d31d699d771801338f6d1a000238f37d48013bafd30"
+    },
+    "full_replay_booster": {
+      "path": "full_replay_value.txt",
+      "bytes": 88466,
+      "sha256": "d438f3ef759e69ff580a5332894630c3db14eadaa0be6118cf51f75488268941"
+    },
+    "full_replay_bayesian": {
+      "path": "small_snapshot_value.json",
+      "bytes": 19172,
+      "sha256": "11d8659f26600afd1f444e47fdddec8767999b4f906289673dd98f4b5775dc8a"
+    },
+    "full_replay_calibrator": {
+      "path": "full_replay_calibrator.json",
+      "bytes": 135,
+      "sha256": "c8bea66527752d50406bdf86eb2dc8173e107ffed03d204aef36ddca6aa63635"
+    },
+    "full_replay_metrics": {
+      "path": "full_replay_metrics.json",
+      "bytes": 4501,
+      "sha256": "10f07b9feb798c3ba9d29e9515ea2dec12a7398291f315434de6e71214297cb9"
+    },
+    "full_replay_booster_metadata": {
+      "path": "full_replay_value.txt.json",
+      "bytes": 1209,
+      "sha256": "7d24f31f9821520811b9a43c95f62d1db375e349e057b93ff38959da42f08f52"
+    },
+    "engagement_model": {
+      "path": "engagement_model.json",
+      "bytes": 2771462,
+      "sha256": "5fec5b7841f3c86d4d3137deab9277718268c3551ae503efc5074815eb5a7efd"
+    },
+    "engagement_lightgbm": {
+      "path": "engagement_lightgbm.json",
+      "bytes": 807670,
+      "sha256": "6756843c041470a0f14ef494ff36ca16c175df495634418ba434bbfdf158905e"
+    },
+    "candidate_action_value": {
+      "path": "candidate_action_value.txt",
+      "bytes": 141458,
+      "sha256": "e557537ec923f54e8b4d6530089ecb06f94018f856d40a577a7c16a29d1e60b6"
+    },
+    "candidate_action_metadata": {
+      "path": "candidate_action_value.txt.json",
+      "bytes": 7689,
+      "sha256": "cd746169f324f393b93f3978d385b1edc91093593fcae6481215e0c111b56456"
+    },
+    "statistical_action_prior": {
+      "path": "small_statistical.json",
+      "bytes": 6497,
+      "sha256": "cf767f81c5c131951e932281ca9fe097836543d9c146fda36ce897305846ab34"
+    },
+    "engagement_metrics": {
+      "path": "engagement_metrics.json",
+      "bytes": 5587,
+      "sha256": "3311da1104d1975b233af8e9da1f818319e8f199a7bbe2978b30d95db80ef96e"
+    },
+    "engagement_lightgbm_metrics": {
+      "path": "engagement_lightgbm_metrics.json",
+      "bytes": 5820,
+      "sha256": "f30b9f5af5c2ae8df1b3a49e0fc14d56f4cf6b2aa934c5692384db8cda3ec968"
+    },
+    "action_model": {
+      "path": "action_frequency.json",
+      "bytes": 1243055,
+      "sha256": "568eec3677dd84743e52d543aea8e456adcfd600131d11346c062f391cdb71bd"
+    },
+    "transition_model": {
+      "path": "zone_transitions.json",
+      "bytes": 5286034,
+      "sha256": "9547372163721b7206505feac75cea4c4f9effca9d560a18dff0aa1f76964ffb"
+    },
+    "feature_schema": {
+      "path": "feature_schema.json",
+      "bytes": 17166,
+      "sha256": "388aea341e2b23d9c378f182608efb4d35246a6fa978257129329eb76abf455a"
+    },
+    "fingerprint": {
+      "path": "fingerprint.json",
+      "bytes": 1411,
+      "sha256": "53b5778a1d14276f1ee14ec8993ebba5845ff7436c62ab89a571743762491d20"
+    }
+  },
+  "feature_schema_versions": {
+    "replay": 2,
+    "engagement": "engagement_features_v3",
+    "candidate_action": "candidate_action_features_v1"
+  },
+  "dataset_manifest": null,
+  "metrics": null
+}

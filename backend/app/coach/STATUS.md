@@ -6,28 +6,39 @@ Owner: Person 3 - AI Coach, Rubric, and Reliability
 
 ## Status
 
-**Noah analysis connector implemented; RE:DECIDE provider/card layer remains
-separate.**
+**Replay Engine analysis connector and FastAPI Pi adapter implemented; the frozen
+RE:DECIDE `DecisionCard` layer remains separate.**
 
-`backend/app/coach/noah_connector.py` accepts one normalized replay mapping and
-forwards it to Noah's package-root `analyze_replay` function. With no explicit
+`backend/app/coach/replay_engine_connector.py` accepts one normalized replay mapping and
+forwards it to the replay engine's package-root `analyze_replay` function. With no explicit
 model configuration, that function follows
-`Noah/model/artifacts/releases/current.json` and loads the active release.
-Native `.dem` parsing belongs to `Noah/training/test_harness.py` and the
+`backend/replay_engine/model/artifacts/releases/current.json` and loads the active release.
+Native `.dem` parsing belongs to `backend/replay_engine/training/test_harness.py` and the
 replacement-extractor adapter; the backend connector intentionally receives
-normalized JSON only. The folder still contains no provider adapter, versioned
-rubric, prompt assembly, structured-output parser, deterministic validators, or
-fixture coach.
+normalized JSON only.
+
+`backend/app/coach/pi_connector.py` is the default coach adapter constructed by
+`backend.app.main.create_app()`. It receives one already-selected replay-job
+decision, removes post-cutoff events, anonymizes player identifiers, disables
+Pi tools, and launches `agent-harness`. Every Pi process inherits deployment
+variables and uses the repository-root `.env` through `HARNESS_ENV_FILE` when
+no explicit dotenv path is configured. Strict JSON and the provider's narrow
+unquoted two-field object are normalized before `merge_pi_output` restores the
+authoritative decision and player identity. Runtime requests execute the
+installed `tsx` entrypoint directly with Node; pnpm is confined to setup and
+development, avoiding install/build-policy checks inside FastAPI. This is an executable provider
+adapter, but it is not yet the versioned rubric, validator, or frozen
+`DecisionCard` implementation described below.
 
 The harness default follows the active release pointer in
-`Noah/model/artifacts/releases/current.json`; pin `version` or pass an explicit
+`backend/replay_engine/model/artifacts/releases/current.json`; pin `version` or pass an explicit
 `model_config` when reproducible release selection is required.
 
-The connector is an internal backend boundary. The browser must not import
-Noah, load model artifacts, or call this class directly. A future HTTP route
-should call the connector from backend orchestration, then return a validated
-RE:DECIDE response (`DecisionPacket` plus `DecisionCard`) rather than Noah's
-combined report.
+Both connectors are internal backend boundaries. The browser must not import
+Replay Engine, load model artifacts, run Pi, or receive provider credentials. The
+current FastAPI replay-job routes call `PiCoachAdapter` after player selection
+and return player-scoped UI JSON. Converting that result into the frozen
+`DecisionPacket` plus `DecisionCard` product response remains separate work.
 
 ## Required input and output
 
@@ -41,7 +52,7 @@ combined report.
 ### Model I/O format
 
 The following is the logical provider boundary for the planned RE:DECIDE coach.
-It is not the current Noah connector request shape and is not yet an executable
+It is not the current Replay Engine connector request shape and is not yet an executable
 schema in `backend/app/coach/`.
 
 Model input is one JSON prompt envelope/.demo file:
@@ -89,7 +100,7 @@ Input rules:
 The planned provider response must be JSON matching the frozen `DecisionCard`
 shape; the canonical example is
 `backend/tests/fixtures/decision_card.valid.json`. The following is instead a
-representative current Noah combined-report response, included to make the
+representative current Replay Engine combined-report response, included to make the
 connector boundary explicit:
 
 ```json
@@ -151,7 +162,7 @@ connector boundary explicit:
 }
 ```
 
-This Noah report intentionally does not contain `DecisionCard` fields or
+This Replay Engine report intentionally does not contain `DecisionCard` fields or
 `checks`. Deterministic evidence, future-information, contradiction,
 confidence, and abstention validation belongs to the future RE:DECIDE coach
 layer. A provider response with invalid JSON, unknown evidence IDs, forbidden
@@ -159,9 +170,9 @@ future information, contradictions, or weak evidence must be rejected,
 repaired at most once when appropriate, or converted to
 `INSUFFICIENT_EVIDENCE` by that layer.
 
-### Current Noah connector I/O
+### Current Replay Engine connector I/O
 
-The implemented boundary is different: `NoahCoachConnector.analyse_json()`
+The implemented boundary is different: `ReplayEngineCoachConnector.analyse_json()`
 accepts a normalized replay object such as the checked-in
 `backend/tests/fixtures/coach_replay.json` and returns a report with
 `report_type: "combined_replay_analysis"`. The report contains `full_match`,
@@ -182,20 +193,20 @@ such as `target_zone` and `utility_type` are not separate action classes.
 
 | Method | Input | Output | Notes |
 | --- | --- | --- | --- |
-| `NoahCoachConnector.analyse(replay, **options)` | `Mapping[str, Any]` normalized replay | Noah combined report | Main backend call; rejects non-mappings. |
-| `NoahCoachConnector.analyze(replay, **options)` | Same as `analyse` | Same as `analyse` | American-English alias. |
-| `NoahCoachConnector.analyse_json(payload, **options)` | UTF-8 JSON `str` or `bytes` | Noah combined report | Decodes JSON, then applies the same mapping checks. |
-| `NoahCoachConnector.analyse_outcome_blind(replay, **options)` | Same as `analyse` | Redacted combined report | Safe projection for an API/UI boundary. |
+| `ReplayEngineCoachConnector.analyse(replay, **options)` | `Mapping[str, Any]` normalized replay | Replay Engine combined report | Main backend call; rejects non-mappings. |
+| `ReplayEngineCoachConnector.analyze(replay, **options)` | Same as `analyse` | Same as `analyse` | American-English alias. |
+| `ReplayEngineCoachConnector.analyse_json(payload, **options)` | UTF-8 JSON `str` or `bytes` | Replay Engine combined report | Decodes JSON, then applies the same mapping checks. |
+| `ReplayEngineCoachConnector.analyse_outcome_blind(replay, **options)` | Same as `analyse` | Redacted combined report | Safe projection for an API/UI boundary. |
 
 The constructor accepts either an injected runtime (useful for deterministic
 tests) or `model_config`, but not both. Without either, the connector lazily
-imports `Noah.analyze_replay`, so importing the backend module does not load the
+imports `backend.replay_engine.analyze_replay`, so importing the backend module does not load the
 model. Keyword options are forwarded to the harness; common controls include
 `max_moments`, `sample_every`, `min_support`, `version`, and seeded posterior
 options. The connector validates `report_type ==
 "combined_replay_analysis"` before returning the report.
 
-Failures are normalized to `NoahCoachError`. Invalid JSON, a non-object JSON
+Failures are normalized to `ReplayEngineCoachError`. Invalid JSON, a non-object JSON
 payload, model-loading failures, harness failures, and invalid report shapes
 must not be passed through as successful API responses. The original exception
 is retained as the cause for server-side diagnostics; callers should expose a
@@ -214,13 +225,14 @@ for internal evaluation reports that intentionally retain terminal context.
 
 ## Existing work to review
 
-Root `agent-harness/` contains useful process, configuration, timeout, audit,
-and validation patterns. Its synthetic simulation and winner/final-state output
-must not be connected directly to the RE:DECIDE coach.
+Root `agent-harness/` is now the active Pi process boundary for FastAPI. The
+adapter starts it with `--no-tools` and supplies only the selected anonymized
+decision payload, so its synthetic simulator and replay tools are not exposed
+to this coaching call.
 
-`Noah/` contains the canonical existing replay-analysis implementation,
-including both the model/runtime (`Noah/model/`) and the analysis harness and
-training pipeline (`Noah/training/`). It is the correct implementation to
+`backend/replay_engine/` contains the canonical existing replay-analysis implementation,
+including both the model/runtime (`backend/replay_engine/model/`) and the analysis harness and
+training pipeline (`backend/replay_engine/training/`). It is the correct implementation to
 reuse for RE:DECIDE, but it has not yet been wired to the frozen
 `DecisionPacket`/`DecisionCard` coach contract.
 
@@ -290,13 +302,13 @@ round-value estimate rather than a per-event death hazard.
 
 ### Backend connector
 
-The backend coach boundary can call the deployed analysis through Noah's one
+The backend coach boundary can call the deployed analysis through the replay engine's one
 public harness function without importing harness internals:
 
 ```python
-from backend.app.coach.noah_connector import NoahCoachConnector
+from backend.app.coach.replay_engine_connector import ReplayEngineCoachConnector
 
-connector = NoahCoachConnector()
+connector = ReplayEngineCoachConnector()
 report = connector.analyse(
     normalized_replay,
     max_moments=25,
@@ -308,11 +320,11 @@ report = connector.analyse(
 `analyse_json` is available for a JSON request body, and `analyze` is an
 American-English alias. The connector validates that the returned object is a
 `combined_replay_analysis` report and wraps facade/runtime failures in the stable
-`NoahCoachError`. It does not convert the report into a `DecisionCard` or make
+`ReplayEngineCoachError`. It does not convert the report into a `DecisionCard` or make
 provider calls. The request must already be a normalized replay mapping with
 `header`, `rounds`, `ticks`, `kills`, `damages`, and `bomb` fields; use
-`NoahCoachConnector.analyse_json()` for a JSON request body. Native `.dem`
-files must first go through `Noah/training/test_harness.py` or the replacement
+`ReplayEngineCoachConnector.analyse_json()` for a JSON request body. Native `.dem`
+files must first go through `backend/replay_engine/training/test_harness.py` or the replacement
 extractor.
 
 The harness then compares the observed action with the best supported candidate.
@@ -347,30 +359,45 @@ must display `probability_abstention` when its `abstained` flag is true.
 ```text
 backend/app/coach/**
 backend/tests/test_coach_*.py
+backend/tests/test_pi_connector.py
 data/eval/model/**
 ```
 
 ## Tests and validation
 
-The connector tests are in `backend/tests/test_coach_noah_connector.py` and
+The connector tests are in `backend/tests/test_coach_replay_engine_connector.py` and
 cover forwarding, JSON input, invalid input, stable configuration errors, and
 the real checked-in fixture flowing through the deployed runtime. The default
-path is verified to call `Noah.analyze_replay`; injected runtimes remain
+path is verified to call `backend.replay_engine.analyze_replay`; injected runtimes remain
 available for deterministic unit tests.
-The RE:DECIDE coach contract itself still has no fixture tests in the new path.
+`backend/tests/test_pi_connector.py` covers anonymization, cutoff enforcement,
+tool disabling, repository dotenv propagation, strict response validation, and
+normalization of the relaxed DeepSeek object form. API and demo tests use
+injected provider-free adapters. The frozen `DecisionCard` coach contract still
+does not run through this replay-job path.
 
 Latest focused validation:
 
 ```powershell
-uv run pytest backend/tests/test_coach_noah_connector.py Noah/training/tests/test_test_harness.py -q
+uv run pytest backend/tests/test_coach_replay_engine_connector.py backend/replay_engine/training/tests/test_test_harness.py -q
 ```
 
 Result: 16 passed on 2026-08-04.
 
-The user-facing Noah smoke runner is:
+Latest FastAPI/Pi/demo regression:
 
 ```powershell
-python Noah/training/test_harness.py data/private/processed/full_replays.jsonl
+uv run pytest backend/tests/test_pi_connector.py backend/tests/test_analysis_api.py "backend/replay_engine/backend demo/test_cli.py" -q
+```
+
+Result: 18 passed on 2026-08-04. A separate synthetic, replay-free provider
+request also confirmed that the configured DeepSeek endpoint and key can
+respond; no secret value was printed or recorded.
+
+The user-facing Replay Engine smoke runner is:
+
+```powershell
+python backend/replay_engine/training/test_harness.py data/private/processed/full_replays.jsonl
 ```
 
 For a deterministic local smoke test, send the checked-in fixture through the
@@ -378,14 +405,14 @@ same runner. It lives under `backend/tests`, so it is separate from training
 data:
 
 ```powershell
-python Noah/training/test_harness.py backend/tests/fixtures/coach_full_replay.json --all-moments --sample-every 1 --output data/private/processed/coach_fixture.analysis.json
+python backend/replay_engine/training/test_harness.py backend/tests/fixtures/coach_full_replay.json --all-moments --sample-every 1 --output data/private/processed/coach_fixture.analysis.json
 ```
 
 For a downloaded native demo, the replacement extractor is called in memory
 by the same runner:
 
 ```powershell
-python Noah/training/test_harness.py `
+python backend/replay_engine/training/test_harness.py `
   data/private/benchmark_cache/demos/shard-europe-1574a6a2/2393084/3dmax-vs-falcons-m2-ancient.dem `
   --all-moments `
   --sample-every 1 `
@@ -398,7 +425,7 @@ output remains the same combined JSON report shape, with v4 coaching fields
 added to `moments` and `kill_analysis`.
 
 The backend boundary can use that same object directly, or decode a request
-body with `NoahCoachConnector.analyse_json(payload)`. The fixture is tiny, so
+body with `ReplayEngineCoachConnector.analyse_json(payload)`. The fixture is tiny, so
 sparse evidence may produce abstention/insufficient-evidence probability
 labels; that is the expected safe result. `full_match.event_counts.kill` and
 the kill events attached to `moments` should contain all four fixture kills.
@@ -418,7 +445,7 @@ runtime bridge in the browser:
 Next.js UI
   -> frontend TypeScript adapter (fetch + Zod validation)
   -> backend prepare route
-  -> replay extractor + NoahCoachConnector
+  -> replay extractor + ReplayEngineCoachConnector
   -> neutral prepared DecisionPacket
   -> player intent
   -> backend analyze route
@@ -432,7 +459,7 @@ second request accepts the prepared decision (or an opaque server-side ID) and
 `IntentInput`; it is the only response that may contain coaching prose,
 verdict, alternatives, or a practice quest. Until those routes and envelopes
 are frozen, the frontend should use its explicit fixture adapter and must not
-pretend that the Noah combined report is a `DecisionCard`.
+pretend that the Replay Engine combined report is a `DecisionCard`.
 
 Required coverage includes well-formed fixtures, nonexistent evidence IDs,
 forbidden outcome information, malformed model JSON, low-quality packets,
@@ -440,18 +467,21 @@ contradictory evidence, confidence caps, and safe abstention.
 
 ## Known limitations and blockers
 
-- No executable shared contracts or fixture packets are available yet.
-- No provider/model/API key and spend limit are confirmed in this path.
-- No versioned coaching rubric or reviewed evaluation labels are present.
+- The Pi replay-job response is a two-field coaching fragment, not the frozen
+  version `1.0` `DecisionCard`.
+- Production provider availability, account policy, and spend limits still
+  require deployment-level configuration and monitoring.
+- No versioned coaching rubric or reviewed human evaluation labels are present.
 
 ## Contract/API impact
 
-The Noah connector is an internal model-report adapter only. Consume frozen
+The Replay Engine connector is an internal model-report adapter only. Consume frozen
 RE:DECIDE contracts owned by Person 1 and coordinate labels with Person 5;
 do not expose the combined report as a `DecisionCard` until that contract is
 implemented.
 
 ## Next handoff
 
-Once a frozen fixture packet is available, return one validated fixture card,
-then prove one genuine structured-output provider call without exposing a key.
+Map the selected replay-job decision into the frozen packet/card contract, add
+the versioned rubric and deterministic validators, then verify the complete
+provider-backed response against reviewed fixtures without exposing a key.

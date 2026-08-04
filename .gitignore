@@ -1,8 +1,28 @@
+# Python-generated files, local environments, and test caches.
 __pycache__/
 *.py[cod]
-*.part
 *.egg-info/
+.pytest_cache/
+.venv/
+.venv-wsl/
+venv/
+*.part
+
+# Local editor and IDE state.
+.idea/
+
+# Local secrets.
 .env
+
+# Node projects live under frontend/ and agent-harness/. Ignore dependency
+# trees everywhere and accidental package-manager files created at repo root.
+node_modules/
+.pnpm-store/
+/package.json
+/package-lock.json
+/pnpm-lock.yaml
+/pnpm-workspace.yaml
+
 # Public metadata, map assets, manifests, schemas, and sanitized fixtures may
 # be uploaded.  Raw demos, parsed replays, databases, features, and user
 # uploads stay private and are ignored by Git.
@@ -30,8 +50,8 @@ data/eval/human/*
 !data/eval/human/.gitkeep
 
 # Keep the deployable replay-value model bundle available to users after clone.
-!Noah/model/artifacts/full_replay_value.txt
-!Noah/model/artifacts/full_replay_value.txt.json
-!Noah/model/artifacts/full_replay_value.manifest.json
-!Noah/model/artifacts/full_replay_calibrator.json
-!Noah/model/artifacts/small_snapshot_value.json
+!backend/replay_engine/model/artifacts/full_replay_value.txt
+!backend/replay_engine/model/artifacts/full_replay_value.txt.json
+!backend/replay_engine/model/artifacts/full_replay_value.manifest.json
+!backend/replay_engine/model/artifacts/full_replay_calibrator.json
+!backend/replay_engine/model/artifacts/small_snapshot_value.json

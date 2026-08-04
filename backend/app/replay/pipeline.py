@@ -215,13 +215,13 @@ def _decode_pi_output(value: str | Mapping[str, Any]) -> dict[str, Any]:
 def _load_record(replay: str | Path | Mapping[str, Any]) -> dict[str, Any]:
     if isinstance(replay, Mapping):
         return dict(replay)
-    from Noah.harness import load_replay_record
+    from backend.replay_engine.harness import load_replay_record
 
     return load_replay_record(replay)
 
 
 def _engagement_windows(record: dict[str, Any]) -> list[dict[str, Any]]:
-    from Noah.training.engagement_windows import extract_engagement_windows
+    from backend.replay_engine.training.engagement_windows import extract_engagement_windows
 
     return extract_engagement_windows(
         record,
@@ -443,7 +443,7 @@ def _first_contact_candidates(
         if previous is None or contact_tick < _integer(previous.get("contact_tick"), contact_tick):
             first_by_player_round[key] = window
 
-    from Noah.training.action_labeler import build_action_event_index, classify_action
+    from backend.replay_engine.training.action_labeler import build_action_event_index, classify_action
 
     event_index = build_action_event_index(record)
     round_end_ticks = {
@@ -574,9 +574,16 @@ def _win_estimator(
 ) -> dict[str, Any]:
     try:
         from cs2_sim.api import ModelConfig, ReplayModel
-        from Noah.training.full_features import record_to_rows
+        from backend.replay_engine.training.full_features import record_to_rows
 
-        release_dir = Path(__file__).resolve().parents[3] / "Noah" / "model" / "artifacts" / "releases"
+        release_dir = (
+            Path(__file__).resolve().parents[3]
+            / "backend"
+            / "replay_engine"
+            / "model"
+            / "artifacts"
+            / "releases"
+        )
         model = ReplayModel.load(ModelConfig(releases_dir=release_dir, version=version, allow_fallback=True))
         rows = record_to_rows(record, sample_every=sample_every, include_terminal=False)
         if len(rows) > max_timeline_points:

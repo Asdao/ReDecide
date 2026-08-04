@@ -23,12 +23,18 @@ Override paths with `--bridge`, `--cwd`, `--python`, and `--skill-dir`.
 
 The bridge is a transport boundary, not the Python domain API. Python callers
 should use the package-root facades documented in
-[`../docs/MODULE_API.md`](../Noah/docs/MODULE_API.md); the harness invokes only the
+[`../backend/replay_engine/docs/MODULE_API.md`](../backend/replay_engine/docs/MODULE_API.md); the harness invokes only the
 bounded bridge contract.
 
 Model selection and credentials can be supplied through environment variables
 or a local `.env` file. See [Getting started](docs/GETTING_STARTED.md) and
 [`.env.example`](.env.example). The CLI never prints API keys.
+
+When the harness is launched by the repository's FastAPI service, the server
+passes its configured dotenv path through `HARNESS_ENV_FILE` for each Pi
+request. Deployment environment variables and an explicit `HARNESS_ENV_FILE`
+take precedence over the repository-root fallback. The browser never receives
+provider credentials or the raw replay path.
 
 The Pi SDK dependency is loaded by `session.ts`; offline tests cover policy,
 validation, result bounds, and the bridge protocol without model credentials.

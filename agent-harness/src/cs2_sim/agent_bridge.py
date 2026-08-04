@@ -60,13 +60,13 @@ def _project_source_dir() -> Path:
 
     here = Path(__file__).resolve()
     for parent in here.parents:
-        for relative in (Path("model/src/cs2_sim"), Path("Noah/model/src/cs2_sim")):
+        for relative in (Path("model/src/cs2_sim"), Path("backend/replay_engine/model/src/cs2_sim")):
             candidate = parent / relative
             if (candidate / "simulator.py").is_file() and candidate != here.parent:
                 return candidate.parent
     # This fallback is useful when a test copies the bridge file to a temp dir;
     # importing then produces the normal stable INTERNAL_ERROR envelope.
-    return here.parents[3] / "Noah" / "model" / "src"
+    return here.parents[3] / "backend" / "replay_engine" / "model" / "src"
 
 
 def _ensure_simulator_importable() -> None:
@@ -291,18 +291,22 @@ def _run_simulation(arguments: Mapping[str, Any]) -> dict[str, Any]:
 
 
 def _project_repository_root() -> Path:
-    """Find the repository root containing the Noah package."""
+    """Find the repository root containing the replay engine package."""
 
     here = Path(__file__).resolve()
     for parent in here.parents:
-        if (parent / "Noah" / "harness.py").is_file():
+        if (parent / "backend" / "replay_engine" / "harness.py").is_file():
             return parent
     return here.parents[3]
 
 
-def _ensure_noah_importable() -> None:
+def _ensure_replay_engine_importable() -> None:
     root = _project_repository_root()
-    for source in (root, root / "Noah" / "model" / "src", root / "Noah" / "extractor" / "src"):
+    for source in (
+        root,
+        root / "backend" / "replay_engine" / "model" / "src",
+        root / "backend" / "replay_engine" / "extractor" / "src",
+    ):
         if str(source) not in sys.path:
             sys.path.insert(0, str(source))
 
@@ -424,8 +428,8 @@ def _redact_model_identifiers(result: Mapping[str, Any]) -> dict[str, Any]:
 
 
 def _run_replay_analysis(arguments: Mapping[str, Any]) -> dict[str, Any]:
-    _ensure_noah_importable()
-    from Noah.harness import load_replay_record
+    _ensure_replay_engine_importable()
+    from backend.replay_engine.harness import load_replay_record
 
     replay = load_replay_record(str(arguments["replay_path"]))
     requested_decision = arguments.get("decision_id")

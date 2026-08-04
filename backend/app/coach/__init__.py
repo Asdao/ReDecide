@@ -1,5 +1,6 @@
 """Backend coach adapters."""
 
-from .noah_connector import NoahCoachConnector, NoahCoachError
+from .replay_engine_connector import ReplayEngineCoachConnector, ReplayEngineCoachError
+from .pi_connector import PiCoachAdapter, PiCoachError
 
-__all__ = ["NoahCoachConnector", "NoahCoachError"]
+__all__ = ["ReplayEngineCoachConnector", "ReplayEngineCoachError", "PiCoachAdapter", "PiCoachError"]
