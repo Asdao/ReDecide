@@ -2,6 +2,7 @@ __pycache__/
 *.py[cod]
 *.part
 *.egg-info/
+.env
 # Public metadata, map assets, manifests, schemas, and sanitized fixtures may
 # be uploaded.  Raw demos, parsed replays, databases, features, and user
 # uploads stay private and are ignored by Git.

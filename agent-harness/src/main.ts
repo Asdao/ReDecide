@@ -8,10 +8,12 @@ import { createConfiguredModel, loadDotEnv } from "./model-config.js";
 
 interface CliArgs {
   prompt?: string;
+  replay?: string;
   cwd: string;
   bridge: string;
   python: string;
   tools: string[];
+  toolsExplicit: boolean;
   skillDirs: string[];
 }
 
@@ -24,7 +26,16 @@ async function main(): Promise<void> {
   ].filter(Boolean));
   const args = parseArgs(process.argv.slice(2), packageRoot);
   loadDotEnv([resolve(args.cwd, ".env")]);
-  const prompt = args.prompt ?? await readStdin();
+  // A CLI replay is a user-approved input. Pin the child bridge to that exact
+  // file so the model cannot turn a read-only analysis tool into arbitrary
+  // filesystem discovery by changing replay_path in a later tool call.
+  if (args.replay && process.env.HARNESS_REPLAY_FILE === undefined) {
+    process.env.HARNESS_REPLAY_FILE = resolve(args.replay);
+  }
+  const stdinPrompt = args.prompt === undefined ? await readStdin() : "";
+  const prompt = args.prompt ?? (stdinPrompt.trim() || (args.replay
+    ? `Analyze the replay at ${JSON.stringify(args.replay)} with the analyze_replay tool. Return an evidence-grounded coaching summary.`
+    : ""));
   if (!prompt.trim()) throw new Error("Provide a prompt as an argument or via stdin");
   try {
     await access(args.bridge);
@@ -74,6 +85,7 @@ function parseArgs(argv: readonly string[], packageRoot: string): CliArgs {
     bridge: process.env.HARNESS_BRIDGE ? resolve(process.env.HARNESS_BRIDGE) : resolve(packageRoot, "src", "cs2_sim", "agent_bridge.py"),
     python: process.env.HARNESS_PYTHON ?? "python",
     tools: ["simulate_round"],
+    toolsExplicit: false,
     skillDirs: [resolve(packageRoot, "skills")],
   };
   for (let index = 0; index < argv.length; index += 1) {
@@ -81,13 +93,20 @@ function parseArgs(argv: readonly string[], packageRoot: string): CliArgs {
     const next = (): string => argv[++index] ?? "";
     switch (arg) {
       case "--prompt": result.prompt = next(); break;
+      case "--replay":
+        result.replay = next();
+        if (!result.toolsExplicit && !result.tools.includes("analyze_replay")) result.tools.push("analyze_replay");
+        break;
       case "--cwd": result.cwd = resolve(next()); break;
       case "--bridge": result.bridge = resolve(next()); break;
       case "--python": result.python = next(); break;
-      case "--tool": result.tools = next().split(",").map((tool) => tool.trim()).filter(Boolean); break;
+      case "--tool":
+        result.tools = next().split(",").map((tool) => tool.trim()).filter(Boolean);
+        result.toolsExplicit = true;
+        break;
       case "--skill-dir": result.skillDirs.push(resolve(next())); break;
       case "--help":
-        process.stdout.write("Usage: npm run dev -- --prompt <text> [--bridge path] [--tool name]\n");
+        process.stdout.write("Usage: npm run dev -- --prompt <text> [--replay path] [--bridge path] [--tool name]\n");
         process.exit(0);
         break;
       default:

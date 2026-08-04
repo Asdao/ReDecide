@@ -23,4 +23,19 @@ describe("Pi session factory", () => {
       harness.dispose();
     }
   });
+
+  it("exposes the replay pipeline only when it is explicitly allowlisted", async () => {
+    const cwd = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+    const harness = await createHarnessSession({
+      cwd,
+      bridgeScript: resolve(cwd, "src/cs2_sim/agent_bridge.py"),
+      skillDirs: [resolve(cwd, "skills")],
+      allowedTools: ["analyze_replay"],
+    }, new MemoryAuditSink());
+    try {
+      expect(harness.session.agent.state.tools.map((tool) => tool.name)).toEqual(["analyze_replay"]);
+    } finally {
+      harness.dispose();
+    }
+  });
 });

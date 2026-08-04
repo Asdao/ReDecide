@@ -50,7 +50,7 @@ export async function createHarnessSession(
     cwd: config.bridgeCwd ?? config.cwd,
     timeoutMs: config.toolTimeoutMs,
     maxOutputBytes: config.maxBridgeOutputBytes,
-    operations: ["simulate_round"],
+    operations: ["simulate_round", "analyze_replay"],
     audit,
   });
   const registry = new ToolRegistry(config.allowedTools, config.maxToolCallsPerTurn, audit);
@@ -156,6 +156,15 @@ function parametersFor(name: string): unknown {
         scenario: Type.Union([Type.Literal("example"), Type.Literal("planted")]),
         policy: Type.Union([Type.Literal("baseline"), Type.Literal("bayesian")]),
         max_events: Type.Optional(Type.Integer({ minimum: 1, maximum: 100 })),
+      }, { additionalProperties: false });
+    case "analyze_replay":
+      return Type.Object({
+        replay_path: Type.Optional(Type.String({ minLength: 1, maxLength: 2_048 })),
+        max_decisions: Type.Optional(Type.Integer({ minimum: 1, maximum: 500 })),
+        max_timeline_points: Type.Optional(Type.Integer({ minimum: 1, maximum: 500 })),
+        sample_every: Type.Optional(Type.Integer({ minimum: 1, maximum: 256 })),
+        version: Type.Optional(Type.String({ minLength: 1, maxLength: 32 })),
+        decision_id: Type.Optional(Type.String({ minLength: 1, maxLength: 256 })),
       }, { additionalProperties: false });
     case "inspect_legal_actions":
       return Type.Object({

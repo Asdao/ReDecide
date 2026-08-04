@@ -35,12 +35,12 @@ CS2 simulator ── deterministic seeded result
 
 ## Model configuration
 
-At process startup the CLI loads deployment-safe environment variables, then optionally creates an in-memory Pi `ModelRuntime`. `HARNESS_MODEL_PROVIDER` and `HARNESS_MODEL` select a built-in provider/model; `HARNESS_MODEL_BASE_URL` overlays a compatible gateway; and `HARNESS_MODEL_API_KEY` supplies a runtime-only credential. `DEEPSEEK_API_KEY` is a convenience default for the built-in `deepseek` provider. The key is never logged or sent to the tool bridge.
+At process startup the CLI loads deployment-safe environment variables, then optionally creates an in-memory Pi `ModelRuntime`. `HARNESS_MODEL_PROVIDER` and `HARNESS_MODEL` select a built-in provider/model; `HARNESS_MODEL_BASE_URL` overlays a compatible gateway or registers an unknown model; and `HARNESS_MODEL_API_KEY` supplies a runtime-only credential. `HARNESS_MODEL_API=openai-completions` selects the adapter for unknown OpenAI-compatible models such as a DeepSeek V3 Flash alias. `DEEPSEEK_API_KEY` is a convenience default for the `deepseek` provider. The key is never logged or sent to the tool bridge.
 
 ## Defaults and limits
 
 - Built-in Pi tools are disabled (`noTools: "builtin"`); only explicitly registered custom tools are available.
-- The default allowlist contains `simulate_round`.
+- The default allowlist contains `simulate_round`; `--replay` adds the read-only `analyze_replay` tool unless an explicit `--tool` list is supplied.
 - A session allows at most 8 tool calls per model turn; `simulate_round` allows at most 4.
 - Tool calls time out after 30 seconds by default.
 - A tool result is capped at 64 KiB; bridge stdout is capped at 256 KiB.
@@ -63,6 +63,7 @@ These are defense-in-depth limits, not substitutes for operating-system isolatio
 | Tool | Status | Notes |
 | --- | --- | --- |
 | `simulate_round` | Enabled | Fully validated and backed by the Python bridge. |
+| `analyze_replay` | Enabled when requested | Loads a server-side replay, indexes first-damage decisions for all players, and returns bounded outcome-blind facts plus estimator points. |
 | `inspect_legal_actions` | Scaffolded | TypeScript adapter shape exists, but it is not registered or exposed. |
 | `compare_policies` | Scaffolded | TypeScript adapter shape exists, but it is not registered or exposed. |
 

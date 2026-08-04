@@ -33,6 +33,23 @@ describe("model configuration", () => {
     });
   });
 
+  it("accepts an OpenAI-compatible vendor model alias", () => {
+    const config = readModelOverrideConfig({
+      HARNESS_MODEL_PROVIDER: "deepseek",
+      HARNESS_MODEL: "deepseek-v3-flash",
+      HARNESS_MODEL_BASE_URL: "https://api.deepseek.com",
+      HARNESS_MODEL_API: "openai-completions",
+      DEEPSEEK_API_KEY: "secret",
+    });
+    expect(config).toEqual({
+      provider: "deepseek",
+      model: "deepseek-v3-flash",
+      baseUrl: "https://api.deepseek.com",
+      apiKey: "secret",
+      api: "openai-completions",
+    });
+  });
+
   it("fails closed for an invalid gateway URL", () => {
     expect(() => readModelOverrideConfig({
       HARNESS_MODEL_PROVIDER: "deepseek",
@@ -47,6 +64,17 @@ describe("model configuration", () => {
       HARNESS_MODEL: "deepseek-v4-pro",
     });
     expect(configured?.model).toMatchObject({ provider: "deepseek", id: "deepseek-v4-pro" });
+  });
+
+  it("registers an unknown DeepSeek model in memory when a compatible endpoint is configured", async () => {
+    const configured = await createConfiguredModel({
+      HARNESS_MODEL_PROVIDER: "deepseek",
+      HARNESS_MODEL: "deepseek-v3-flash",
+      HARNESS_MODEL_BASE_URL: "https://api.deepseek.com",
+      HARNESS_MODEL_API: "openai-completions",
+      DEEPSEEK_API_KEY: "secret",
+    });
+    expect(configured?.model).toMatchObject({ provider: "deepseek", id: "deepseek-v3-flash" });
   });
 
   it("loads quoted dotenv values without overwriting deployment env", () => {
