@@ -13,6 +13,42 @@ from Noah.training.test_harness import (
 
 
 class TestHarnessInputTests(unittest.TestCase):
+    def test_portable_demo_spec_reproduces_v5_summary(self) -> None:
+        repository = Path(__file__).resolve().parents[3]
+        spec_path = (
+            repository
+            / "Noah"
+            / "model"
+            / "artifacts"
+            / "releases"
+            / "v5"
+            / "replay_model_demo_test.json"
+        )
+        spec = json.loads(spec_path.read_text(encoding="utf-8"))
+
+        input_path = repository / spec["input"]
+        release_dir = repository / spec["release_dir"]
+        self.assertFalse(Path(spec["input"]).is_absolute())
+        self.assertFalse(Path(spec["release_dir"]).is_absolute())
+        self.assertTrue(input_path.is_file())
+
+        runner = spec["runner"]
+        report = run_replay_test(
+            input_path,
+            release_dir=release_dir,
+            version=spec["version"],
+            moment_threshold=runner["moment_threshold"],
+            max_moments=runner["max_moments"],
+            sample_every=runner["sample_every"],
+        )
+
+        expected = spec["expected"]
+        self.assertEqual(report["report_type"], expected["report_type"])
+        self.assertEqual(report["schema_version"], expected["report_schema_version"])
+        self.assertEqual(report["source"], expected["source"])
+        self.assertEqual(report["map_name"], expected["map_name"])
+        self.assertEqual(report["summary"], expected["summary"])
+
     def test_parses_native_demo_through_replacement_extractor(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "match.dem"

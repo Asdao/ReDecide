@@ -32,6 +32,13 @@ and is active through `current.json` (previous release `v4`). The public harness
 now follows that active pointer by default; callers can still pass an explicit
 release version.
 
+The tracked `replay_model_demo_test.json` is now a portable regression
+specification rather than a machine-local historical report. It runs the
+tracked sanitized `backend/tests/fixtures/coach_full_replay.json` input against
+the tracked `v5` release and verifies the exact stable report summary. Clean
+clones do not need a raw demo, private database, or local absolute path for this
+inference regression.
+
 ## Important paths
 
 - `Noah/training/api.py` — public `TrainingPipeline` and configuration.
@@ -62,6 +69,13 @@ release/candidate suite passed 23 tests; the harness/release suite passed 19
 tests with the optional LightGBM dependency enabled. An active-pointer
 end-to-end smoke against the first real replay record loaded v5 and emitted
 `full_lightgbm_blended_with_small_statistical_rubric_suitability`.
+
+The portable clean-clone demo regression passed against v5 with the optional
+LightGBM dependency enabled. Exact command:
+
+```powershell
+uv run --extra full python -m unittest Noah.training.tests.test_test_harness.TestHarnessInputTests.test_portable_demo_spec_reproduces_v5_summary -v
+```
 
 Candidate-label smoke training on the existing compact candidate states
 produced 3,351 states and 4,616 trainable rubric rows, with 2,308 comparable

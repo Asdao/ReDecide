@@ -477,6 +477,38 @@ report = analyze_replay("match.dem", max_moments=None)
 
 Analysis is read-only with respect to the training database and model artifacts.
 
+### Clean-clone demo reproduction
+
+The repository includes a sanitized replay fixture, the complete checksummed
+`v5` release, and a portable expected-result specification. No private database
+or raw `.dem` is needed for this regression. From a fresh clone of the `Noah`
+branch, install the optional native model runtime and run the focused check:
+
+```powershell
+uv sync --extra full
+uv run --extra full python -m unittest `
+  Noah.training.tests.test_test_harness.TestHarnessInputTests.test_portable_demo_spec_reproduces_v5_summary `
+  -v
+```
+
+To produce the complete human-inspectable report with the same inputs and
+settings:
+
+```powershell
+uv run --extra full python Noah/training/test_harness.py `
+  backend/tests/fixtures/coach_full_replay.json `
+  --release-dir Noah/model/artifacts/releases `
+  --version v5 `
+  --output portable_demo.analysis.json
+```
+
+The expected summary and relative paths live in
+`Noah/model/artifacts/releases/v5/replay_model_demo_test.json`. The regression
+fails if the fixture is absent, paths become machine-specific, the selected
+model behavior changes, or the report schema/summary differs. This reproduces
+deployed inference against a sanitized fixture; it does not reproduce training
+from the intentionally ignored private dataset.
+
 The harness uses two model components. Its main round-value model comes from
 the selected release manifest and `full_replay_value.txt`; the action-analysis
 component comes from `candidate_action_value.txt`. The wrapper follows the
