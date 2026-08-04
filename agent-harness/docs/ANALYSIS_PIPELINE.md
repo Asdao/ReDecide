@@ -295,7 +295,8 @@ and never reparses the source:
 ```text
 POST /api/analysis/prepare       { replay_id: <shared ID> }
                                   or { replay: <processed replay JSON> }
-  <- { analysis_id, status, players_url, events_url, result_url }
+  <- { analysis_id, status, players_available, result_available,
+       logs_url, events_url, result_url }
 
 GET /api/analysis/{id}/players   selector-ready player names and IDs
 GET /api/analysis/{id}/events    SSE log/progress stream
@@ -316,6 +317,10 @@ deployment environment variables and, when no explicit `HARNESS_ENV_FILE` is
 configured, points the harness at the repository-root `.env`. The adapter
 receives the selected anonymized decision packet; it does not give Pi a replay
 path or a replay-analysis tool.
+
+See [`backend/app/API.md`](../../backend/app/API.md) and
+[`backend/replay_api/API.md`](../../backend/replay_api/API.md) for complete
+JSON output variables, status codes, and artifact unlock behavior.
 
 ## Implementation order
 

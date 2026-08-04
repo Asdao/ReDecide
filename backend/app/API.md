@@ -9,8 +9,8 @@ The two services therefore share one parse boundary:
 
 ```text
 .dem -> Replay FastAPI /api/replay/upload -> Blackbox parses once
-                                      ├── visualization.json -> frontend
-                                      └── coaching.json -> this API
+                                      +-- visualization.json -> frontend
+                                      +-- coaching.json -> this API
 ```
 
 ## Run
@@ -89,7 +89,6 @@ Response variables:
 | `logs_url` | Relative URL for persisted JSONL progress records. |
 | `events_url` | Relative URL for the SSE progress stream. |
 | `result_url` | Relative URL for the final UI JSON. |
-| `replay_id` | Shared replay artifact ID when the Replay API branch was used. |
 
 ### Preparation behavior
 
@@ -158,6 +157,9 @@ Request:
 ```json
 {"player_id": "p1"}
 ```
+
+The request must include `player_id` or `player_name`; if both are supplied,
+`player_id` takes precedence. A name must identify exactly one player.
 
 For simple clients, `{"player_name":"Player One"}` is also accepted when
 the name identifies exactly one player.
@@ -242,8 +244,8 @@ event: complete
 data: {"analysis_id":"...","stage":"complete","progress":100}
 ```
 
-Progress is monotonic: preparation occupies approximately `0–50`, player
-selection and coaching occupy `55–100`.
+Progress is monotonic: preparation occupies approximately `0-50`, player
+selection and coaching occupy `55-100`.
 
 Each `log` event contains the safe progress record. A failed job emits a final
 `log` event with `stage: "error"`; it does not emit `complete`. The stream

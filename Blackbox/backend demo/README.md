@@ -29,6 +29,7 @@ native .dem input
   -> GET /api/analysis/{id}/players
   -> choose a player
   -> POST /api/analysis/{id}/run
+  -> GET /api/analysis/{id}/events
   -> GET /api/analysis/{id}/result
   -> Replay FastAPI GET /api/replay/{replay_id}/json
   -> verify full visualization JSON was received

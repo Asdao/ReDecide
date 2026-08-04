@@ -27,9 +27,9 @@ returns evidence-linked coaching rather than judging the later round outcome.
 - `backend/app/replay/pipeline.py` indexes replay players and first-contact
   decision candidates, streams progress, filters a selected player, and merges
   redacted coaching output into the UI result.
-- `backend/app/replay/noah_extractor.py` wraps Noah's public extractor facade
+- `backend/app/replay/noah_extractor.py` wraps Blackbox's public extractor facade
   behind a backend error boundary.
-- `backend/app/coach/noah_connector.py` adapts Noah analysis output for the
+- `backend/app/coach/noah_connector.py` adapts Blackbox analysis output for the
   backend pipeline; the adapter is injectable for deterministic tests.
 - `backend/app/coach/pi_connector.py` is the default server-side Pi adapter for
   the FastAPI job. It sends only the selected anonymized decision payload,
@@ -39,7 +39,8 @@ returns evidence-linked coaching rather than judging the later round outcome.
   normalizes the provider's narrow unquoted-object rendering to strict JSON and
   launches the installed TypeScript entrypoint with Node instead of running
   pnpm dependency checks inside the request.
-- `Noah/backend demo/cli.py` exercises only public FastAPI routes. It polls job
+- `Blackbox/backend demo/cli.py` exercises the separate Replay and Coaching
+  FastAPI routes. It polls job
   metadata until player selection is ready, has no fixed ten-second preparation
   deadline, and stops immediately when FastAPI reports a failed job.
 - `frontend/src/domain/contracts.ts` mirrors the executable version `1.0`
@@ -48,7 +49,7 @@ returns evidence-linked coaching rather than judging the later round outcome.
 - `frontend/src/app/page.tsx` provides the current static, outcome-blind
   landing experience. Upload and sample controls are deliberately disabled
   until the live preparation contract is finalized in the product flow.
-- Noah's extractor, training package, release manifests, and active model
+- Blackbox's extractor, training package, release manifests, and active model
   pointer are present and independently tested, but are not by themselves the
   frozen RE:DECIDE coaching contract.
 
@@ -77,9 +78,9 @@ returns evidence-linked coaching rather than judging the later round outcome.
 | `backend/app/` | FastAPI transport, contracts, orchestration, replay integration, coach adapter |
 | `backend/tests/` | API, contract, replay, coach, and fixture tests |
 | `frontend/` | Standalone Next.js/Zod fixture-first UI |
-| `Noah/extractor/` | Replay parsing, normalization, segmentation, and extractor storage |
-| `Noah/training/` | Offline database preparation, feature extraction, training, evaluation, and release staging |
-| `Noah/model/` | CS2 simulation/model code and generated model artifacts |
+| `Blackbox/extractor/` | Replay parsing, normalization, segmentation, and extractor storage |
+| `Blackbox/training/` | Offline database preparation, feature extraction, training, evaluation, and release staging |
+| `Blackbox/model/` | CS2 simulation/model code and generated model artifacts |
 | `agent-harness/` | Separate Pi-to-Python simulator harness and tools |
 | `agent-harness-plan/` | Planning documents for that harness |
 | `data/` | Checked-in directory placeholders plus ignored/private runtime and evaluation data |

@@ -14,10 +14,7 @@ The default artifact root is `data/runtime/replays/<replay_id>/`.
 The default frontend origins are `http://localhost:3000` and
 `http://127.0.0.1:3000`. Set `REPLAY_API_ALLOWED_ORIGINS` to a
 comma-separated list to override them.
-
-The default frontend origins are `http://localhost:3000` and
-`http://127.0.0.1:3000`. Set `REPLAY_API_ALLOWED_ORIGINS` to a
-comma-separated list to override them.
+Only `GET` and `POST` are allowed by the configured CORS policy.
 
 ## Run
 
@@ -82,20 +79,6 @@ Upload errors:
 The application does not impose a demo-size limit. Reverse proxies, hosting
 platforms, or the operating system may still impose their own limits.
 
-Manifest variables:
-
-| Field | Meaning |
-|---|---|
-| `schema_version` | `replay_manifest_v1`. |
-| `replay_id` | Shared identifier for both artifact branches. |
-| `source` | Uploaded `.dem` filename. |
-| `map` | Map name and numeric tick rate. |
-| `players` | Player IDs, display names, and observed sides. |
-| `rounds` | Safe round boundaries before coaching. |
-| `visualization_status` | `processing`, `ready`, or `failed`. |
-| `coaching_status` | `ready` once `coaching.json` is persisted. |
-| `visualization_unlocked` | `false` until coaching completes successfully. |
-
 ## `GET /api/replay/{replay_id}/status`
 
 Returns the persisted safe manifest. `visualization_status` is one of:
@@ -105,12 +88,9 @@ Returns the persisted safe manifest. `visualization_status` is one of:
 - `failed`: generation failed and `visualization_error` is provided.
 
 The response is the same manifest shape returned by `/upload`. Errors: `404`
-when `replay_id` is unknown. `visualization_status: "ready"` does not mean
-the frontend can download the file; `visualization_unlocked` must also be
-`true`.
-
-The response is the same manifest shape returned by `/upload`. Errors: `404`
 when `replay_id` is unknown.
+`visualization_status: "ready"` does not mean the frontend can download the
+file; `visualization_unlocked` must also be `true`.
 
 ## `GET /api/replay/{replay_id}/json`
 
@@ -156,6 +136,10 @@ locked, `202` while generation is running, `404` for an unknown replay, and
 Response status: `200` when released; `403` while coaching has not unlocked it;
 `202` while visualization generation is still running; `404` for an unknown
 replay; `422` if visualization generation failed.
+
+If coaching fails, `coaching_status` remains `ready` and
+`visualization_unlocked` remains `false`; the full visualization JSON stays
+unavailable.
 
 ## `POST /api/replay/convert`
 
