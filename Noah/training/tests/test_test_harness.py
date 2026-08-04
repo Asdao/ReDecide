@@ -127,6 +127,45 @@ class TestHarnessInputTests(unittest.TestCase):
         self.assertEqual(result["options"]["sample_every"], 1)
         self.assertEqual(load.call_args.args[0].version, "v9")
 
+    def test_top_level_function_can_project_outcome_blind_report(self) -> None:
+        class Runtime:
+            def analyse_replay(self, replay, **kwargs):
+                return {
+                    "report_type": "combined_replay_analysis",
+                    "full_match": {"round_winner": "ct"},
+                    "kill_analysis": [{"tick": 20, "victim_id": "p1"}],
+                    "summary": {"kill_count": 1, "moment_count": 1},
+                    "moments": [
+                        {
+                            "tick": 20,
+                            "decision_tick": 10,
+                            "events": [{"category": "kill", "tick": 20}],
+                            "engagement_window": {
+                                "label_death": True,
+                                "death_tick": 20,
+                                "health": 34,
+                            }
+                        }
+                    ],
+                }
+
+        with patch("cs2_sim.ReplayModel.load", return_value=Runtime()):
+            result = analyze_replay(
+                {"header": {"map_name": "de_mirage"}},
+                outcome_blind=True,
+            )
+
+        self.assertTrue(result["outcome_blind"])
+        self.assertNotIn("full_match", result)
+        self.assertNotIn("kill_analysis", result)
+        self.assertNotIn("kill_count", result["summary"])
+        self.assertNotIn("moment_count", result["summary"])
+        self.assertNotIn("events", result["moments"][0])
+        self.assertNotIn("tick", result["moments"][0])
+        self.assertNotIn("label_death", result["moments"][0]["engagement_window"])
+        self.assertNotIn("death_tick", result["moments"][0]["engagement_window"])
+        self.assertEqual(result["moments"][0]["engagement_window"]["health"], 34)
+
     def test_legacy_runner_delegates_to_top_level_function(self) -> None:
         with patch(
             "Noah.training.test_harness.analyze_replay",

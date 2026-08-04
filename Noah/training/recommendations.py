@@ -371,6 +371,9 @@ def rank_candidate_actions(
         elif entropy is not None and entropy > max_entropy:
             support_reason = "high_entropy"
         item = dict(candidate)
+        estimate_type = str(
+            item.get("estimate_type") or "observational_counterfactual_estimate"
+        )
         item.update(
             {
                 "action": action,
@@ -380,7 +383,7 @@ def rank_candidate_actions(
                 "confidence": confidence,
                 "supported": supported,
                 "support_reason": support_reason,
-                "estimate_type": "observational_counterfactual_estimate",
+                "estimate_type": estimate_type,
             }
         )
         output.append(item)

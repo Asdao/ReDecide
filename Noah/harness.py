@@ -70,7 +70,7 @@ def analyze_replay(
     *,
     record_index: int = 0,
     release_dir: str | Path | None = None,
-    version: str = "v4",
+    version: str | None = None,
     candidate_model_path: str | Path | None = None,
     allow_fallback: bool = True,
     model_config: Any | None = None,
@@ -85,13 +85,15 @@ def analyze_replay(
     max_interval_width: float = 0.8,
     posterior_samples: int = 5000,
     posterior_seed: int = 7,
+    outcome_blind: bool = False,
 ) -> dict[str, Any]:
     """Analyze one replay through the deployed Noah model harness.
 
     ``replay`` may be a native ``.dem`` path, JSON/JSONL path, canonical
     extractor mapping, or an already-normalized replay mapping. All model
     loading, normalization, candidate scoring, and report construction remain
-    behind this function.
+    behind this function. Set ``outcome_blind=True`` when the result crosses
+    an API/UI boundary; offline evaluation keeps the full report by default.
     """
 
     _ensure_import_paths()
@@ -121,7 +123,7 @@ def analyze_replay(
             allow_fallback=allow_fallback,
         )
     runtime = ReplayModel.load(config)
-    return runtime.analyse_replay(
+    report = runtime.analyse_replay(
         record,
         moment_threshold=moment_threshold,
         max_moments=max_moments,
@@ -135,6 +137,11 @@ def analyze_replay(
         posterior_samples=posterior_samples,
         posterior_seed=posterior_seed,
     )
+    if outcome_blind:
+        from Noah.training.analysis_report import outcome_blind_report
+
+        return outcome_blind_report(report)
+    return report
 
 
 __all__ = ["analyze_replay"]

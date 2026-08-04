@@ -53,6 +53,21 @@ class NoahCoachConnectorTests(unittest.TestCase):
         self.assertEqual(report, expected)
         analyze.assert_called_once_with(replay, max_moments=2)
 
+    def test_outcome_blind_alias_requests_safe_harness_projection(self) -> None:
+        replay = {"header": {}, "rounds": [], "ticks": []}
+        expected = {
+            "report_type": "combined_replay_analysis",
+            "schema_version": "replay_analysis_v1",
+            "outcome_blind": True,
+            "moments": [],
+            "summary": {},
+        }
+        with patch("Noah.analyze_replay", return_value=expected) as analyze:
+            report = NoahCoachConnector().analyse_outcome_blind(replay, max_moments=2)
+
+        self.assertEqual(report, expected)
+        analyze.assert_called_once_with(replay, max_moments=2)
+
     def test_rejects_invalid_input_and_runtime_reports(self) -> None:
         connector = NoahCoachConnector(runtime=_FakeRuntime())
         with self.assertRaises(NoahCoachError):

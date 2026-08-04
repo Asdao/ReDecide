@@ -19,12 +19,13 @@ packages = [
     "Noah",
     "Noah.training",
     "Noah.training.tests",
+    "replay_extractor",
     "cs2_sim",
     "cs2_sim.core",
     "cs2_sim.core.model",
     "cs2_sim.models",
 ]
-package-dir = {"Noah" = "Noah", "cs2_sim" = "Noah/model/src/cs2_sim"}
+package-dir = {"Noah" = "Noah", "replay_extractor" = "Noah/extractor/src/replay_extractor", "cs2_sim" = "Noah/model/src/cs2_sim"}
 
 [tool.pytest.ini_options]
 testpaths = ["Noah/tests", "Noah/model/tests", "Noah/training/tests", "Noah/extractor/tests", "agent-harness/tests"]

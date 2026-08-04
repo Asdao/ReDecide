@@ -1,0 +1,31 @@
+{
+  "schema_version": "candidate_training_v2",
+  "candidate_state_schema": "candidate_state_v1",
+  "candidate_label_schema": "candidate_label_v1",
+  "rollout_schema": null,
+  "candidate_rows": 2590,
+  "rollout_rows": 0,
+  "examples": 3590,
+  "train_examples": 2656,
+  "validation_examples": 934,
+  "small_state_keys": 979,
+  "full_trained": true,
+  "split_strategy": "whole_record_group",
+  "heldout_split_valid": true,
+  "rollout_label_source": null,
+  "label_rows": 7770,
+  "label_counts": {
+    "preferred": 1795,
+    "risky": 1795,
+    "unknown": 4180
+  },
+  "label_state_groups": 1795,
+  "groups_with_label_variance": 1795,
+  "label_variance_rate": 1.0,
+  "label_source": "pre_event_suitability_v1",
+  "training_target": "pre_event_suitability",
+  "candidate_model_status": "trainable_with_rubric_signal",
+  "promotable": true,
+  "calibrated": true,
+  "full_log_loss": 9.9197631452778e-07
+}

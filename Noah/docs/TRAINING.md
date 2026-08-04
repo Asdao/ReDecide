@@ -446,12 +446,12 @@ successfully and run `Noah.training.train_full_replay` without `--snapshot-input
 For the normal path, send a native `.dem`, extracted replay JSON, or JSONL file
 to the small runner. Native demos and canonical replacement-extractor records
 are normalized in memory; the harness does not build a database or retrain a
-model. It selects the active release (`v4` in the current bundle), applies the conservative defaults, and writes
+model. It selects the active release (`v5` in the current bundle), applies the conservative defaults, and writes
 an adjacent `.analysis.json` report:
 
 ```powershell
-python Noah/training/test_harness.py data/private/processed/full_replays.jsonl --version v4
-python Noah/training/test_harness.py path/to/match.dem --all-moments --version v4
+python Noah/training/test_harness.py data/private/processed/full_replays.jsonl
+python Noah/training/test_harness.py path/to/match.dem --all-moments
 ```
 
 Use `--record-index 3` for another JSONL record or `--output path/to/report.json`
@@ -480,7 +480,7 @@ Analysis is read-only with respect to the training database and model artifacts.
 The harness uses two model components. Its main round-value model comes from
 the selected release manifest and `full_replay_value.txt`; the action-analysis
 component comes from `candidate_action_value.txt`. The wrapper follows the
-active pointer, currently `Noah/model/artifacts/releases/v4`. Pass
+active pointer, currently `Noah/model/artifacts/releases/v5`. Pass
 `--candidate-model` to override only
 the action model. If the candidate LightGBM artifact cannot load, the loader
 falls back to that release's `small_statistical.json`; if no candidate model is
@@ -565,14 +565,49 @@ python Noah/training/candidate_coverage.py `
   data/private/processed/candidate_states.json
 ```
 
-To build a private candidate-action dataset from training-only demos, first
-extract strictly pre-kill states, then aggregate simulator outcomes:
+To build a directional candidate-action dataset, first extract strictly
+pre-event states and generate the leakage-safe rubric label sidecar. The
+sidecar stores only one compact row per state/action and excludes later round
+outcomes:
 
 ```powershell
 python Noah/training/candidate_states.py `
   data/private/processed/full_replays.jsonl `
   data/private/processed/candidate_states.json
 
+python Noah/training/candidate_labels.py `
+  data/private/processed/candidate_states.json `
+  data/private/processed/candidate_labels.jsonl `
+  --format jsonl
+
+python Noah/training/split_candidate_dataset.py `
+  data/private/processed/candidate_states.json `
+  data/private/processed/candidate_split `
+  --labels data/private/processed/candidate_labels.jsonl
+
+python Noah/training/train_candidate_value.py `
+  data/private/processed/candidate_split/train_candidate_states.json `
+  data/private/artifacts/candidate_v5 `
+  --labels data/private/processed/candidate_split/train_candidate_labels.jsonl
+
+python Noah/training/evaluate_candidate_value.py `
+  data/private/processed/candidate_split/heldout_candidate_states.json `
+  data/private/artifacts/candidate_v5 `
+  data/private/processed/candidate_v5_evaluation.json `
+  --labels data/private/processed/candidate_split/heldout_candidate_labels.jsonl
+```
+
+The candidate trainer treats `preferred` and `risky` rubric labels as binary
+suitability targets and excludes `unknown` rows. It records the rubric version
+and target in `candidate_training_metrics.json` and the candidate model
+metadata. It requires action-label variation within a state and a whole-match
+held-out split before producing a promotable directional model.
+
+The simulator rollout path remains useful as a diagnostic for the compact
+simulator, but its labels are not a directional training target when every
+legal action receives the same round winner:
+
+```powershell
 python Noah/training/candidate_rollouts.py `
   data/private/processed/candidate_states.json `
   data/private/processed/candidate_rollouts.jsonl `

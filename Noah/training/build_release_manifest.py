@@ -105,6 +105,7 @@ def build_release_manifest(release_dir: str | Path, *, version: str | None = Non
         "engagement_lightgbm": "engagement_lightgbm.json",
         "candidate_action_value": "candidate_action_value.txt",
         "candidate_action_metadata": "candidate_action_value.txt.json",
+        "candidate_training_metrics": "candidate_training_metrics.json",
         "statistical_action_prior": "small_statistical.json",
         "engagement_metrics": "engagement_metrics.json",
         "engagement_lightgbm_metrics": "engagement_lightgbm_metrics.json",

@@ -1,0 +1,95 @@
+{
+  "candidates": [
+    {
+      "name": "lightgbm",
+      "source": "model\\artifacts\\releases\\v2\\full_replay_metrics.json",
+      "metrics": {
+        "log_loss": 0.5899665066295352,
+        "brier": 0.20589518688522415,
+        "accuracy": 0.6160714285714286,
+        "balanced_accuracy": 0.6316844919786097,
+        "expected_calibration_error": 0.1576498049331625,
+        "ct_win_rate": 0.6071428571428571,
+        "training_prior_baseline": {
+          "probability": 0.5257270693512305,
+          "log_loss": 0.6834370674048961,
+          "brier": 0.2451489386649965,
+          "accuracy": 0.6071428571428571
+        },
+        "log_loss_improvement": 0.09347056077536087,
+        "brier_improvement": 0.03925375177977236
+      },
+      "role": "deployed_replay_value_model"
+    },
+    {
+      "name": "logistic_regression",
+      "source": "model\\artifacts\\releases\\v2\\statistical_baseline_metrics.json",
+      "metrics": {
+        "log_loss": 0.6307360836313328,
+        "brier": 0.22231033961361804,
+        "accuracy": 0.6517857142857143,
+        "balanced_accuracy": 0.6771390374331551,
+        "expected_calibration_error": 0.17076868652524507,
+        "ct_win_rate": 0.6071428571428571,
+        "training_prior_baseline": {
+          "probability": 0.5257270693512305,
+          "log_loss": 0.6834370674048961,
+          "brier": 0.2451489386649965,
+          "accuracy": 0.6071428571428571
+        },
+        "log_loss_improvement": 0.05270098377356325,
+        "brier_improvement": 0.022838599051378472
+      },
+      "role": "advisory_baseline"
+    },
+    {
+      "name": "gaussian_naive_bayes",
+      "source": "model\\artifacts\\releases\\v2\\statistical_baseline_metrics.json",
+      "metrics": {
+        "log_loss": 5.9864950981469915,
+        "brier": 0.39281793525726266,
+        "accuracy": 0.6071428571428571,
+        "balanced_accuracy": 0.5,
+        "expected_calibration_error": 0.3928374675658961,
+        "ct_win_rate": 0.6071428571428571,
+        "training_prior_baseline": {
+          "probability": 0.5257270693512305,
+          "log_loss": 0.6834370674048961,
+          "brier": 0.2451489386649965,
+          "accuracy": 0.6071428571428571
+        },
+        "log_loss_improvement": -5.303058030742095,
+        "brier_improvement": -0.14766899659226615
+      },
+      "role": "advisory_baseline"
+    }
+  ],
+  "selected": {
+    "name": "lightgbm",
+    "source": "model\\artifacts\\releases\\v2\\full_replay_metrics.json",
+    "metrics": {
+      "log_loss": 0.5899665066295352,
+      "brier": 0.20589518688522415,
+      "accuracy": 0.6160714285714286,
+      "balanced_accuracy": 0.6316844919786097,
+      "expected_calibration_error": 0.1576498049331625,
+      "ct_win_rate": 0.6071428571428571,
+      "training_prior_baseline": {
+        "probability": 0.5257270693512305,
+        "log_loss": 0.6834370674048961,
+        "brier": 0.2451489386649965,
+        "accuracy": 0.6071428571428571
+      },
+      "log_loss_improvement": 0.09347056077536087,
+      "brier_improvement": 0.03925375177977236
+    },
+    "role": "deployed_replay_value_model"
+  },
+  "selection_rule": "lowest held-out round log loss",
+  "metadata": {
+    "feature_schema_version": "2",
+    "dataset_fingerprint": "3ea4d6cf921d615176b3db98a90e8100d0a7690e3cb23d6324201ad0bdf585d1",
+    "split_fingerprint": "9e9249590d73c3a251af78fdec6cbfddd302eaea9dbe5e14ba2092e6ec13bb52",
+    "split_schema_version": "grouped_match_v1"
+  }
+}

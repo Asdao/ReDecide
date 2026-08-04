@@ -8,6 +8,7 @@ without depending on the implementation layout.
 
 from __future__ import annotations
 
+import json
 from collections import defaultdict
 from collections.abc import Mapping
 from dataclasses import dataclass
@@ -217,12 +218,16 @@ def build_replay_analysis(
             else []
         )
         for candidate in ranked:
-            candidate["estimate_type"] = "simulator_action_value_estimate"
-        engagement_ranked = _augment_candidates_with_engagement(
-            model,
-            ranked,
-            engagement_window,
-            min_support=settings.min_support,
+            candidate.setdefault("estimate_type", "simulator_action_value_estimate")
+        engagement_ranked = (
+            ranked
+            if candidate_source == "rubric_action_suitability"
+            else _augment_candidates_with_engagement(
+                model,
+                ranked,
+                engagement_window,
+                min_support=settings.min_support,
+            )
         )
         if engagement_ranked is not ranked:
             ranked = engagement_ranked
@@ -284,7 +289,8 @@ def build_replay_analysis(
                 "snapshot": snapshot_row.get("snapshot") if snapshot_row else None,
                 "candidate_source": candidate_source,
                 "candidate_model_type": _candidate_model_type(candidate_model),
-                "legal_candidate_count": len(ranked),
+                "candidate_action_count": len(ranked),
+                "legal_candidate_count": sum(1 for row in ranked if row.get("legal") is True),
                 "candidate_actions": ranked,
                 "observed_action": observed_candidate,
                 "observed_action_name": (
@@ -373,18 +379,38 @@ def build_replay_analysis(
 
 
 def load_candidate_model(path: str | Path) -> CandidateModel:
-    """Load the simulator-trained action scorer, with statistical fallback."""
+    """Load the candidate scorer, preserving its target semantics."""
 
     candidate_path = Path(path)
     if candidate_path.name == "small_statistical.json":
-        return SmallStatisticalModel.load(candidate_path)
+        model = SmallStatisticalModel.load(candidate_path)
+        return _attach_candidate_metadata(model, candidate_path)
     try:
-        return FullLightGBMModel.load(candidate_path)
+        return _attach_candidate_metadata(FullLightGBMModel.load(candidate_path), candidate_path)
     except (ImportError, RuntimeError, ValueError):
         fallback = candidate_path.with_name("small_statistical.json")
         if not fallback.is_file():
             raise
-        return SmallStatisticalModel.load(fallback)
+        return _attach_candidate_metadata(SmallStatisticalModel.load(fallback), fallback)
+
+
+def _attach_candidate_metadata(model: CandidateModel, path: Path) -> CandidateModel:
+    """Attach optional training metadata to legacy and statistical artifacts."""
+
+    metrics_path = path.parent / "candidate_training_metrics.json"
+    if not metrics_path.is_file():
+        return model
+    try:
+        payload = json.loads(metrics_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return model
+    if not isinstance(payload, Mapping):
+        return model
+    if getattr(model, "training_target", None) is None:
+        model.training_target = payload.get("training_target")
+    if getattr(model, "training_label_source", None) is None:
+        model.training_label_source = payload.get("label_source") or payload.get("rollout_label_source")
+    return model
 
 
 __all__ = [

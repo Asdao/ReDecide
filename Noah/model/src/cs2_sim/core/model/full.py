@@ -244,6 +244,11 @@ class FullLightGBMModel(ActionPolicy):
             small_model=small_model,
             lightgbm_weight=float(metadata["lightgbm_weight"]),
         )
+        # Candidate releases may declare whether their scores represent
+        # simulator value or a boundary-safe suitability rubric.  Older
+        # artifacts omit this optional field and retain simulator semantics.
+        model.training_target = metadata.get("training_target")
+        model.training_label_source = metadata.get("training_label_source")
         calibrator_payload = metadata.get("calibrator")
         if isinstance(calibrator_payload, dict):
             try:

@@ -113,10 +113,15 @@ def _action_outcome_counts(
 def _candidate_model_type(model: CandidateModel | None) -> str:
     if model is None:
         return "unavailable"
+    target_suffix = (
+        "_rubric_suitability"
+        if getattr(model, "training_target", None) == "pre_event_suitability"
+        else ""
+    )
     if isinstance(model, FullLightGBMModel) and model.is_fitted:
-        return "full_lightgbm_blended_with_small_statistical"
+        return f"full_lightgbm_blended_with_small_statistical{target_suffix}"
     if isinstance(model, SmallStatisticalModel) or isinstance(getattr(model, "small_model", None), SmallStatisticalModel):
-        return "small_statistical"
+        return f"small_statistical{target_suffix}"
     return "custom_candidate_model"
 
 
@@ -133,6 +138,9 @@ def _candidate_rows(
     if not legal:
         return [], "no_legal_actions"
     scores = model.score_actions(state, player_id, legal)
+    training_target = str(getattr(model, "training_target", "") or "")
+    suitability_target = training_target == "pre_event_suitability"
+    estimate_type = "rubric_action_suitability" if suitability_target else "simulator_action_value_estimate"
     entropy_method = getattr(model, "normalized_entropy", None)
     try:
         entropy = float(entropy_method(state, player_id, legal)) if callable(entropy_method) else 1.0
@@ -168,7 +176,13 @@ def _candidate_rows(
             {
                 "action": action_name,
                 "candidate_success_probability": success,
-                "death_probability": 1.0 - success,
+                "candidate_score": success,
+                "candidate_score_semantics": (
+                    "pre_event_suitability_probability"
+                    if suitability_target
+                    else "simulator_round_value_probability"
+                ),
+                "death_probability": None if suitability_target else 1.0 - success,
                 "round_value_delta": success,
                 "sample_count": support,
                 "support_level": support_info.get("level"),
@@ -177,8 +191,15 @@ def _candidate_rows(
                 "entropy": entropy,
                 "outcome_support": sum(outcome_counts) if outcome_counts is not None else 0,
                 "outcome_evidence": bool(outcome_counts is not None and sum(outcome_counts) > 0),
-                "outcome_variance": outcome_variance,
-                "rollout_quality": "action_outcome_variance" if outcome_variance else "no_action_outcome_variance",
+                "outcome_variance": False if suitability_target else outcome_variance,
+                "rollout_quality": (
+                    "not_applicable_rubric"
+                    if suitability_target
+                    else "action_outcome_variance"
+                    if outcome_variance
+                    else "no_action_outcome_variance"
+                ),
+                "estimate_type": estimate_type,
                 "legal": True,
                 "supported": support >= min_support,
                 **(
@@ -191,16 +212,21 @@ def _candidate_rows(
                 ),
             }
         )
-    return rows, "simulator_action_value"
+    return rows, "rubric_action_suitability" if suitability_target else "simulator_action_value"
 
 
 def _least_death_risk_candidate(candidates: Iterable[Mapping[str, Any]]) -> dict[str, Any] | None:
     """Return the lowest conservative death-risk estimate among legal actions."""
 
+    candidates = list(candidates)
+    if any(item.get("estimate_type") == "rubric_action_suitability" for item in candidates):
+        # Suitability scores are not death probabilities.  Do not project a
+        # rubric ranking into a fake risk estimate.
+        return None
     estimates: list[dict[str, Any]] = []
     for candidate in candidates:
         action = str(candidate.get("action") or "")
-        if not action or candidate.get("legal") is False:
+        if not action or candidate.get("legal") is not True:
             continue
         direct_death_head = candidate.get("death_probability_source") == "engagement_death_head"
         successes = candidate.get("posterior_successes")
@@ -328,7 +354,7 @@ def _augment_candidates_with_engagement(
                 "sample_count": 0,
                 "confidence": 0.0,
                 "entropy": 1.0,
-                "legal": True,
+                "legal": False,
                 "legality_scope": "abstract_movement_choice",
                 "support_level": "engagement_state",
             }
