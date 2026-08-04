@@ -1,6 +1,7 @@
 import unittest
 from pathlib import Path
 from typing import Any
+from unittest.mock import patch
 
 from backend.app.coach.noah_connector import NoahCoachConnector, NoahCoachError
 
@@ -37,6 +38,20 @@ class NoahCoachConnectorTests(unittest.TestCase):
         report = connector.analyse_json('{"header": {}, "rounds": [], "ticks": []}')
 
         self.assertEqual(report["summary"]["moment_count"], 0)
+
+    def test_default_connector_uses_public_noah_function(self) -> None:
+        replay = {"header": {}, "rounds": [], "ticks": []}
+        expected = {
+            "report_type": "combined_replay_analysis",
+            "schema_version": "replay_analysis_v1",
+            "moments": [],
+            "summary": {"moment_count": 0},
+        }
+        with patch("Noah.analyze_replay", return_value=expected) as analyze:
+            report = NoahCoachConnector().analyse(replay, max_moments=2)
+
+        self.assertEqual(report, expected)
+        analyze.assert_called_once_with(replay, max_moments=2)
 
     def test_rejects_invalid_input_and_runtime_reports(self) -> None:
         connector = NoahCoachConnector(runtime=_FakeRuntime())

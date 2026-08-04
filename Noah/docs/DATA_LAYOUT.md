@@ -26,7 +26,7 @@ with `CS2_PUBLIC_DATA_ROOT` and `CS2_PRIVATE_DATA_ROOT`.
 Run the migration from the repository root:
 
 ```powershell
-$env:PYTHONPATH = "Noah/model/src;."
+$env:PYTHONPATH = "Noah/model/src;Noah/extractor/src;."
 python -m Noah.training.migrate_data_layout
 python -m Noah.training.migrate_data_layout --apply
 ```

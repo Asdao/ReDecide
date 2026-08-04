@@ -67,9 +67,11 @@ from Noah.training import TrainingConfig, TrainingPipeline
 
 pipeline = TrainingPipeline(
    TrainingConfig(
-      artifact_dir="model/artifacts/releases/v4",
+      artifact_dir="Noah/model/artifacts/releases/v4",
       seed=7,
       clean_records=True,
+      release_version="v4",
+      tick_rate=64.0,
    )
 )
 
@@ -143,28 +145,15 @@ simulator actions still record their default-topology legality scope.
 observational: a ranked alternative is not proof that a player should have
 made that move.
 
-For application code that already has one normalized extracted replay, the
-complete analysis call is simply:
+Application code accesses the complete harness through one package-root
+function. It accepts either an input path or an already loaded replay mapping:
 
 ```python
-from cs2_sim import ModelConfig, ReplayModel
+from Noah import analyze_replay
 
-model = ReplayModel.load(ModelConfig(allow_fallback=True))
-analysis = model.analyse_replay(replay_record, max_moments=None)
+analysis = analyze_replay(replay_record, max_moments=None)
+analysis_from_demo = analyze_replay("match.dem", max_moments=None)
 print(analysis["kill_analysis"])
-```
-
-For a file-based entry point that also parses a native `.dem` or normalizes
-canonical replacement-extractor JSON/JSONL, use the user-facing wrapper:
-
-```python
-from Noah.training.test_harness import run_replay_test
-
-analysis = run_replay_test("match.dem", max_moments=None, sample_every=1)
-analysis_from_json = run_replay_test(
-    "data/private/processed/extractor_record.json",
-    max_moments=None,
-)
 ```
 
 Both calls return the same combined report shape. The `kill_analysis` array
@@ -204,7 +193,7 @@ must display abstention and uncertainty rather than converting them into a
 binary good/bad verdict.
 
 The Monte Carlo comparison defaults to 5,000 seeded posterior draws; callers
-can override `posterior_samples` and `posterior_seed` on `analyse_replay`.
+can override `posterior_samples` and `posterior_seed` on `analyze_replay`.
 
 Callers provide structured fields and never construct internal action-state keys
 or load component files independently. `model.status` reports which optional

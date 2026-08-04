@@ -4,7 +4,14 @@ import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
-from cs2_sim.core.model import REPLAY_FEATURE_NAMES, ReplayValueEnsemble, SnapshotValueModel, snapshot_features
+from cs2_sim.core.model import (
+    REPLAY_FEATURE_NAMES,
+    ReplayValueEnsemble,
+    SnapshotValueModel,
+    snapshot_features,
+)
+
+from Noah.training.build_release_manifest import build_release_manifest
 from Noah.training.model_bundle import BundleError, ModelBundleStore, validate_bundle
 
 
@@ -30,6 +37,21 @@ def _write_bayesian_bundle(root: Path, *, name: str = "manifest.json") -> Path:
         bayesian_path=model_path,
     )
     return manifest_path
+
+
+def _write_complete_release(root: Path, *, version: str) -> Path:
+    """Create a minimal complete release using the production manifest builder."""
+
+    root.mkdir(parents=True, exist_ok=True)
+    model_path = root / "small_snapshot_value.json"
+    model = SnapshotValueModel()
+    model.observe({"map_name": "de_mirage", "ct_alive": 4, "t_alive": 2, "label_round_winner": "ct"})
+    model.save(model_path)
+    ReplayValueEnsemble(booster_weight=0.0).save_manifest(
+        root / "full_replay_value.manifest.json",
+        bayesian_path=model_path,
+    )
+    return build_release_manifest(root, version=version)
 
 
 class ModelBundleTests(unittest.TestCase):
@@ -97,6 +119,37 @@ class ModelBundleTests(unittest.TestCase):
             (releases / "v1" / "small.json").write_text("tampered", encoding="utf-8")
             with self.assertRaises(BundleError):
                 validate_bundle(releases / "v1", require_checksums=True)
+
+    def test_complete_release_manifest_is_staged_and_checked(self) -> None:
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            source = root / "v1"
+            _write_complete_release(source, version="v1")
+            store = ModelBundleStore(root / "releases")
+            staged = store.stage(source, version="v1", require_checksums=True)
+            self.assertEqual(staged, (root / "releases" / "v1").resolve())
+            store.activate("v1", require_checksums=True)
+            self.assertEqual(store.current(validate=True), staged)
+
+            (staged / "small_snapshot_value.json").write_text("tampered", encoding="utf-8")
+            with self.assertRaises(BundleError):
+                store.activate("v1", require_checksums=True)
+            # A failed validation must leave the previously active pointer
+            # untouched rather than publishing a partial/invalid release.
+            self.assertEqual(json.loads(store.pointer.read_text(encoding="utf-8"))["version"], "v1")
+
+    def test_failed_complete_release_stage_leaves_no_destination(self) -> None:
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            source = root / "v1"
+            _write_complete_release(source, version="v1")
+            (source / "small_snapshot_value.json").write_text("tampered", encoding="utf-8")
+            store = ModelBundleStore(root / "releases")
+            with self.assertRaises(BundleError):
+                store.stage(source, version="v1", require_checksums=True)
+            self.assertFalse((root / "releases" / "v1").exists())
+            staging = root / "releases" / ".staging"
+            self.assertFalse(any(staging.iterdir()) if staging.exists() else False)
 
 
 if __name__ == "__main__":

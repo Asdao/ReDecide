@@ -8,9 +8,7 @@ or a RE:DECIDE ``DecisionCard``; those are separate contract layers.
 from __future__ import annotations
 
 import json
-import sys
 from collections.abc import Mapping
-from pathlib import Path
 from typing import Any, Protocol
 
 
@@ -36,34 +34,21 @@ class NoahCoachConnector:
         self._runtime = runtime
         self._model_config = model_config
 
-    def _runtime_or_load(self) -> _ReplayAnalyzer:
-        if self._runtime is not None:
-            return self._runtime
-        try:
-            workspace_root = Path(__file__).resolve().parents[3]
-            model_src = workspace_root / "Noah" / "model" / "src"
-            if str(model_src) not in sys.path:
-                sys.path.insert(0, str(model_src))
-            if str(workspace_root) not in sys.path:
-                sys.path.insert(0, str(workspace_root))
-            from cs2_sim import ModelConfig, ReplayModel
-
-            # Keep the backend smoke path usable without native LightGBM;
-            # deployments can pass ModelConfig(allow_fallback=False) to fail
-            # closed when the full release is mandatory.
-            config = self._model_config or ModelConfig(allow_fallback=True)
-            self._runtime = ReplayModel.load(config)
-            return self._runtime
-        except Exception as exc:
-            raise NoahCoachError(f"could not load Noah replay model: {exc}") from exc
-
     def analyse(self, replay: Mapping[str, Any], **kwargs: Any) -> dict[str, Any]:
         """Analyze one normalized replay mapping with the deployed harness."""
 
         if not isinstance(replay, Mapping):
             raise NoahCoachError("coach input must be a normalized replay object")
         try:
-            report = self._runtime_or_load().analyse_replay(replay, **kwargs)
+            if self._runtime is not None:
+                report = self._runtime.analyse_replay(replay, **kwargs)
+            else:
+                from Noah import analyze_replay
+
+                options = dict(kwargs)
+                if self._model_config is not None:
+                    options.setdefault("model_config", self._model_config)
+                report = analyze_replay(replay, **options)
         except NoahCoachError:
             raise
         except Exception as exc:

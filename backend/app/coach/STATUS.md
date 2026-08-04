@@ -1,6 +1,6 @@
 # AI Coach and Reliability Status
 
-Last verified: 2026-08-03 (Asia/Singapore)
+Last verified: 2026-08-04 (Asia/Singapore)
 
 Owner: Person 3 - AI Coach, Rubric, and Reliability
 
@@ -10,8 +10,8 @@ Owner: Person 3 - AI Coach, Rubric, and Reliability
 separate.**
 
 `backend/app/coach/noah_connector.py` accepts one normalized replay mapping and
-forwards it to Noah's deployed `ReplayModel.analyse_replay` facade. With no
-explicit `ModelConfig`, it follows
+forwards it to Noah's package-root `analyze_replay` function. With no explicit
+model configuration, that function follows
 `Noah/model/artifacts/releases/current.json` and currently loads release `v4`.
 Native `.dem` parsing belongs to `Noah/training/test_harness.py` and the
 replacement-extractor adapter; the backend connector intentionally receives
@@ -240,8 +240,8 @@ round-value estimate rather than a per-event death hazard.
 
 ### Backend connector
 
-The backend coach boundary can call the deployed analysis without importing
-the harness internals:
+The backend coach boundary can call the deployed analysis through Noah's one
+public harness function without importing harness internals:
 
 ```python
 from backend.app.coach.noah_connector import NoahCoachConnector
@@ -257,7 +257,7 @@ report = connector.analyse(
 
 `analyse_json` is available for a JSON request body, and `analyze` is an
 American-English alias. The connector validates that the returned object is a
-`combined_replay_analysis` report and wraps load/runtime failures in the stable
+`combined_replay_analysis` report and wraps facade/runtime failures in the stable
 `NoahCoachError`. It does not convert the report into a `DecisionCard` or make
 provider calls. The request must already be a normalized replay mapping with
 `header`, `rounds`, `ticks`, `kills`, `damages`, and `bomb` fields; use
@@ -304,8 +304,18 @@ data/eval/model/**
 
 The connector tests are in `backend/tests/test_coach_noah_connector.py` and
 cover forwarding, JSON input, invalid input, stable configuration errors, and
-the real checked-in fixture flowing through the deployed runtime.
+the real checked-in fixture flowing through the deployed runtime. The default
+path is verified to call `Noah.analyze_replay`; injected runtimes remain
+available for deterministic unit tests.
 The RE:DECIDE coach contract itself still has no fixture tests in the new path.
+
+Latest focused validation:
+
+```powershell
+uv run pytest backend/tests/test_coach_noah_connector.py Noah/training/tests/test_test_harness.py -q
+```
+
+Result: 16 passed on 2026-08-04.
 
 The user-facing Noah smoke runner is:
 

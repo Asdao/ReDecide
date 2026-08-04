@@ -33,6 +33,10 @@ class TrainStreamedSidecarsTests(unittest.TestCase):
         self.assertEqual(result["release_dir"], str(root / "release"))
         self.assertIsNone(result["calibrator"])
         self.assertIn("replay-value models only", result["note"])
+        full_kwargs = full.call_args.kwargs
+        self.assertEqual(full_kwargs["small_model_path"], root / "release" / "small_snapshot_value.json")
+        self.assertEqual(full_kwargs["small_model_output"], root / "release" / "small_snapshot_value.json")
+        self.assertEqual(full_kwargs["release_version"], "release")
 
 
 if __name__ == "__main__":

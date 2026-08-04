@@ -69,11 +69,11 @@ callers should import `ReplayModel` from `cs2_sim`; training callers should use
 
 The first implementation pass is complete through action inference:
 
-- `training.audit_replays` and `training.replay_cleaning` provide deterministic,
+- `Noah.training.audit_replays` and `Noah.training.replay_cleaning` provide deterministic,
   non-destructive reports and versioned cleaned copies;
 - SQLite schema version 2 now stores matches, replay checksums, player ticks,
   events, snapshots, and inferred actions;
-- `training.train_full_replay --database` reads SQLite directly and weights
+- `Noah.training.train_full_replay --database` reads SQLite directly and weights
   rows so each round contributes equal total training weight;
 - Gaussian Naive Bayes, regularized logistic regression, Platt calibration,
   and grouped model comparison are available;
@@ -89,7 +89,7 @@ and larger-scale action-value validation once more native demos are available.
 ## Phase 1: Audit and cleaning (implemented)
 
 The audit and cleaning modules are implemented in
-`training/audit_replays.py` and `training/replay_cleaning.py`.
+`Noah/training/audit_replays.py` and `Noah/training/replay_cleaning.py`.
 
 Audit checks:
 
@@ -126,7 +126,7 @@ excluded row has a counted reason.
 
 ## Phase 2: Canonical SQLite schema
 
-`training/build_replay_db.py` implements schema version 2.
+`Noah/training/build_replay_db.py` implements schema version 2.
 
 Tables:
 
@@ -159,11 +159,11 @@ training keys.
 
 ## Phase 3: Connect SQLite to training
 
-`training/replay_repository.py` exists, and
-`training/train_full_replay.py` accepts:
+`Noah/training/replay_repository.py` exists, and
+`Noah/training/train_full_replay.py` accepts:
 
 ```powershell
-python -m training.train_full_replay `
+python -m Noah.training.train_full_replay `
   --database data/private/databases/cs2_replays.sqlite
 ```
 
@@ -259,7 +259,7 @@ Done when a round-trip test saves, loads and reproduces the same probability.
 Do not train action recommendations directly from round-winner rows.
 
 Player-level fixed-window labels from native ticks are implemented by
-`training/infer_actions.py`. The current deterministic labels are `hold` and
+`Noah/training/infer_actions.py`. The current deterministic labels are `hold` and
 `move`; richer labels such as peeking, rotating, utility use, planting, and
 defusing require additional reliable event and inventory evidence.
 

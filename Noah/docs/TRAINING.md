@@ -15,7 +15,7 @@ cached path keeps downloaded sidecars on disk until `extract_features` has
 produced compact JSONL snapshots; the optional streaming path below pipes one
 sidecar at a time through extraction.
 
-For application code, use `training.TrainingPipeline` as documented in
+For application code, use `Noah.training.TrainingPipeline` as documented in
 [`docs/MODULE_API.md`](MODULE_API.md). The commands below remain the supported
 shell interface for individual pipeline stages.
 
@@ -24,18 +24,18 @@ shell interface for individual pipeline stages.
 Use the project Python and set `PYTHONPATH` first:
 
 ```powershell
-$env:PYTHONPATH = "model/src"
+$env:PYTHONPATH = "Noah/model/src;Noah/extractor/src;."
 
-python -m training.download_dataset sidecars --max-files 500 --max-gb 0.25
+python -m Noah.training.download_dataset sidecars --max-files 500 --max-gb 0.25
 
-python -m training.extract_features `
+python -m Noah.training.extract_features `
   --input data/private/sidecars `
   --output data/private/processed/analysis_snapshots.jsonl `
   --decision-window-seconds 5
 
-python -m training.train_snapshot_model
+python -m Noah.training.train_snapshot_model
 
-python -m training.train_full_replay `
+python -m Noah.training.train_full_replay `
   --snapshot-input data/private/processed/analysis_snapshots.jsonl
 ```
 
@@ -43,7 +43,7 @@ For the storage-minimal alternative, replace the download and extraction
 commands above with:
 
 ```powershell
-python -m training.stream_sidecars `
+python -m Noah.training.stream_sidecars `
   --metadata data/public/metadata `
   --output data/private/processed/analysis_snapshots.jsonl `
   --max-files 500 `
@@ -54,7 +54,7 @@ To stream and train both replay-value models in one command, use the
 orchestrator instead:
 
 ```powershell
-python -m training.train_streamed_sidecars `
+python -m Noah.training.train_streamed_sidecars `
   --metadata data/public/metadata `
   --snapshot-output data/private/processed/analysis_snapshots.jsonl `
   --release-dir Noah/model/artifacts/releases/v4 `
@@ -63,8 +63,11 @@ python -m training.train_streamed_sidecars `
 ```
 
 This command trains the small snapshot model and the event-only full replay
-model. It does not retrain movement or candidate-action models because compact
-sidecars do not contain the positional/action data those models require.
+model. The full trainer reuses the snapshot artifact without overwriting it;
+its held-out metrics use a development-only in-memory prior to avoid test
+leakage. It does not retrain movement or candidate-action models because
+compact sidecars do not contain the positional/action data those models
+require.
 
 `stream_sidecars` is the storage-minimal alternative to the first two stages:
 it uses the same metadata quality filters, downloads one sidecar at a time,
@@ -74,16 +77,21 @@ passed to `train_snapshot_model` and `train_full_replay --snapshot-input`.
 This mode trains replay-value models; movement and candidate-action models
 still require native positional replay data.
 
+For a direct full replay run, `--small-model` is opt-in. When omitted, the
+trainer fits the Bayesian component for that run and writes it only through
+`--small-model-output`; an unrelated existing artifact is never reused by
+accident.
+
 ## Sharing the exact same sidecar data
 
-The repository includes `training/sidecars_manifest.json`, a lock file for the
+The repository includes `Noah/training/sidecars_manifest.json`, a lock file for the
 500 sidecars used by the lightweight pipeline. It records every dataset path,
 byte count, and SHA-256 checksum. A new user can download that exact set with:
 
 ```powershell
-$env:PYTHONPATH = "model/src"
-python -m training.download_dataset locked `
-  --manifest training/sidecars_manifest.json `
+$env:PYTHONPATH = "Noah/model/src;Noah/extractor/src;."
+python -m Noah.training.download_dataset locked `
+  --manifest Noah/training/sidecars_manifest.json `
   --output data/private/sidecars
 ```
 
@@ -92,8 +100,8 @@ re-downloads it and verifies the result. To check an existing directory without
 downloading anything, run:
 
 ```powershell
-python -m training.download_dataset verify `
-  --manifest training/sidecars_manifest.json `
+python -m Noah.training.download_dataset verify `
+  --manifest Noah/training/sidecars_manifest.json `
   --input data/private/sidecars
 ```
 
@@ -106,7 +114,7 @@ JSONL remains the portable parser output, but the queryable training store is
 SQLite. Build it after native parsing:
 
 ```powershell
-python -m training.build_replay_db `
+python -m Noah.training.build_replay_db `
   --input data/private/processed/full_replays.jsonl `
   --output data/private/databases/cs2_replays_v2.sqlite `
   --action-window-seconds 2 `
@@ -122,7 +130,7 @@ built-in `sqlite3`, so no database server is required.
 Run a read-only audit before rebuilding:
 
 ```powershell
-python -m training.audit_replays `
+python -m Noah.training.audit_replays `
   --input data/private/processed/full_replays.jsonl `
   --report data/private/processed/replay_audit.json
 ```
@@ -131,7 +139,7 @@ For normal training, read SQLite directly instead of rebuilding features from
 the full JSONL:
 
 ```powershell
-python -m training.train_full_replay `
+python -m Noah.training.train_full_replay `
   --database data/private/databases/cs2_replays_v2.sqlite `
   --output model/artifacts/releases/v2/full_replay_value.txt `
   --small-model-output model/artifacts/releases/v2/small_snapshot_value.json `
@@ -148,8 +156,8 @@ replay-value component.
 The lightweight baselines can be compared with:
 
 ```powershell
-python -m training.train_baselines --database data/private/databases/cs2_replays_v2.sqlite
-python -m training.evaluate_models `
+python -m Noah.training.train_baselines --database data/private/databases/cs2_replays_v2.sqlite
+python -m Noah.training.evaluate_models `
   model/artifacts/releases/v2/full_replay_metrics.json `
   model/artifacts/releases/v2/statistical_baseline_metrics.json `
   --output model/artifacts/releases/v2/model_comparison.json
@@ -162,11 +170,11 @@ comparison command rejects reports built from a different dataset or split.
 Train the movement-frequency and zone-transition tools from SQLite:
 
 ```powershell
-python -m training.train_action_models `
+python -m Noah.training.train_action_models `
   --database data/private/databases/cs2_replays_v2.sqlite `
   --action-output model/artifacts/releases/v2/action_frequency.json `
   --transition-output model/artifacts/releases/v2/zone_transitions.json
-python -m training.evaluate_actions `
+python -m Noah.training.evaluate_actions `
   --database data/private/databases/cs2_replays_v2.sqlite `
   --output model/artifacts/releases/v2/action_evaluation.json
 ```
@@ -188,7 +196,7 @@ measured after the cutoff and includes family, parameters, confidence, and
 evidence fields:
 
 ```powershell
-python -m training.engagement_windows `
+python -m Noah.training.engagement_windows `
   --input data/private/processed/full_replays.jsonl `
   --output data/private/processed/engagement_windows_v3_5s.jsonl `
   --horizon-seconds 5 `
@@ -204,7 +212,7 @@ player ticks; event-only rows explicitly report `history_available=false`.
 Train the dependency-free engagement prior with a whole-match held-out split:
 
 ```powershell
-python -m training.train_engagement_model `
+python -m Noah.training.train_engagement_model `
   --input data/private/processed/engagement_windows_v3_5s.jsonl `
   --output model/artifacts/releases/v4/engagement_model.json `
   --metrics model/artifacts/releases/v4/engagement_metrics.json
@@ -217,7 +225,7 @@ reliable tactical rule. If the full dependencies are installed, optional
 shallow LightGBM heads use the same grouped split:
 
 ```powershell
-python -m training.train_engagement_lightgbm `
+python -m Noah.training.train_engagement_lightgbm `
   --input data/private/processed/engagement_windows_v3_5s.jsonl `
   --output model/artifacts/releases/v4/engagement_lightgbm.json `
   --metrics model/artifacts/releases/v4/engagement_lightgbm_metrics.json
@@ -232,7 +240,7 @@ and retrain the release. Do not create a separate class for a target zone or
 utility type. Review coverage before activation:
 
 ```powershell
-python -m training.evaluate_action_vocabulary `
+python -m Noah.training.evaluate_action_vocabulary `
   --input data/private/processed/engagement_windows_v3_5s.jsonl `
   --output model/artifacts/releases/v4/action_vocabulary_coverage.json `
   --model-metrics model/artifacts/releases/v4/engagement_lightgbm_metrics.json
@@ -241,7 +249,7 @@ python -m training.evaluate_action_vocabulary `
 Refresh the checksummed release manifest after changing an artifact:
 
 ```powershell
-python -m training.build_release_manifest `
+python -m Noah.training.build_release_manifest `
   --release model/artifacts/releases/v4 --version v4
 ```
 
@@ -251,7 +259,7 @@ SQLite remains the canonical training store. When a portable, typed projection
 is useful, stream it into a new directory without loading the whole database:
 
 ```powershell
-python -m training.export_parquet `
+python -m Noah.training.export_parquet `
   --database data/private/databases/cs2_replays_v2.sqlite `
   --output data/private/features/replay-v1 `
   --dataset-id replay-v1 `
@@ -269,9 +277,9 @@ versions, source metadata, rejection reasons, and match groups. Its roles are
 appearing in more than one role:
 
 ```powershell
-python -m training.dataset_registry validate `
+python -m Noah.training.dataset_registry validate `
   --registry data/private/dataset_registry.json
-python -m training.dataset_registry list `
+python -m Noah.training.dataset_registry list `
   --registry data/private/dataset_registry.json
 ```
 
@@ -299,7 +307,7 @@ it does not claim an observational replay proves a counterfactual â€œbest moveâ€
 To install and activate a verified local release bundle:
 
 ```powershell
-python -m training.download_models `
+python -m Noah.training.download_models `
   --source path/to/cs2-model-bundle-v2 `
   --releases model/artifacts/releases `
   --version v2 `
@@ -310,17 +318,17 @@ python -m training.download_models `
 Run the end-to-end tester against SQLite, parsed JSONL, or a native demo:
 
 ```powershell
-python -m training.test_replay_models `
+python -m Noah.training.test_replay_models `
   --database data/private/databases/cs2_replays_v2.sqlite `
   --manifest model/artifacts/releases/v2/full_replay_value.manifest.json `
   --action-model model/artifacts/releases/v2/action_frequency.json `
   --limit 500
 
-python -m training.test_replay_models `
+python -m Noah.training.test_replay_models `
   --input data/private/processed/full_replays.jsonl `
   --limit 500
 
-python -m training.test_replay_models --demo path/to/match.dem --limit 500
+python -m Noah.training.test_replay_models --demo path/to/match.dem --limit 500
 ```
 
 The replacement extractor can be used at the tester boundary as well. This
@@ -328,12 +336,12 @@ normalizes its JSONL in memory and reuses the existing model artifacts; it does
 not rebuild SQLite or retrain either model:
 
 ```powershell
-python -m training.test_replay_models `
+python -m Noah.training.test_replay_models `
   --extractor-input path/to/replacement-extractor.jsonl `
   --limit 500 `
   --output model/artifacts/replay_model_test_extractor.json
 
-python -m training.test_replay_models `
+python -m Noah.training.test_replay_models `
   --extractor-demo path/to/match.dem `
   --limit 500
 ```
@@ -364,7 +372,7 @@ excludes every replay identity in the training database, and enforces a
 cumulative byte budget before downloading:
 
 ```powershell
-python -m training.benchmark_dataset `
+python -m Noah.training.benchmark_dataset `
   --training-database data/private/databases/cs2_replays_v2.sqlite `
   --output data/private/benchmark_cache `
   --manifest data/public/benchmark_manifest.json `
@@ -377,7 +385,7 @@ size, and SHA-256 checksum. It is marked training-excluded and the evaluator
 checks for overlap again before parsing any demo:
 
 ```powershell
-python -m training.evaluate_benchmark `
+python -m Noah.training.evaluate_benchmark `
   --benchmark-manifest data/public/benchmark_manifest.json `
   --model-manifest model/artifacts/releases/v2/full_replay_value.manifest.json `
   --action-model model/artifacts/releases/v2/action_frequency.json `
@@ -429,7 +437,7 @@ baseline.
 The event-only full model estimates round win probability. It is not yet a
 movement/action model because sidecars contain no player positions, health,
 utility inventory, visibility, or velocity. For that model, parse native demos
-successfully and run `training.train_full_replay` without `--snapshot-input`.
+successfully and run `Noah.training.train_full_replay` without `--snapshot-input`.
 
 ## Combined replay analysis
 
@@ -449,14 +457,25 @@ python Noah/training/test_harness.py path/to/match.dem --all-moments --version v
 Use `--record-index 3` for another JSONL record or `--output path/to/report.json`
 to choose the report location. It permits the documented Bayesian/statistical
 fallback when optional native LightGBM dependencies are unavailable. The
-runner is only an input/output wrapper; the analysis logic remains in
-`analysis_harness.py` and the public `ReplayModel.analyse_replay` API.
+runner is only an input/output wrapper; application code accesses the complete
+harness through the package-root `Noah.analyze_replay` function.
 
-For application code, pass an already normalized replay object directly to
-`ReplayModel.analyse_replay(replay_record)`. If the input is still a file, use
-`run_replay_test(path)`, which performs extraction/normalization, loads the
-active model release, and returns the same report dictionary. Analysis is
-read-only with respect to the training database and model artifacts.
+The implementation is split into a small orchestration facade in
+`Noah/training/analysis_harness.py`, replay-state reconstruction in
+`replay_state.py`, candidate and engagement scoring in
+`candidate_analysis.py`, and report/moment projection in `analysis_report.py`.
+
+The same function accepts a native `.dem`, JSON/JSONL path, canonical extractor
+mapping, or normalized replay mapping. It performs any required normalization,
+loads the active model release, and returns the same report dictionary:
+
+```python
+from Noah import analyze_replay
+
+report = analyze_replay("match.dem", max_moments=None)
+```
+
+Analysis is read-only with respect to the training database and model artifacts.
 
 The harness uses two model components. Its main round-value model comes from
 the selected release manifest and `full_replay_value.txt`; the action-analysis
@@ -481,8 +500,7 @@ The deployable runtime can produce one report that combines factual replay
 evidence with estimated alternatives:
 
 ```powershell
-python -m training.analysis_harness `
-  --input data/private/processed/full_replays.jsonl `
+python Noah/training/test_harness.py data/private/processed/full_replays.jsonl `
   --record-index 0 `
   --release-dir model/artifacts/releases `
   --version v4 `

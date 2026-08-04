@@ -32,6 +32,8 @@ def train_from_stream(
     decision_window_seconds: float = 5.0,
     seed: int = 7,
     validation_fraction: float = 0.2,
+    release_version: str | None = None,
+    tick_rate: float | None = None,
 ) -> dict[str, Any]:
     """Stream sidecars and train both replay-value artifacts."""
 
@@ -72,6 +74,8 @@ def train_from_stream(
         seed=seed,
         validation_fraction=validation_fraction,
         verbose=True,
+        release_version=release_version or release.name,
+        tick_rate=tick_rate,
     )
     return {
         "stream": stream_result,
@@ -111,6 +115,17 @@ def main() -> int:
     parser.add_argument("--decision-window-seconds", type=float, default=5.0)
     parser.add_argument("--seed", type=int, default=7)
     parser.add_argument("--validation-fraction", type=float, default=0.2)
+    parser.add_argument(
+        "--release-version",
+        default=None,
+        help="release identity recorded in all generated replay artifacts",
+    )
+    parser.add_argument(
+        "--tick-rate",
+        type=float,
+        default=None,
+        help="override tick-rate metadata (otherwise infer it from sidecars)",
+    )
     args = parser.parse_args()
     if args.max_gb <= 0:
         raise ValueError("--max-gb must be positive")
@@ -127,6 +142,8 @@ def main() -> int:
         decision_window_seconds=args.decision_window_seconds,
         seed=args.seed,
         validation_fraction=args.validation_fraction,
+        release_version=args.release_version,
+        tick_rate=args.tick_rate,
     )
     print(json.dumps(result, indent=2, sort_keys=True))
     return 0
