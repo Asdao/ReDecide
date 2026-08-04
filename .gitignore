@@ -3,6 +3,16 @@ __pycache__/
 *.part
 *.egg-info/
 .env
+
+# Node projects live under frontend/ and agent-harness/. Ignore dependency
+# trees everywhere and accidental package-manager files created at repo root.
+node_modules/
+.pnpm-store/
+/package.json
+/package-lock.json
+/pnpm-lock.yaml
+/pnpm-workspace.yaml
+
 # Public metadata, map assets, manifests, schemas, and sanitized fixtures may
 # be uploaded.  Raw demos, parsed replays, databases, features, and user
 # uploads stay private and are ignored by Git.
