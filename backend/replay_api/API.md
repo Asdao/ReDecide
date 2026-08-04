@@ -1,7 +1,7 @@
 # Replay FastAPI
 
 This service accepts a native CS2 `.dem`, calls Blackbox's loader once, and
-creates two artifacts under `REDECIDE_REPLAY_STORE`:
+creates three artifacts under `REDECIDE_REPLAY_STORE`:
 
 ```text
 visualization.json  -> full replay JSON, released after coaching
@@ -10,6 +10,14 @@ manifest.json       -> safe map/player/status metadata
 ```
 
 The default artifact root is `data/runtime/replays/<replay_id>/`.
+
+The default frontend origins are `http://localhost:3000` and
+`http://127.0.0.1:3000`. Set `REPLAY_API_ALLOWED_ORIGINS` to a
+comma-separated list to override them.
+
+The default frontend origins are `http://localhost:3000` and
+`http://127.0.0.1:3000`. Set `REPLAY_API_ALLOWED_ORIGINS` to a
+comma-separated list to override them.
 
 ## Run
 
@@ -23,10 +31,12 @@ Returns `{"status":"ok"}` with HTTP `200`.
 
 ## `POST /api/replay/upload`
 
-Accepts a multipart upload with field `file`. The filename must end in
-`.dem`. Parsing is performed in a worker thread. After parsing, this endpoint
-immediately returns the safe manifest while the large visualization JSON is
-generated in the background.
+Accepts a `multipart/form-data` upload with field `file`. The filename must
+end in `.dem`. Native parsing completes before the response; parsing runs in a
+worker thread so it does not block the async server loop. After parsing, this
+endpoint immediately returns the safe manifest while the large visualization
+JSON is generated in the background. A missing `file` field produces FastAPI's
+standard `422` validation response.
 
 Response `202`:
 
@@ -50,6 +60,20 @@ The frontend can use `players` immediately and send `replay_id` to the
 Coaching FastAPI. Manifest rounds contain only safe boundaries; winners and
 other outcome fields are not included before coaching completes.
 
+Manifest variables:
+
+| Field | Meaning |
+|---|---|
+| `schema_version` | `replay_manifest_v1`. |
+| `replay_id` | Shared identifier for both artifact branches. |
+| `source` | Uploaded `.dem` filename. |
+| `map` | Map name and numeric tick rate. |
+| `players` | Player IDs, display names, and observed sides. |
+| `rounds` | Safe round boundaries before coaching. |
+| `visualization_status` | `processing`, `ready`, or `failed`. |
+| `coaching_status` | `ready` after `coaching.json` is persisted, then `complete` after successful `/run`. |
+| `visualization_unlocked` | `false` until coaching completes successfully. |
+
 Upload errors:
 
 - `415`: filename is not a `.dem`.
@@ -58,6 +82,20 @@ Upload errors:
 The application does not impose a demo-size limit. Reverse proxies, hosting
 platforms, or the operating system may still impose their own limits.
 
+Manifest variables:
+
+| Field | Meaning |
+|---|---|
+| `schema_version` | `replay_manifest_v1`. |
+| `replay_id` | Shared identifier for both artifact branches. |
+| `source` | Uploaded `.dem` filename. |
+| `map` | Map name and numeric tick rate. |
+| `players` | Player IDs, display names, and observed sides. |
+| `rounds` | Safe round boundaries before coaching. |
+| `visualization_status` | `processing`, `ready`, or `failed`. |
+| `coaching_status` | `ready` once `coaching.json` is persisted. |
+| `visualization_unlocked` | `false` until coaching completes successfully. |
+
 ## `GET /api/replay/{replay_id}/status`
 
 Returns the persisted safe manifest. `visualization_status` is one of:
@@ -65,6 +103,14 @@ Returns the persisted safe manifest. `visualization_status` is one of:
 - `processing`: player/map metadata is ready; full JSON is being generated.
 - `ready`: full JSON is generated but remains locked until coaching completes.
 - `failed`: generation failed and `visualization_error` is provided.
+
+The response is the same manifest shape returned by `/upload`. Errors: `404`
+when `replay_id` is unknown. `visualization_status: "ready"` does not mean
+the frontend can download the file; `visualization_unlocked` must also be
+`true`.
+
+The response is the same manifest shape returned by `/upload`. Errors: `404`
+when `replay_id` is unknown.
 
 ## `GET /api/replay/{replay_id}/json`
 
@@ -83,6 +129,11 @@ Before coaching, it returns `403` with:
 ```
 
 While visualization generation is still running, it returns `202`.
+The processing response is:
+
+```json
+{"replay_id":"<id>","status":"processing"}
+```
 
 The released JSON contains:
 
@@ -97,10 +148,22 @@ The released JSON contains:
 | `events` | Flattened kill, damage, bomb, and parser events sorted by tick. |
 | `ticks` | All player snapshots, including `X`, `Y`, `Z`, health, side, and alive state when available. |
 
+The response is an `application/json` file attachment named
+`<uploaded-name>.replay.json`. Statuses are `200` when released, `403` while
+locked, `202` while generation is running, `404` for an unknown replay, and
+`422` when visualization generation failed.
+
+Response status: `200` when released; `403` while coaching has not unlocked it;
+`202` while visualization generation is still running; `404` for an unknown
+replay; `422` if visualization generation failed.
+
 ## `POST /api/replay/convert`
 
 Compatibility alias for `/api/replay/upload`. It now returns the same `202`
 safe manifest and does not bypass the coaching unlock. New clients should use
+`/upload`.
+
+It has the same `multipart/form-data` request and `415`/`422` upload errors as
 `/upload`.
 
 ## Coaching handoff

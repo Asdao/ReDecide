@@ -44,6 +44,9 @@ existing replay pipeline. The native `.dem` is not uploaded or parsed again.
 When coaching completes successfully, the API unlocks the full visualization
 artifact for the frontend Replay API.
 
+The `replay_id` request is the normal production path. The inline `replay`
+request is a compatibility path for normalized JSON fixtures and tests.
+
 ### Direct normalized JSON request
 
 This compatibility path is useful for fixtures and local tests:
@@ -75,6 +78,19 @@ Response `202`:
 }
 ```
 
+Response variables:
+
+| Field | Meaning |
+|---|---|
+| `analysis_id` | Identifier used by every later analysis route. |
+| `status` | Initially `processing`; later `ready`, `complete`, or `failed`. |
+| `players_available` | Whether `/players` can return the selector. |
+| `result_available` | Whether `/result` contains the completed coaching result. |
+| `logs_url` | Relative URL for persisted JSONL progress records. |
+| `events_url` | Relative URL for the SSE progress stream. |
+| `result_url` | Relative URL for the final UI JSON. |
+| `replay_id` | Shared replay artifact ID when the Replay API branch was used. |
+
 ### Preparation behavior
 
 The pipeline indexes first-damage decision candidates for all players. It
@@ -84,7 +100,7 @@ but the coach adapter later receives only a bounded outcome-blind payload.
 Errors:
 
 - `404`: `replay_id` does not have a coaching artifact.
-- `422`: neither `replay_id` nor `replay` was supplied.
+- `422`: exactly one of `replay_id` or `replay` must be supplied.
 
 ## `GET /api/analysis/{analysis_id}`
 
@@ -102,6 +118,8 @@ Variables:
 | `logs_url` | JSONL progress log endpoint. |
 | `events_url` | SSE progress endpoint. |
 | `result_url` | Final result endpoint. |
+
+Errors: `404` when `analysis_id` is unknown.
 
 ## `GET /api/analysis/{analysis_id}/players`
 
@@ -128,6 +146,9 @@ Returns all selectable players after preparation:
 `player_id` is the stable value to submit. `display_name` is presentation
 only and may be ambiguous.
 
+Errors: `404` when the job is unknown; `202` while preparation is still
+running; `200` when the selector is ready.
+
 ## `POST /api/analysis/{analysis_id}/run`
 
 Selects one player and invokes the configured coach adapter.
@@ -144,6 +165,14 @@ the name identifies exactly one player.
 Response `200` is the completed analysis result. The API filters the returned
 event and decision lists to the selected player, while keeping the global
 team-probability timeline intact.
+
+The successful response has the same JSON shape documented by `/result`.
+Replay API jobs also unlock the full visualization artifact as part of this
+successful request.
+
+Errors: `404` for an unknown job; `409` before preparation completes; `422`
+when the player is invalid or has no eligible decision; `503` when the coach
+adapter fails.
 
 ## `GET /api/analysis/{analysis_id}/result`
 
@@ -192,11 +221,14 @@ Important output variables:
 | `decision_candidates` | First-contact coaching opportunities. |
 | `selected_decision` | The candidate chosen for coaching and its bounded action window. |
 | `win_estimator` | Global CT/T probability timeline; it is not player-filtered. |
-| `coach_analysis` | Two validated fields returned by the coach adapter. |
+| `coach_analysis` | Normalized coaching result with decision/player identity and validated coaching text. |
 | `replay_outcome` | Post-coaching context; never sent to the outcome-blind coach payload. |
 
 The coach payload removes events after `action_close_tick`, aliases player IDs,
 and does not provide the Pi process with a replay path or replay-analysis tool.
+
+Response status: `200` when complete; `202` while coaching has not run; `404`
+for an unknown job; `500` when the job has failed.
 
 ## `GET /api/analysis/{analysis_id}/events`
 
@@ -213,8 +245,36 @@ data: {"analysis_id":"...","stage":"complete","progress":100}
 Progress is monotonic: preparation occupies approximately `0–50`, player
 selection and coaching occupy `55–100`.
 
+Each `log` event contains the safe progress record. A failed job emits a final
+`log` event with `stage: "error"`; it does not emit `complete`. The stream
+closes when the job reaches `complete` or `failed`. Errors: `404` for an
+unknown job.
+
 ## `GET /api/analysis/{analysis_id}/logs`
 
 Returns plain-text JSONL progress records. Logs contain safe stage, progress,
 and message fields; provider secrets, prompts, local paths, and raw provider
-failures are excluded.
+failures are excluded. Stage-specific records may also include
+`preparation_progress`, `player_id`, `result_available`, `model_available`,
+and other safe progress metadata. The response content type is `text/plain`.
+Errors: `404` for an unknown job.
+
+## Coaching runtime configuration
+
+The default `PiCoachAdapter` requires Node.js and installed dependencies under
+`agent-harness/node_modules`. It passes the following settings to the Pi
+process, with deployment environment variables taking precedence over the
+repository `.env`:
+
+| Variable | Meaning |
+|---|---|
+| `HARNESS_ENV_FILE` | Explicit dotenv file for the Pi process. |
+| `HARNESS_MODEL_PROVIDER` | Provider selection. |
+| `HARNESS_MODEL` | Model name. |
+| `HARNESS_MODEL_BASE_URL` | OpenAI-compatible provider base URL. |
+| `HARNESS_MODEL_API` | Provider API mode or endpoint override. |
+| `HARNESS_MODEL_API_KEY` | Generic provider credential. |
+| `DEEPSEEK_API_KEY` | DeepSeek provider credential. |
+
+Missing Node dependencies or provider failures are returned from `/run` as
+`503`; secrets and raw provider output are not written to API logs.

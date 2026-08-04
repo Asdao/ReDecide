@@ -54,7 +54,7 @@ requires one.
 1. `run_demo` creates a deterministic replay from `{seed, scenario, policy}` and stores or returns a `replay_id`.
 2. `build_timeline` converts simulator events into chronological, user-facing events with state snapshots or references to snapshots.
 3. `analyze_replay` indexes the first damage contact for each `(round, player)` pair. Each candidate carries a stable `decision_id`, the pre-contact decision window, opponent/team identity, observed action, and evidence. This avoids selecting only deaths and therefore preserves successful reset decisions.
-4. The UI filters candidates by the original `player_id` (or shows all players), then can request the same report with `decision_id` to select one window.
+4. The UI filters candidates by the original `player_id` (or shows all players), then sends that player to `POST /api/analysis/{analysis_id}/run`.
 5. At the Pi boundary, the bridge replaces player IDs/names with replay-local aliases and turns decision IDs into opaque references. A follow-up Pi tool call is translated back locally; original identifiers remain in the backend/UI only.
 6. The shared release-backed model produces bounded team win-estimator points. Pi uses the outcome-blind report and the analysis skill to write a full-sentence explanation; the webapp keeps the complete replay and event markers for replay rendering.
 
@@ -265,11 +265,36 @@ Do not put the pipeline algorithm in `SKILL.md`, and do not ask Pi to calculate 
 
 ## FastAPI usage
 
-The backend exposes a two-stage job. The replay is accepted once; selecting a
-player references the prepared job and never reparses the source:
+The normal native-demo path uses two FastAPI applications and one shared
+replay ID. Replay FastAPI parses the `.dem` once and writes `manifest.json`,
+`coaching.json`, and `visualization.json`; Coaching FastAPI consumes only the
+coaching branch:
 
 ```text
-POST /api/analysis/prepare       { replay: <processed replay JSON> }
+POST /api/replay/upload                 multipart .dem
+  <- safe player/map manifest, replay_id
+POST /api/analysis/prepare              { replay_id }
+  <- analysis_id
+GET  /api/analysis/{id}                 poll players_available
+GET  /api/analysis/{id}/players         all players and decision_ids
+POST /api/analysis/{id}/run             { player_id }
+GET  /api/analysis/{id}/result          selected-player UI result
+GET  /api/replay/{replay_id}/json       full map/events/positions after unlock
+```
+
+The compatibility path accepts normalized JSON directly. It does not create
+a Replay API artifact or unlock a visualization file:
+
+```text
+POST /api/analysis/prepare              { replay }
+```
+
+The replay is accepted once; selecting a player references the prepared job
+and never reparses the source:
+
+```text
+POST /api/analysis/prepare       { replay_id: <shared ID> }
+                                  or { replay: <processed replay JSON> }
   <- { analysis_id, status, players_url, events_url, result_url }
 
 GET /api/analysis/{id}/players   selector-ready player names and IDs
