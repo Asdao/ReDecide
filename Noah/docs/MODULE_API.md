@@ -67,9 +67,11 @@ from Noah.training import TrainingConfig, TrainingPipeline
 
 pipeline = TrainingPipeline(
    TrainingConfig(
-      artifact_dir="model/artifacts/releases/v3",
+      artifact_dir="Noah/model/artifacts/releases/v4",
       seed=7,
       clean_records=True,
+      release_version="v4",
+      tick_rate=64.0,
    )
 )
 
@@ -123,19 +125,42 @@ replay_analysis = model.analyse_replay(
     posterior_seed=7,
 )
 engagement_report = model.analyse_engagement(replay, tick=1234, player_id="steam-id")
+one_window_score = model.score_engagement(leakage_safe_engagement_window)
 ranked = model.rank_candidate_actions([
     {"action": "hold", "death_probability": 0.31, "round_value_delta": 0.03, "sample_count": 20, "entropy": 0.4},
 ])
 print(prediction.probability, action_scores, next_zone)
 ```
 
-`analyse_replay` combines a deterministic key-moment report with legal,
-support-aware candidate ranking. It labels `good`/`bad` only when observed and
-candidate actions have enough support; otherwise it abstains. The candidate
-model is simulator-trained, so the report marks alternatives as estimates and
-records the current default-topology legality scope. `analyse_engagement` and
-`rank_candidate_actions` are likewise observational: a ranked alternative is
-not proof that a player should have made that move.
+`analyse_replay` combines a deterministic key-moment report with support-aware
+candidate ranking. For kills, release v4 coaches the victim from a decision
+cutoff one second before contact using three seconds of prior history. The
+shared learned vocabulary includes `hold`, `peek`, `move_to_adjacent_zone`,
+`use_utility`, `plant`, `defuse`, and `unknown`; target zones and utility types
+are parameters. Candidates are scored by round-win, survival, kill, trade,
+damage, and simulator-value heads. It labels `good`/`bad` only when observed
+and candidate actions have enough support; otherwise it abstains. Detailed
+simulator actions still record their default-topology legality scope.
+`analyse_engagement`, `score_engagement`, and `rank_candidate_actions` remain
+observational: a ranked alternative is not proof that a player should have
+made that move.
+
+Application code accesses the complete harness through one package-root
+function. It accepts either an input path or an already loaded replay mapping:
+
+```python
+from Noah import analyze_replay
+
+analysis = analyze_replay(replay_record, max_moments=None)
+analysis_from_demo = analyze_replay("match.dem", max_moments=None)
+print(analysis["kill_analysis"])
+```
+
+Both calls return the same combined report shape. The `kill_analysis` array
+contains one enriched row per kill, including `decision_tick`, coached player,
+the selected action's probability heads, and coaching utility; `moments` contains the detailed candidate
+state and `full_match` retains the deterministic timeline. No database rebuild
+or retraining occurs during either analysis call.
 
 The small statistical candidate model uses hierarchical support: it first
 looks for an exact state, then backs off to zone/bomb, side/bomb, side, and
@@ -168,7 +193,7 @@ must display abstention and uncertainty rather than converting them into a
 binary good/bad verdict.
 
 The Monte Carlo comparison defaults to 5,000 seeded posterior draws; callers
-can override `posterior_samples` and `posterior_seed` on `analyse_replay`.
+can override `posterior_samples` and `posterior_seed` on `analyze_replay`.
 
 Callers provide structured fields and never construct internal action-state keys
 or load component files independently. `model.status` reports which optional

@@ -1,7 +1,8 @@
 """Small user-facing runner for the combined replay-analysis harness.
 
-The core implementation lives in :mod:`Noah.training.analysis_harness`.  This
-wrapper intentionally keeps the normal path to one required argument: an
+The orchestration facade lives in :mod:`Noah.training.analysis_harness`, with
+state, candidate, and report helpers split into adjacent modules. This wrapper
+intentionally keeps the normal path to one required argument: an
 extracted replay JSON/JSONL file or native ``.dem``. Native demos are parsed
 through the replacement extractor in memory; no database or model retraining
 is performed. Model release selection and conservative probability thresholds
@@ -17,40 +18,12 @@ import sys
 from pathlib import Path
 from typing import Any
 
+# Keep the documented direct-script invocation usable from the repository root.
+_WORKSPACE_ROOT = Path(__file__).resolve().parents[2]
+if str(_WORKSPACE_ROOT) not in sys.path:
+    sys.path.insert(0, str(_WORKSPACE_ROOT))
 
-def _noah_root() -> Path:
-    return Path(__file__).resolve().parents[1]
-
-
-def load_replay_record(path: str | Path, *, record_index: int = 0) -> dict[str, Any]:
-    """Load one replay mapping from a native demo, JSON, or JSONL input."""
-
-    source = Path(path)
-    if not source.is_file():
-        raise FileNotFoundError(f"replay input does not exist: {source}")
-    if source.suffix.lower() == ".dem":
-        if record_index != 0:
-            raise IndexError("native demo input contains only record index 0")
-        from Noah.training.replay_extractor_adapter import parse_extractor_demo
-
-        return parse_extractor_demo(source)
-    text = source.read_text(encoding="utf-8")
-    if not text.strip():
-        raise ValueError(f"replay input is empty: {source}")
-    try:
-        payload = json.loads(text)
-    except json.JSONDecodeError:
-        records = [json.loads(line) for line in text.splitlines() if line.strip()]
-    else:
-        if not isinstance(payload, (dict, list)):
-            raise TypeError("JSON replay input must contain an object or list")
-        records = payload if isinstance(payload, list) else [payload]
-    if record_index < 0 or record_index >= len(records):
-        raise IndexError(f"no replay record at index {record_index}: {source}")
-    record = records[record_index]
-    if not isinstance(record, dict):
-        raise TypeError("selected replay record must be a JSON object")
-    return record
+from Noah.harness import analyze_replay, load_replay_record
 
 
 def run_replay_test(
@@ -58,40 +31,20 @@ def run_replay_test(
     *,
     record_index: int = 0,
     release_dir: str | Path | None = None,
-    version: str = "v2",
+    version: str = "v4",
     candidate_model_path: str | Path | None = None,
     moment_threshold: float = 0.08,
     max_moments: int | None = 25,
     sample_every: int = 8,
 ) -> dict[str, Any]:
-    """Run the deployed model on one native or extracted replay record."""
+    """Compatibility wrapper for the public :func:`Noah.analyze_replay`."""
 
-    noah_root = _noah_root()
-    workspace_root = noah_root.parent
-    model_src = noah_root / "model" / "src"
-    if str(model_src) not in sys.path:
-        sys.path.insert(0, str(model_src))
-    if str(workspace_root) not in sys.path:
-        sys.path.insert(0, str(workspace_root))
-    from cs2_sim import ModelConfig, ReplayModel
-
-    release = (
-        Path(release_dir)
-        if release_dir is not None
-        else noah_root / "model" / "artifacts" / "releases"
-    )
-    runtime = ReplayModel.load(
-        ModelConfig(
-            releases_dir=release,
-            version=version,
-            candidate_model_path=(
-                Path(candidate_model_path) if candidate_model_path is not None else None
-            ),
-            allow_fallback=True,
-        )
-    )
-    return runtime.analyse_replay(
-        load_replay_record(input_path, record_index=record_index),
+    return analyze_replay(
+        input_path,
+        record_index=record_index,
+        release_dir=release_dir,
+        version=version,
+        candidate_model_path=candidate_model_path,
         moment_threshold=moment_threshold,
         max_moments=max_moments,
         sample_every=sample_every,
@@ -134,7 +87,8 @@ def format_kill_analysis(report: dict[str, Any]) -> list[str]:
             f"{row.get('attacker_id') or '?'} -> {row.get('victim_id') or '?'} ({weapon}); "
             f"observed={observed}; best_estimate={recommended}; "
             f"least_death_risk={least_risk} "
-            f"(P(death proxy)={_format_probability(row.get('least_death_probability'))}, "
+            f"(P({'death proxy' if row.get('least_death_is_proxy', True) else 'death'})="
+            f"{_format_probability(row.get('least_death_probability'))}, "
             f"upper={_format_probability(row.get('least_death_risk_upper_bound'))}, "
             f"support={row.get('least_death_risk_support', 0)}, "
             f"supported={'yes' if row.get('least_death_risk_supported') else 'no'}, "
@@ -153,6 +107,13 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("input", type=Path, help="native .dem, extracted replay JSON, or JSONL")
     parser.add_argument("--record-index", type=int, default=0, help="record to test for JSONL/list input")
+    parser.add_argument(
+        "--release-dir",
+        type=Path,
+        default=None,
+        help="release bundle root (defaults to Noah/model/artifacts/releases)",
+    )
+    parser.add_argument("--version", default="v4", help="release version directory")
     parser.add_argument(
         "--candidate-model",
         type=Path,
@@ -175,9 +136,11 @@ def main() -> int:
     parser.add_argument("--sample-every", type=int, default=8)
     parser.add_argument("--output", type=Path, default=None, help="optional JSON report path")
     args = parser.parse_args()
-    report = run_replay_test(
+    report = analyze_replay(
         args.input,
         record_index=args.record_index,
+        release_dir=args.release_dir,
+        version=args.version,
         candidate_model_path=args.candidate_model,
         moment_threshold=args.moment_threshold,
         max_moments=None if args.all_moments else args.max_moments,

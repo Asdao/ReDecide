@@ -8,7 +8,14 @@ SQLite databases, features, and user uploads stay under `data/private`. See
 The lightweight pipeline uses parsed `.analysis.json` sidecars. It does not
 download the very large `.dem` file for every match.
 
-For application code, use `training.TrainingPipeline` as documented in
+`download_dataset` streams each remote file in bounded chunks, enforces the
+cumulative `--max-gb` budget, and atomically renames the completed `.part`
+file. It therefore never loads the complete dataset into memory. The default
+cached path keeps downloaded sidecars on disk until `extract_features` has
+produced compact JSONL snapshots; the optional streaming path below pipes one
+sidecar at a time through extraction.
+
+For application code, use `Noah.training.TrainingPipeline` as documented in
 [`docs/MODULE_API.md`](MODULE_API.md). The commands below remain the supported
 shell interface for individual pipeline stages.
 
@@ -17,31 +24,74 @@ shell interface for individual pipeline stages.
 Use the project Python and set `PYTHONPATH` first:
 
 ```powershell
-$env:PYTHONPATH = "model/src"
+$env:PYTHONPATH = "Noah/model/src;Noah/extractor/src;."
 
-python -m training.download_dataset sidecars --max-files 500 --max-gb 0.25
+python -m Noah.training.download_dataset sidecars --max-files 500 --max-gb 0.25
 
-python -m training.extract_features `
+python -m Noah.training.extract_features `
   --input data/private/sidecars `
-  --output data/public/processed/analysis_snapshots.jsonl `
+  --output data/private/processed/analysis_snapshots.jsonl `
   --decision-window-seconds 5
 
-python -m training.train_snapshot_model
+python -m Noah.training.train_snapshot_model
 
-python -m training.train_full_replay `
-  --snapshot-input data/public/processed/analysis_snapshots.jsonl
+python -m Noah.training.train_full_replay `
+  --snapshot-input data/private/processed/analysis_snapshots.jsonl
 ```
+
+For the storage-minimal alternative, replace the download and extraction
+commands above with:
+
+```powershell
+python -m Noah.training.stream_sidecars `
+  --metadata data/public/metadata `
+  --output data/private/processed/analysis_snapshots.jsonl `
+  --max-files 500 `
+  --max-gb 0.25
+```
+
+To stream and train both replay-value models in one command, use the
+orchestrator instead:
+
+```powershell
+python -m Noah.training.train_streamed_sidecars `
+  --metadata data/public/metadata `
+  --snapshot-output data/private/processed/analysis_snapshots.jsonl `
+  --release-dir Noah/model/artifacts/releases/v4 `
+  --max-files 500 `
+  --max-gb 0.25
+```
+
+This command trains the small snapshot model and the event-only full replay
+model. The full trainer reuses the snapshot artifact without overwriting it;
+its held-out metrics use a development-only in-memory prior to avoid test
+leakage. It does not retrain movement or candidate-action models because
+compact sidecars do not contain the positional/action data those models
+require.
+
+`stream_sidecars` is the storage-minimal alternative to the first two stages:
+it uses the same metadata quality filters, downloads one sidecar at a time,
+emits compact snapshots, and discards the raw sidecar. Add `--cache-dir` when
+you want to retain a raw copy as well. The resulting snapshot JSONL can be
+passed to `train_snapshot_model` and `train_full_replay --snapshot-input`.
+This mode trains replay-value models; movement and candidate-action models
+still require native positional replay data.
+
+For a direct full replay run, `--small-model` is opt-in. When omitted, the
+trainer fits the Bayesian component for that run and writes it only through
+`--small-model-output`; an unrelated existing artifact is never reused by
+accident.
 
 ## Sharing the exact same sidecar data
 
-The repository includes `training/sidecars_manifest.json`, a lock file for the
+The repository includes `Noah/training/sidecars_manifest.json`, a lock file for the
 500 sidecars used by the lightweight pipeline. It records every dataset path,
 byte count, and SHA-256 checksum. A new user can download that exact set with:
 
 ```powershell
-$env:PYTHONPATH = "model/src"
-python -m training.download_dataset locked `
-  --manifest training/sidecars_manifest.json `
+$env:PYTHONPATH = "Noah/model/src;Noah/extractor/src;."
+python -m Noah.training.download_dataset locked `
+  --manifest Noah/training/sidecars_manifest.json `
   --output data/private/sidecars
 ```
 
@@ -50,8 +100,8 @@ re-downloads it and verifies the result. To check an existing directory without
 downloading anything, run:
 
 ```powershell
-python -m training.download_dataset verify `
-  --manifest training/sidecars_manifest.json `
+python -m Noah.training.download_dataset verify `
+  --manifest Noah/training/sidecars_manifest.json `
   --input data/private/sidecars
 ```
 
@@ -64,7 +114,7 @@ JSONL remains the portable parser output, but the queryable training store is
 SQLite. Build it after native parsing:
 
 ```powershell
-python -m training.build_replay_db `
+python -m Noah.training.build_replay_db `
   --input data/private/processed/full_replays.jsonl `
   --output data/private/databases/cs2_replays_v2.sqlite `
   --action-window-seconds 2 `
@@ -80,7 +130,7 @@ built-in `sqlite3`, so no database server is required.
 Run a read-only audit before rebuilding:
 
 ```powershell
-python -m training.audit_replays `
+python -m Noah.training.audit_replays `
   --input data/private/processed/full_replays.jsonl `
   --report data/private/processed/replay_audit.json
 ```
@@ -89,7 +139,7 @@ For normal training, read SQLite directly instead of rebuilding features from
 the full JSONL:
 
 ```powershell
-python -m training.train_full_replay `
+python -m Noah.training.train_full_replay `
   --database data/private/databases/cs2_replays_v2.sqlite `
   --output model/artifacts/releases/v2/full_replay_value.txt `
   --small-model-output model/artifacts/releases/v2/small_snapshot_value.json `
@@ -106,8 +156,8 @@ replay-value component.
 The lightweight baselines can be compared with:
 
 ```powershell
-python -m training.train_baselines --database data/private/databases/cs2_replays_v2.sqlite
-python -m training.evaluate_models `
+python -m Noah.training.train_baselines --database data/private/databases/cs2_replays_v2.sqlite
+python -m Noah.training.evaluate_models `
   model/artifacts/releases/v2/full_replay_metrics.json `
   model/artifacts/releases/v2/statistical_baseline_metrics.json `
   --output model/artifacts/releases/v2/model_comparison.json
@@ -120,65 +170,87 @@ comparison command rejects reports built from a different dataset or split.
 Train the movement-frequency and zone-transition tools from SQLite:
 
 ```powershell
-python -m training.train_action_models `
+python -m Noah.training.train_action_models `
   --database data/private/databases/cs2_replays_v2.sqlite `
   --action-output model/artifacts/releases/v2/action_frequency.json `
   --transition-output model/artifacts/releases/v2/zone_transitions.json
-python -m training.evaluate_actions `
+python -m Noah.training.evaluate_actions `
   --database data/private/databases/cs2_replays_v2.sqlite `
   --output model/artifacts/releases/v2/action_evaluation.json
 ```
 
-Action labels are deterministic observed movement tendencies (`hold`/`move`)
-over a fixed two-second window. They are not claims about a strategically
-optimal or “best” CS2 move; the held-out action report makes that distinction
-explicit.
-
-Combat engagement windows are available as a separate, additive export. They
-anchor on damage events (or kills when no damage table exists) and emit one row
-per participant. Features stop at the anchor tick; `label_kill`,
-`label_death`, `label_trade`, `survived_after_kill`, and `round_won` inspect
-only later events inside the configured horizon. The output describes observed
-outcomes, not a tactical recommendation:
+Action labels are deterministic observations, not claims about a strategically
+optimal or “best” CS2 move. The current action vocabulary is `hold`, `peek`,
+`move_to_adjacent_zone`, `use_utility`, `plant`, `defuse`, and `unknown`.
+Movement destinations and utility types are parameters, not separate classes.
+The simulator may also expose `save`, but it is not learned until reliable
+economy/round-context labels are available. The action coverage report records
+match-separated support and identifies actions that must abstain when sparse.
+Combat engagement windows are available as a separate, additive export. Schema
+v3 places the decision cutoff one second before first damage and includes three
+seconds of earlier movement, health, armor, damage, place, and team-distance
+context. The identifying hit is not an input feature. `label_kill`,
+`label_death`, `label_trade`, `label_survival`, `label_damage`, and
+`label_round_win` only inspect events after the cutoff. The observed action is
+measured after the cutoff and includes family, parameters, confidence, and
+evidence fields:
 
 ```powershell
-python -m training.engagement_windows `
+python -m Noah.training.engagement_windows `
   --input data/private/processed/full_replays.jsonl `
-  --output data/private/processed/engagement_windows.jsonl `
-  --horizon-seconds 1 2 5
+  --output data/private/processed/engagement_windows_v3_5s.jsonl `
+  --horizon-seconds 5 `
+  --lookback-seconds 3 `
+  --decision-lead-seconds 1 `
+  --action-window-seconds 1
 ```
 
-This writes `engagement_windows_1s.jsonl`, `engagement_windows_2s.jsonl`, and
-`engagement_windows_5s.jsonl`. Existing SQLite events can be read directly
-with `--database`; no database rebuild or model retraining is performed.
+Supplying several horizons writes one suffixed JSONL per horizon. Existing
+SQLite events can be read with `--database`, but positional history requires
+player ticks; event-only rows explicitly report `history_available=false`.
 
 Train the dependency-free engagement prior with a whole-match held-out split:
 
 ```powershell
-python -m training.train_engagement_model `
-  --input data/private/processed/engagement_windows_2s.jsonl `
-  --output model/artifacts/releases/v2/engagement_model.json `
-  --metrics model/artifacts/releases/v2/engagement_metrics.json
+python -m Noah.training.train_engagement_model `
+  --input data/private/processed/engagement_windows_v3_5s.jsonl `
+  --output model/artifacts/releases/v4/engagement_model.json `
+  --metrics model/artifacts/releases/v4/engagement_metrics.json
 ```
 
-The trainer reports kill/death/trade log loss, Brier score, calibration, and
-improvement over the training prior. Sparse trade/survival targets use a
+The trainer reports kill/death/trade/survival/damage/round-win log loss, Brier
+score, calibration, and improvement over the training prior. Sparse targets use a
 stronger empirical-Bayes prior; this avoids treating one observed duel as a
 reliable tactical rule. If the full dependencies are installed, optional
 shallow LightGBM heads use the same grouped split:
 
 ```powershell
-python -m training.train_engagement_lightgbm `
-  --input data/private/processed/engagement_windows_2s.jsonl `
-  --output model/artifacts/releases/v2/engagement_lightgbm.json `
-  --metrics model/artifacts/releases/v2/engagement_lightgbm_metrics.json
+python -m Noah.training.train_engagement_lightgbm `
+  --input data/private/processed/engagement_windows_v3_5s.jsonl `
+  --output model/artifacts/releases/v4/engagement_lightgbm.json `
+  --metrics model/artifacts/releases/v4/engagement_lightgbm_metrics.json
+```
+
+The LightGBM action features are generated from the shared vocabulary as
+nominal one-hot columns; adding a learned action therefore requires new labels
+and retraining, but not a second model. To add one, update
+`Noah/model/src/cs2_sim/action_vocabulary.py`, add its deterministic detector
+to `Noah/training/action_labeler.py`, add a fixture test, regenerate windows,
+and retrain the release. Do not create a separate class for a target zone or
+utility type. Review coverage before activation:
+
+```powershell
+python -m Noah.training.evaluate_action_vocabulary `
+  --input data/private/processed/engagement_windows_v3_5s.jsonl `
+  --output model/artifacts/releases/v4/action_vocabulary_coverage.json `
+  --model-metrics model/artifacts/releases/v4/engagement_lightgbm_metrics.json
 ```
 
 Refresh the checksummed release manifest after changing an artifact:
 
 ```powershell
-python -m training.build_release_manifest `
-  --release model/artifacts/releases/v2
+python -m Noah.training.build_release_manifest `
+  --release model/artifacts/releases/v4 --version v4
 ```
 
 ## Compact Parquet exports and dataset registry
@@ -187,7 +259,7 @@ SQLite remains the canonical training store. When a portable, typed projection
 is useful, stream it into a new directory without loading the whole database:
 
 ```powershell
-python -m training.export_parquet `
+python -m Noah.training.export_parquet `
   --database data/private/databases/cs2_replays_v2.sqlite `
   --output data/private/features/replay-v1 `
   --dataset-id replay-v1 `
@@ -205,9 +277,9 @@ versions, source metadata, rejection reasons, and match groups. Its roles are
 appearing in more than one role:
 
 ```powershell
-python -m training.dataset_registry validate `
+python -m Noah.training.dataset_registry validate `
   --registry data/private/dataset_registry.json
-python -m training.dataset_registry list `
+python -m Noah.training.dataset_registry list `
   --registry data/private/dataset_registry.json
 ```
 
@@ -217,20 +289,25 @@ optional LightGBM native library is unavailable:
 ```python
 from cs2_sim import ModelConfig, ReplayModel
 
-model = ReplayModel.load(ModelConfig(version="v2"))
+model = ReplayModel.load(ModelConfig(version="v4"))
 prediction = model.predict_probability(snapshot)
 match_report = model.analyse_match(replay)
 engagement_report = model.analyse_engagement(replay, tick=1234, player_id="steam-id")
 ```
 
-`analyse_engagement` returns observed kill/death/trade probabilities for
-future-only windows. It marks statistical-only and LightGBM-blended results;
+`analyse_engagement` returns future-only multi-head probabilities.
+`analyse_replay` scores legal simulator actions plus the shared action
+vocabulary with a coaching utility: 35% round win, 25% survival, 15% kill,
+10% trade, 10% damage, and 5% simulator value. These are observational
+estimates, not causal proof. A "should have" label is emitted only after
+support and uncertainty checks pass. The engagement report marks
+statistical-only and LightGBM-blended results;
 it does not claim an observational replay proves a counterfactual “best move”.
 
 To install and activate a verified local release bundle:
 
 ```powershell
-python -m training.download_models `
+python -m Noah.training.download_models `
   --source path/to/cs2-model-bundle-v2 `
   --releases model/artifacts/releases `
   --version v2 `
@@ -241,17 +318,17 @@ python -m training.download_models `
 Run the end-to-end tester against SQLite, parsed JSONL, or a native demo:
 
 ```powershell
-python -m training.test_replay_models `
+python -m Noah.training.test_replay_models `
   --database data/private/databases/cs2_replays_v2.sqlite `
   --manifest model/artifacts/releases/v2/full_replay_value.manifest.json `
   --action-model model/artifacts/releases/v2/action_frequency.json `
   --limit 500
 
-python -m training.test_replay_models `
+python -m Noah.training.test_replay_models `
   --input data/private/processed/full_replays.jsonl `
   --limit 500
 
-python -m training.test_replay_models --demo path/to/match.dem --limit 500
+python -m Noah.training.test_replay_models --demo path/to/match.dem --limit 500
 ```
 
 The replacement extractor can be used at the tester boundary as well. This
@@ -259,12 +336,12 @@ normalizes its JSONL in memory and reuses the existing model artifacts; it does
 not rebuild SQLite or retrain either model:
 
 ```powershell
-python -m training.test_replay_models `
+python -m Noah.training.test_replay_models `
   --extractor-input path/to/replacement-extractor.jsonl `
   --limit 500 `
   --output model/artifacts/replay_model_test_extractor.json
 
-python -m training.test_replay_models `
+python -m Noah.training.test_replay_models `
   --extractor-demo path/to/match.dem `
   --limit 500
 ```
@@ -295,7 +372,7 @@ excludes every replay identity in the training database, and enforces a
 cumulative byte budget before downloading:
 
 ```powershell
-python -m training.benchmark_dataset `
+python -m Noah.training.benchmark_dataset `
   --training-database data/private/databases/cs2_replays_v2.sqlite `
   --output data/private/benchmark_cache `
   --manifest data/public/benchmark_manifest.json `
@@ -308,7 +385,7 @@ size, and SHA-256 checksum. It is marked training-excluded and the evaluator
 checks for overlap again before parsing any demo:
 
 ```powershell
-python -m training.evaluate_benchmark `
+python -m Noah.training.evaluate_benchmark `
   --benchmark-manifest data/public/benchmark_manifest.json `
   --model-manifest model/artifacts/releases/v2/full_replay_value.manifest.json `
   --action-model model/artifacts/releases/v2/action_frequency.json `
@@ -360,28 +437,62 @@ baseline.
 The event-only full model estimates round win probability. It is not yet a
 movement/action model because sidecars contain no player positions, health,
 utility inventory, visibility, or velocity. For that model, parse native demos
-successfully and run `training.train_full_replay` without `--snapshot-input`.
+successfully and run `Noah.training.train_full_replay` without `--snapshot-input`.
 
 ## Combined replay analysis
 
 ### One-command test
 
 For the normal path, send a native `.dem`, extracted replay JSON, or JSONL file
-to the small runner. Native demos go through the replacement extractor in
-memory; the harness does not build a database or retrain a model. It selects
-release `v2`, applies the conservative defaults, and writes an adjacent
-`.analysis.json` report:
+to the small runner. Native demos and canonical replacement-extractor records
+are normalized in memory; the harness does not build a database or retrain a
+model. It selects the active release (`v4` in the current bundle), applies the conservative defaults, and writes
+an adjacent `.analysis.json` report:
 
 ```powershell
-python Noah/training/test_harness.py data/private/processed/full_replays.jsonl
-python Noah/training/test_harness.py path/to/match.dem --all-moments
+python Noah/training/test_harness.py data/private/processed/full_replays.jsonl --version v4
+python Noah/training/test_harness.py path/to/match.dem --all-moments --version v4
 ```
 
 Use `--record-index 3` for another JSONL record or `--output path/to/report.json`
 to choose the report location. It permits the documented Bayesian/statistical
 fallback when optional native LightGBM dependencies are unavailable. The
-runner is only an input/output wrapper; the analysis logic remains in
-`analysis_harness.py` and the public `ReplayModel.analyse_replay` API.
+runner is only an input/output wrapper; application code accesses the complete
+harness through the package-root `Noah.analyze_replay` function.
+
+The implementation is split into a small orchestration facade in
+`Noah/training/analysis_harness.py`, replay-state reconstruction in
+`replay_state.py`, candidate and engagement scoring in
+`candidate_analysis.py`, and report/moment projection in `analysis_report.py`.
+
+The same function accepts a native `.dem`, JSON/JSONL path, canonical extractor
+mapping, or normalized replay mapping. It performs any required normalization,
+loads the active model release, and returns the same report dictionary:
+
+```python
+from Noah import analyze_replay
+
+report = analyze_replay("match.dem", max_moments=None)
+```
+
+Analysis is read-only with respect to the training database and model artifacts.
+
+The harness uses two model components. Its main round-value model comes from
+the selected release manifest and `full_replay_value.txt`; the action-analysis
+component comes from `candidate_action_value.txt`. The wrapper follows the
+active pointer, currently `Noah/model/artifacts/releases/v4`. Pass
+`--candidate-model` to override only
+the action model. If the candidate LightGBM artifact cannot load, the loader
+falls back to that release's `small_statistical.json`; if no candidate model is
+available, the harness reports no action alternative instead of inventing one.
+After training a new release, select it explicitly with `--release-dir` and
+`--version` (or update the release pointer) before testing it:
+
+```powershell
+python Noah/training/test_harness.py match.json `
+  --release-dir Noah/model/artifacts/releases `
+  --version v4
+```
 
 ### Advanced configuration
 
@@ -389,11 +500,10 @@ The deployable runtime can produce one report that combines factual replay
 evidence with estimated alternatives:
 
 ```powershell
-python -m training.analysis_harness `
-  --input data/private/processed/full_replays.jsonl `
+python Noah/training/test_harness.py data/private/processed/full_replays.jsonl `
   --record-index 0 `
   --release-dir model/artifacts/releases `
-  --version v2 `
+  --version v4 `
   --max-moments 25 `
   --output data/private/processed/replay_analysis.json
 ```
@@ -409,12 +519,11 @@ python Noah/training/test_harness.py backend/tests/fixtures/coach_full_replay.js
 ```
 
 Each kill line and JSON row contains both estimates when legal candidate
-actions are available: `best_estimated_alternative` is the round-value model's
-counterfactual, while `least_death_risk_action` is a conservative fallback
-selected by the lowest smoothed `death_probability` upper bound. The latter is
-currently a round-loss proxy (not literal player-death probability), and it
-includes support, outcome-variance, interval-level/method, and `risk_source`
-metadata. If the model
+actions are available. Release v3 coaches the victim from `decision_tick`, one
+second before first contact, and exposes all utility components on the selected
+action. `least_death_risk_action` uses the literal engagement death head when
+available; older releases use a round-loss proxy. Both include support,
+outcome-variance, interval-level/method, and `risk_source` metadata. If the model
 has no candidate state, the fallback is `null`; low-support fallbacks should
 be treated as suggestions for review rather than proven best moves. The JSON
 also reports `least_risk_fallback_count` (selected while the primary label
@@ -508,6 +617,79 @@ fallback status, and probability label. Use `--show-moments` when keeping the no
 but still wanting the detailed table. `summary.kill_count` is the total kill
 count in the replay; `summary.kill_analysis_count` is the number scored by the
 current moment cap.
+
+### Analysis JSON shape
+
+The saved `.analysis.json` report is a JSON object. Probabilities are stored as
+decimal values from `0.0` to `1.0`; the CLI display converts them to
+percentages. The following is a valid representative output containing the
+summary and one enriched kill row (the real report also includes the complete
+`full_match` timeline and detailed `moments` array):
+
+```json
+{
+  "report_type": "combined_replay_analysis",
+  "schema_version": "replay_analysis_v1",
+  "source": "fixture.dem",
+  "map_name": "de_mirage",
+  "summary": {
+    "moment_count": 4,
+    "kill_count": 4,
+    "kill_analysis_count": 4,
+    "least_risk_fallback_count": 4,
+    "least_risk_candidate_count": 4,
+    "least_risk_usable_count": 0,
+    "decision_classes": {
+      "insufficient_evidence": 4
+    },
+    "probability_decision_classes": {
+      "insufficient_evidence": 4
+    },
+    "recommendations_are_counterfactual_estimates": true,
+    "probability_labels_are_thresholded_estimates": true,
+    "candidate_model_type": "full_lightgbm_blended_with_small_statistical"
+  },
+  "kill_analysis": [
+    {
+      "kill_number": 1,
+      "round_num": 1,
+      "tick": 64,
+      "time_seconds": 1.0,
+      "event_id": "event-000001",
+      "attacker_id": "ct1",
+      "victim_id": "t1",
+      "weapon": "m4a1",
+      "observed_action": "hold",
+      "recommended_action": "hold",
+      "recommendation_supported": false,
+      "recommendation_sample_count": 104,
+      "recommendation_support_level": "backoff",
+      "recommendation_support_reason": "high_entropy",
+      "least_death_risk_action": "hold",
+      "least_death_probability": 0.145985401459854,
+      "least_death_round_loss_probability_proxy": 0.145985401459854,
+      "least_death_is_proxy": true,
+      "least_death_risk_upper_bound": 0.19542941544969175,
+      "least_death_risk_support": 135,
+      "least_death_risk_supported": false,
+      "least_death_risk_status": "unsupported_candidate_state",
+      "least_death_risk_source": "round_loss_proxy_posterior",
+      "round_win_probability": 0.14458186005395898,
+      "round_loss_probability_proxy": 0.855418139946041,
+      "probability_of_improvement": null,
+      "expected_regret": null,
+      "probability_decision_class": "insufficient_evidence",
+      "estimate_type": "simulator_action_value_estimate"
+    }
+  ]
+}
+```
+
+`least_death_probability` is explicitly a round-loss proxy until real
+engagement/death labels are available. `least_death_risk_status` and
+`least_death_risk_usable` must be checked before presenting that action as
+coaching advice. A `null` improvement probability means the probability layer
+abstained; it is not a zero-percent estimate.
 
 The report first selects key moments from round-value swings and kill/death/
 bomb events. It then reconstructs the nearest legal simulator state, scores

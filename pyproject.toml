@@ -15,10 +15,18 @@ requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools]
-packages = ["cs2_sim", "cs2_sim.core", "cs2_sim.core.model", "cs2_sim.models", "training"]
-package-dir = {"cs2_sim" = "model/src/cs2_sim", "training" = "training"}
+packages = [
+    "Noah",
+    "Noah.training",
+    "Noah.training.tests",
+    "cs2_sim",
+    "cs2_sim.core",
+    "cs2_sim.core.model",
+    "cs2_sim.models",
+]
+package-dir = {"Noah" = "Noah", "cs2_sim" = "Noah/model/src/cs2_sim"}
 
 [tool.pytest.ini_options]
-testpaths = ["model/tests", "training/tests", "extractor/tests", "agent-harness/tests"]
+testpaths = ["Noah/tests", "Noah/model/tests", "Noah/training/tests", "Noah/extractor/tests", "agent-harness/tests"]
 addopts = ["--import-mode=importlib"]
-pythonpath = ["model/src", "extractor/src", "."]
+pythonpath = ["Noah/model/src", "Noah/extractor/src", "."]

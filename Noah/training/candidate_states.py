@@ -34,11 +34,16 @@ from cs2_sim.bayesian_policy import BayesianPolicy
 from cs2_sim.core.model import feature_dict
 from cs2_sim.rules import legal_actions
 
-from Noah.training.analysis_harness import (
-    _build_tick_index,
-    _nearest_tick_rows,
+from Noah.training.replay_state import (
+    build_tick_index,
+    nearest_tick_rows,
     reconstruct_game_state,
 )
+
+# Keep local private names for the extractor's existing implementation while
+# exposing the shared state module as the dependency boundary.
+_build_tick_index = build_tick_index
+_nearest_tick_rows = nearest_tick_rows
 
 CANDIDATE_STATE_SCHEMA_VERSION = "candidate_state_v1"
 

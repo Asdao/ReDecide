@@ -23,14 +23,14 @@ The first two model profiles are now available under `model/src/cs2_sim/core/mod
 
 The stable runtime boundary is `cs2_sim.ReplayModel`; callers do not load these
 component classes or artifact files directly. Training is exposed through
-`training.TrainingPipeline`, and replay parsing through
+`Noah.training.TrainingPipeline`, and replay parsing through
 `replay_extractor.ReplayExtractor`.
 
 The full profile is trained from replay-derived labelled rows and saved as a
 versioned artifact bundle. Training remains separate from the dataset-specific
 parser; runtime callers load the bundle through `ReplayModel`.
 
-The snapshot path is now available through `training/train_snapshot_model.py`.
+The snapshot path is now available through `Noah/training/train_snapshot_model.py`.
 It trains `SnapshotValueModel` from `analysis_snapshots.jsonl`; this is a round-
 value model, not yet a movement-action policy. Full action training remains
 blocked until positional `.dem` parsing succeeds.

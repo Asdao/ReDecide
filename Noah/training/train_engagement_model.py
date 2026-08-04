@@ -17,13 +17,13 @@ from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 
-from cs2_sim.core.model import EngagementModel
+from cs2_sim.core.model import ENGAGEMENT_SCHEMA_VERSION, EngagementModel
 
 from Noah.training.data_paths import DATA_PATHS
 from Noah.training.metrics import binary_probability_metrics
 
-TRAINING_SCHEMA_VERSION = "engagement_training_v1"
-TARGETS = ("kill", "death", "trade")
+TRAINING_SCHEMA_VERSION = "engagement_training_v3"
+TARGETS = ("kill", "death", "trade", "survival", "damage", "round_win")
 
 
 def _rows(path: Path) -> Iterator[dict[str, Any]]:
@@ -135,7 +135,7 @@ def train_engagement_model(
     model.save(output)
     metrics: dict[str, Any] = {
         "schema_version": TRAINING_SCHEMA_VERSION,
-        "model_schema_version": "engagement_model_v1",
+        "model_schema_version": ENGAGEMENT_SCHEMA_VERSION,
         "input": source.as_posix(),
         "output": output.as_posix(),
         "rows": {"total": row_count, "training": train_count, "validation": validation_count},
@@ -184,9 +184,9 @@ def train_engagement_model(
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--input", type=Path, default=DATA_PATHS.private_processed / "engagement_windows_2s.jsonl")
-    parser.add_argument("--output", type=Path, default=Path("model/artifacts/releases/v2/engagement_model.json"))
-    parser.add_argument("--metrics", type=Path, default=Path("model/artifacts/releases/v2/engagement_metrics.json"))
+    parser.add_argument("--input", type=Path, default=DATA_PATHS.private_processed / "engagement_windows_v3_5s.jsonl")
+    parser.add_argument("--output", type=Path, default=Path("model/artifacts/releases/v4/engagement_model.json"))
+    parser.add_argument("--metrics", type=Path, default=Path("model/artifacts/releases/v4/engagement_metrics.json"))
     parser.add_argument("--validation-fraction", type=float, default=0.2)
     parser.add_argument("--seed", type=int, default=7)
     parser.add_argument("--alpha", type=float, default=1.0)

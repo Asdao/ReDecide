@@ -23,7 +23,7 @@ class TrainingError(RuntimeError):
 class TrainingConfig:
     """Configuration shared by database preparation and model training."""
 
-    artifact_dir: Path = Path("model/artifacts")
+    artifact_dir: Path = Path("Noah/model/artifacts")
     sample_every: int = 4
     decision_window_seconds: float = 5.0
     action_window_seconds: float = 2.0
@@ -31,6 +31,8 @@ class TrainingConfig:
     seed: int = 7
     clean_records: bool = False
     allow_event_only: bool = False
+    release_version: str | None = None
+    tick_rate: float | None = None
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "artifact_dir", Path(self.artifact_dir))
@@ -42,6 +44,10 @@ class TrainingConfig:
             raise ValueError("action_window_seconds must be positive")
         if not 0.0 < self.validation_fraction < 1.0:
             raise ValueError("validation_fraction must be between zero and one")
+        if self.release_version is not None and not str(self.release_version).strip():
+            raise ValueError("release_version must not be empty")
+        if self.tick_rate is not None and self.tick_rate <= 0:
+            raise ValueError("tick_rate must be positive")
 
 
 @dataclass(frozen=True, slots=True)
@@ -141,12 +147,17 @@ class TrainingPipeline:
                 snapshot_input=None,
                 sample_every=self.config.sample_every,
                 decision_window_seconds=self.config.decision_window_seconds,
-                small_model_path=bayesian,
+                # Train a fresh, split-consistent Bayesian artifact for this
+                # database run.  An existing artifact is an explicit input
+                # only for the streamed workflow.
+                small_model_path=None,
                 allow_event_only=self.config.allow_event_only,
                 seed=self.config.seed,
                 validation_fraction=self.config.validation_fraction,
                 small_model_output=bayesian,
                 verbose=False,
+                release_version=self.config.release_version,
+                tick_rate=self.config.tick_rate,
             )
             return ReplayTrainingArtifacts(
                 booster,

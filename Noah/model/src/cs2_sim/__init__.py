@@ -1,5 +1,19 @@
 """Small, deterministic CS2 tactical simulation core."""
 
+from .action_vocabulary import (
+    ABSTRACT_CANDIDATE_ACTION_NAMES,
+    ACTION_DEFINITIONS,
+    ACTION_FEATURE_NAMES,
+    ACTION_NAMES,
+    ACTION_VOCABULARY_SCHEMA_VERSION,
+    OBSERVABLE_ACTION_NAMES,
+    ActionDefinition,
+    action_definition,
+    action_family,
+    action_features,
+    action_parameters,
+    canonical_action,
+)
 from .api import ModelConfig, ModelError, ModelStatus, ReplayModel
 from .config import SimConfig
 from .core.model import FullLightGBMModel, SmallStatisticalModel, create_model
@@ -9,6 +23,13 @@ from .simulator import SimulationResult, Simulator
 from .state import BombState, GameState, PlayerState, Team
 
 __all__ = [
+    "ABSTRACT_CANDIDATE_ACTION_NAMES",
+    "ACTION_DEFINITIONS",
+    "ACTION_FEATURE_NAMES",
+    "ACTION_NAMES",
+    "ACTION_VOCABULARY_SCHEMA_VERSION",
+    "OBSERVABLE_ACTION_NAMES",
+    "ActionDefinition",
     "ActionPolicy",
     "BombState",
     "FullLightGBMModel",
@@ -23,6 +44,11 @@ __all__ = [
     "Simulator",
     "SmallStatisticalModel",
     "Team",
+    "action_definition",
+    "action_family",
+    "action_features",
+    "action_parameters",
+    "canonical_action",
     "create_model",
     "legal_actions",
 ]

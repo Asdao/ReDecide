@@ -11,6 +11,7 @@ from Noah.training.download_dataset import (
     _next_page_url,
     _validate_repo_path,
     create_manifest,
+    iter_remote_file_chunks,
     list_dataset_files,
     verify_manifest,
 )
@@ -42,6 +43,31 @@ class DownloaderTests(unittest.TestCase):
                 )
             self.assertFalse(destination.exists())
             self.assertFalse(destination.with_name("data.bin.part").exists())
+
+    def test_remote_stream_yields_chunks_without_creating_a_file(self) -> None:
+        class Response:
+            headers: ClassVar[dict[str, str]] = {}
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *_):
+                return False
+
+            def __init__(self):
+                self._chunks = iter((b"cs", b"2"))
+
+            def read(self, _size):
+                return next(self._chunks, b"")
+
+        with patch(
+            "Noah.training.download_dataset.urllib.request.urlopen",
+            return_value=Response(),
+        ):
+            self.assertEqual(
+                list(iter_remote_file_chunks("data/match.analysis.json", max_bytes=10)),
+                [b"cs", b"2"],
+            )
 
     def test_repository_paths_cannot_escape_output_directory(self) -> None:
         self.assertEqual(_validate_repo_path("data/file.parquet").parts, ("data", "file.parquet"))
@@ -83,7 +109,7 @@ class DownloaderTests(unittest.TestCase):
             '<https://example.test/page-2>; rel="next"',
         )
         second = JsonResponse([{"type": "file", "path": "data/b.parquet"}])
-        with patch("training.download_dataset.urllib.request.urlopen", side_effect=[first, second]) as open_url:
+        with patch("Noah.training.download_dataset.urllib.request.urlopen", side_effect=[first, second]) as open_url:
             self.assertEqual(list_dataset_files("org/dataset"), ["data/a.parquet", "data/b.parquet"])
         first_url = open_url.call_args_list[0].args[0].full_url
         self.assertIn("/tree/main/data?", first_url)
@@ -101,7 +127,7 @@ class DownloaderTests(unittest.TestCase):
             def read(self, *_):
                 return b'[{"type":"file","path":"demos/a.dem"}]'
 
-        with patch("training.download_dataset.urllib.request.urlopen", return_value=Response()) as open_url:
+        with patch("Noah.training.download_dataset.urllib.request.urlopen", return_value=Response()) as open_url:
             self.assertEqual(
                 list_dataset_files("org/dataset", path_in_repo=""),
                 ["demos/a.dem"],

@@ -9,10 +9,10 @@ database, alter training data, or rebuild model artifacts.
 from __future__ import annotations
 
 import sys
+from collections.abc import Iterator, Mapping
 from dataclasses import is_dataclass
 from pathlib import Path
-from collections.abc import Iterator
-from typing import Any, Mapping
+from typing import Any
 
 
 def _load_extractor_normalizer() -> Any:
@@ -161,9 +161,7 @@ def normalize_extractor_record(raw: Any) -> dict[str, Any]:
 
     if isinstance(raw, Mapping) and "metadata" not in raw:
         normalized = _load_extractor_normalizer()(dict(raw))
-    elif isinstance(raw, Mapping) and "metadata" in raw:
-        normalized = raw
-    elif is_dataclass(raw) or hasattr(raw, "metadata"):
+    elif (isinstance(raw, Mapping) and "metadata" in raw) or is_dataclass(raw) or hasattr(raw, "metadata"):
         normalized = raw
     else:
         raise TypeError("extractor record must be a mapping or ReplayRecord")
@@ -186,8 +184,12 @@ def parse_extractor_demo(path: Path, *, tick_interval: int = 32) -> dict[str, An
     """Parse one native demo through the replacement extractor for testing."""
 
     try:
-        from replay_extractor import parse_demo
+        from replay_extractor import ExtractorConfig, ReplayExtractor
     except ImportError:
         _load_extractor_normalizer()
-        from replay_extractor import parse_demo
-    return normalize_extractor_record(parse_demo(path, tick_interval=tick_interval))
+        from replay_extractor import ExtractorConfig, ReplayExtractor
+    # Use the extractor's public facade rather than importing its internal
+    # parser. The package intentionally exposes parsing through
+    # ``ReplayExtractor.parse``; this also preserves its sidecar fallback.
+    extractor = ReplayExtractor(ExtractorConfig(tick_interval=tick_interval))
+    return normalize_extractor_record(extractor.parse(path))

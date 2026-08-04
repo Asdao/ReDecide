@@ -10,8 +10,9 @@ from collections import defaultdict
 from pathlib import Path
 from typing import Any
 
-from Noah.training.map_regions import NavRegionIndex, region_for_row
+from Noah.training.action_labeler import build_action_event_index, classify_action
 from Noah.training.data_paths import DATA_PATHS
+from Noah.training.map_regions import NavRegionIndex, region_for_row
 
 DEFAULT_TICK_RATE = 64.0
 
@@ -88,7 +89,8 @@ def infer_actions(
         grouped[(round_num, _identity(row, ordinal))].append((tick, row))
 
     output: list[dict[str, Any]] = []
-    window_ticks = max(1, int(round(window_seconds * rate)))
+    action_event_index = build_action_event_index(record)
+    window_ticks = max(1, round(window_seconds * rate))
     for (round_num, player_id), series in grouped.items():
         series.sort(key=lambda item: item[0])
         ticks = [item[0] for item in series]
@@ -116,6 +118,17 @@ def infer_actions(
             # movement label.
             target_distance = movement_threshold * horizon_seconds / window_seconds
             action = "move" if distance >= target_distance else "hold"
+            action_observation = classify_action(
+                record,
+                player_id=player_id,
+                round_num=round_num,
+                decision_tick=tick,
+                action_end_tick=next_tick,
+                tick_series=[current, next_row],
+                tick_rate=rate,
+                movement_threshold_per_second=movement_threshold,
+                event_index=action_event_index,
+            )
             output.append(
                 {
                     "source": record.get("source_path") or record.get("demo_file") or "unknown",
@@ -128,6 +141,11 @@ def infer_actions(
                     "current_zone": str(current_zone),
                     "next_zone": str(next_zone),
                     "action": action,
+                    "action_name": action_observation["action"],
+                    "action_family": action_observation["action_family"],
+                    "action_parameters": action_observation["parameters"],
+                    "action_confidence": action_observation["confidence"],
+                    "action_evidence": action_observation["evidence"],
                     "distance": distance,
                     "distance_per_second": distance_per_second,
                     "horizon_seconds": horizon_seconds,

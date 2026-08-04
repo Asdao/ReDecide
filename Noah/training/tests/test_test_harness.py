@@ -4,6 +4,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
+from Noah import analyze_replay
 from Noah.training.test_harness import (
     format_kill_analysis,
     load_replay_record,
@@ -29,6 +30,28 @@ class TestHarnessInputTests(unittest.TestCase):
             path = Path(directory) / "replay.json"
             path.write_text(json.dumps({"header": {"map_name": "de_mirage"}}), encoding="utf-8")
             self.assertEqual(load_replay_record(path)["header"]["map_name"], "de_mirage")
+
+    def test_normalizes_canonical_extractor_json(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "extractor.json"
+            path.write_text(
+                json.dumps(
+                    {
+                        "metadata": {
+                            "map_name": "de_mirage",
+                            "tick_rate": 64,
+                            "parser": "replacement-extractor",
+                        },
+                        "rounds": [],
+                        "player_ticks": [],
+                        "events": [],
+                    }
+                ),
+                encoding="utf-8",
+            )
+            record = load_replay_record(path)
+            self.assertEqual(record["header"]["map_name"], "de_mirage")
+            self.assertEqual(record["tick_rate"], 64)
 
     def test_selects_jsonl_record(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -83,7 +106,45 @@ class TestHarnessInputTests(unittest.TestCase):
         self.assertIn("support=12 (exact, supported)", lines[1])
 
     def test_candidate_model_override_is_exposed(self) -> None:
+        self.assertIn("candidate_model_path", analyze_replay.__annotations__)
         self.assertIn("candidate_model_path", run_replay_test.__annotations__)
+
+    def test_top_level_function_accepts_a_replay_mapping(self) -> None:
+        class Runtime:
+            def analyse_replay(self, replay, **kwargs):
+                return {"replay": replay, "options": kwargs}
+
+        with patch("cs2_sim.ReplayModel.load", return_value=Runtime()) as load:
+            result = analyze_replay(
+                {"header": {"map_name": "de_mirage"}},
+                version="v9",
+                max_moments=None,
+                sample_every=1,
+            )
+
+        self.assertEqual(result["replay"]["header"]["map_name"], "de_mirage")
+        self.assertIsNone(result["options"]["max_moments"])
+        self.assertEqual(result["options"]["sample_every"], 1)
+        self.assertEqual(load.call_args.args[0].version, "v9")
+
+    def test_legacy_runner_delegates_to_top_level_function(self) -> None:
+        with patch(
+            "Noah.training.test_harness.analyze_replay",
+            return_value={"summary": {}},
+        ) as analyze:
+            result = run_replay_test("match.json", version="v8")
+
+        self.assertEqual(result, {"summary": {}})
+        analyze.assert_called_once_with(
+            "match.json",
+            record_index=0,
+            release_dir=None,
+            version="v8",
+            candidate_model_path=None,
+            moment_threshold=0.08,
+            max_moments=25,
+            sample_every=8,
+        )
 
 
 if __name__ == "__main__":

@@ -9,6 +9,7 @@ from typing import Any
 
 from cs2_sim.core.model import (
     ENGAGEMENT_LGBM_FEATURE_NAMES,
+    ENGAGEMENT_LIGHTGBM_SCHEMA_VERSION,
     ENGAGEMENT_TARGETS,
     EngagementLightGBMBundle,
     engagement_feature_vector,
@@ -94,8 +95,8 @@ def train_engagement_lightgbm(
     bundle = EngagementLightGBMBundle(boosters)
     bundle.save(output_path)
     result: dict[str, Any] = {
-        "schema_version": "engagement_lightgbm_training_v1",
-        "model_schema_version": "engagement_lightgbm_v1",
+        "schema_version": "engagement_lightgbm_training_v3",
+        "model_schema_version": ENGAGEMENT_LIGHTGBM_SCHEMA_VERSION,
         "input": str(input_path),
         "output": str(output_path),
         "rows": {"total": len(rows), "training": len(train_rows), "validation": len(validation_rows)},
@@ -112,9 +113,9 @@ def train_engagement_lightgbm(
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--input", type=Path, default=DATA_PATHS.private_processed / "engagement_windows_2s.jsonl")
-    parser.add_argument("--output", type=Path, default=Path("model/artifacts/releases/v2/engagement_lightgbm.json"))
-    parser.add_argument("--metrics", type=Path, default=Path("model/artifacts/releases/v2/engagement_lightgbm_metrics.json"))
+    parser.add_argument("--input", type=Path, default=DATA_PATHS.private_processed / "engagement_windows_v3_5s.jsonl")
+    parser.add_argument("--output", type=Path, default=Path("model/artifacts/releases/v4/engagement_lightgbm.json"))
+    parser.add_argument("--metrics", type=Path, default=Path("model/artifacts/releases/v4/engagement_lightgbm_metrics.json"))
     parser.add_argument("--validation-fraction", type=float, default=0.2)
     parser.add_argument("--seed", type=int, default=7)
     parser.add_argument("--num-boost-round", type=int, default=120)

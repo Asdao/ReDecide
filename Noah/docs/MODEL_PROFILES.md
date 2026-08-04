@@ -71,8 +71,8 @@ Until raw replay parsing supplies action labels, train a monitored bootstrap
 pair from simulator outcomes:
 
 ```powershell
-$env:PYTHONPATH = "model/src"
-python -m training.train_models --states 500
+$env:PYTHONPATH = "Noah/model/src;Noah/extractor/src;."
+python -m Noah.training.train_models --states 500
 ```
 
 This writes `model/artifacts/small_statistical.json`, `model/artifacts/full_lightgbm.txt`, and
@@ -87,8 +87,8 @@ the model input features.
 Train the small snapshot model with:
 
 ```powershell
-$env:PYTHONPATH = "model/src"
-python -m training.train_snapshot_model
+$env:PYTHONPATH = "Noah/model/src;Noah/extractor/src;."
+python -m Noah.training.train_snapshot_model
 ```
 
 The default input is now
@@ -98,7 +98,7 @@ quality-filtered download, leakage-safe extraction, and both training commands.
 The full parser is launched with:
 
 ```powershell
-python -m training.parse_demos
+python -m Noah.training.parse_demos
 ```
 
 It uses Awpy/demoparser2 when PyArrow is available. If native PyArrow loading
@@ -109,7 +109,7 @@ contain positional ticks.
 When positional ticks are present, train the full replay-value model with:
 
 ```powershell
-python -m training.train_full_replay
+python -m Noah.training.train_full_replay
 ```
 
 The trainer requires at least two parsed demos so validation can be separated
@@ -120,6 +120,6 @@ While native positional parsing is unavailable, a provisional event-only
 LightGBM model can use the same leakage-safe snapshot dataset:
 
 ```powershell
-python -m training.train_full_replay `
+python -m Noah.training.train_full_replay `
   --snapshot-input data/public/processed/analysis_snapshots.jsonl
 ```

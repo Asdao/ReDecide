@@ -1,0 +1,126 @@
+{
+  "source": "data\\full\\processed\\cs2_replays_v2.sqlite",
+  "evaluation_mode": "smoke",
+  "model_manifest": "model\\artifacts\\releases\\v2\\full_replay_value.manifest.json",
+  "model_components": {
+    "booster": true,
+    "bayesian_samples": 894,
+    "calibrator": true
+  },
+  "snapshot_rows": 100,
+  "model_has_booster": true,
+  "replay_metrics": {
+    "log_loss": 0.5114675449456236,
+    "brier": 0.1622102196718912,
+    "accuracy": 0.94,
+    "balanced_accuracy": 0.9373737373737374,
+    "expected_calibration_error": 0.32891977240473924,
+    "ct_win_rate": 0.45
+  },
+  "action_rows": 100,
+  "action_counts": {
+    "hold": 100
+  },
+  "top_regions": [
+    [
+      "nav_area_1281",
+      30
+    ],
+    [
+      "nav_area_2625",
+      20
+    ],
+    [
+      "nav_area_2711",
+      10
+    ],
+    [
+      "nav_area_2622",
+      10
+    ],
+    [
+      "nav_area_2744",
+      10
+    ],
+    [
+      "nav_area_1350",
+      10
+    ],
+    [
+      "nav_area_1366",
+      10
+    ]
+  ],
+  "action_examples": [
+    {
+      "state": "de_inferno|ct|nav_area_2625",
+      "scores": {
+        "hold": 0.8783464566929133,
+        "move": 0.12165354330708661
+      }
+    },
+    {
+      "state": "de_inferno|t|nav_area_1281",
+      "scores": {
+        "hold": 0.9003671562082777,
+        "move": 0.0996328437917223
+      }
+    },
+    {
+      "state": "de_inferno|ct|nav_area_2711",
+      "scores": {
+        "hold": 0.8324958123953099,
+        "move": 0.16750418760469013
+      }
+    },
+    {
+      "state": "de_inferno|ct|nav_area_2622",
+      "scores": {
+        "hold": 0.7502837684449489,
+        "move": 0.24971623155505107
+      }
+    },
+    {
+      "state": "de_inferno|t|nav_area_1281",
+      "scores": {
+        "hold": 0.9003671562082777,
+        "move": 0.0996328437917223
+      }
+    },
+    {
+      "state": "de_inferno|ct|nav_area_2744",
+      "scores": {
+        "hold": 0.8953367875647669,
+        "move": 0.10466321243523316
+      }
+    },
+    {
+      "state": "de_inferno|t|nav_area_1350",
+      "scores": {
+        "hold": 0.8801955990220048,
+        "move": 0.1198044009779951
+      }
+    },
+    {
+      "state": "de_inferno|t|nav_area_1281",
+      "scores": {
+        "hold": 0.9003671562082777,
+        "move": 0.0996328437917223
+      }
+    },
+    {
+      "state": "de_inferno|ct|nav_area_2625",
+      "scores": {
+        "hold": 0.8783464566929133,
+        "move": 0.12165354330708661
+      }
+    },
+    {
+      "state": "de_inferno|t|nav_area_1366",
+      "scores": {
+        "hold": 0.9138539042821159,
+        "move": 0.08614609571788413
+      }
+    }
+  ]
+}

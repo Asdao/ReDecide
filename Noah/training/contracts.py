@@ -20,7 +20,7 @@ from cs2_sim.core.model import FEATURE_NAMES, REPLAY_FEATURE_NAMES, snapshot_fea
 
 CONTRACT_SCHEMA_VERSION = "feature_contracts_v1"
 SNAPSHOT_FEATURE_SCHEMA_VERSION = 2
-ENGAGEMENT_FEATURE_SCHEMA_VERSION = "engagement_features_v1"
+ENGAGEMENT_FEATURE_SCHEMA_VERSION = "engagement_features_v3"
 CANDIDATE_ACTION_FEATURE_SCHEMA_VERSION = "candidate_action_features_v1"
 
 
@@ -51,6 +51,11 @@ SNAPSHOT_FIELD_SPECS = tuple(
 )
 ENGAGEMENT_FIELD_SPECS = (
     FieldSpec("horizon_seconds", "float", True, 2.0, 0.001, 60.0),
+    FieldSpec("observed_action", "string", True, "unknown"),
+    FieldSpec("observed_action_family", "string", True, "unknown"),
+    FieldSpec("observed_action_parameters", "object", True, {}),
+    FieldSpec("observed_action_confidence", "float", True, 0.0, 0.0, 1.0),
+    FieldSpec("decision_lead_seconds", "float", True, 1.0, 0.0, 10.0),
     FieldSpec("anchor_kind", "string", True, "unknown"),
     FieldSpec("weapon", "string", True, "unknown"),
     FieldSpec("damage_health", "float", True, 0.0, 0.0, 200.0),
@@ -58,6 +63,25 @@ ENGAGEMENT_FIELD_SPECS = (
     FieldSpec("distance", "float", True, 0.0, 0.0, 10000.0),
     FieldSpec("attacker_health", "float", True, 0.0, 0.0, 100.0),
     FieldSpec("victim_health", "float", True, 0.0, 0.0, 100.0),
+    FieldSpec("lookback_seconds", "float", True, 3.0, 0.001, 30.0),
+    FieldSpec("history_sample_count", "float", True, 0.0, 0.0, None),
+    FieldSpec("distance_moved", "float", True, 0.0, 0.0, None),
+    FieldSpec("average_speed", "float", True, 0.0, 0.0, None),
+    FieldSpec("displacement", "float", True, 0.0, 0.0, None),
+    FieldSpec("zone_changes", "float", True, 0.0, 0.0, None),
+    FieldSpec("health", "float", True, 0.0, 0.0, 100.0),
+    FieldSpec("armor", "float", True, 0.0, 0.0, 100.0),
+    FieldSpec("health_delta", "float", True, 0.0, -100.0, 100.0),
+    FieldSpec("armor_delta", "float", True, 0.0, -100.0, 100.0),
+    FieldSpec("inventory_size", "float", True, 0.0, 0.0, None),
+    FieldSpec("has_defuser", "boolean", True, False),
+    FieldSpec("recent_damage_dealt", "float", True, 0.0, 0.0, None),
+    FieldSpec("recent_damage_taken", "float", True, 0.0, 0.0, None),
+    FieldSpec("alive_teammates", "float", True, 0.0, 0.0, 4.0),
+    FieldSpec("alive_enemies", "float", True, 0.0, 0.0, 5.0),
+    FieldSpec("nearest_teammate_distance", "float", True, 0.0, 0.0, None),
+    FieldSpec("nearest_enemy_distance", "float", True, 0.0, 0.0, None),
+    FieldSpec("zone", "string", True, "unknown"),
 )
 CANDIDATE_ACTION_FIELD_SPECS = tuple(
     FieldSpec(name, "float", True, 0.0) for name in FEATURE_NAMES
@@ -116,6 +140,11 @@ class EngagementFeatures:
     def from_window(cls, row: Mapping[str, Any]) -> EngagementFeatures:
         features = dict(row.get("features") or {})
         features["horizon_seconds"] = row.get("horizon_seconds", 2.0)
+        features["observed_action"] = row.get("observed_action", "unknown")
+        features["observed_action_family"] = row.get("observed_action_family", "unknown")
+        features["observed_action_parameters"] = row.get("observed_action_parameters", {})
+        features["observed_action_confidence"] = row.get("observed_action_confidence", 0.0)
+        features["decision_lead_seconds"] = row.get("decision_lead_seconds", 1.0)
         return cls(features)
 
     def to_dict(self) -> dict[str, Any]:
@@ -254,9 +283,9 @@ class ModelReleaseManifest:
 
 
 __all__ = [
-    "CONTRACT_SCHEMA_VERSION",
     "CANDIDATE_ACTION_FEATURE_SCHEMA_VERSION",
     "CANDIDATE_ACTION_FIELD_SPECS",
+    "CONTRACT_SCHEMA_VERSION",
     "ENGAGEMENT_FEATURE_SCHEMA_VERSION",
     "ENGAGEMENT_FIELD_SPECS",
     "SNAPSHOT_FEATURE_SCHEMA_VERSION",

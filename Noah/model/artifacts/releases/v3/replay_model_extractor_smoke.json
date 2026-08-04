@@ -1,0 +1,139 @@
+{
+  "source": "data\\full\\processed\\full_replays.jsonl",
+  "evaluation_mode": "smoke",
+  "model_manifest": "model\\artifacts\\releases\\v2\\full_replay_value.manifest.json",
+  "model_components": {
+    "booster": true,
+    "bayesian_samples": 894,
+    "calibrator": true
+  },
+  "snapshot_rows": 100,
+  "model_has_booster": true,
+  "replay_metrics": {
+    "log_loss": 0.5072114594933591,
+    "brier": 0.1601689303606154,
+    "accuracy": 0.94,
+    "balanced_accuracy": 0.9373737373737374,
+    "expected_calibration_error": 0.3263711347586018,
+    "ct_win_rate": 0.45
+  },
+  "action_rows": 100,
+  "action_counts": {
+    "hold": 44,
+    "move": 56
+  },
+  "top_regions": [
+    [
+      "nav_area_2625",
+      40
+    ],
+    [
+      "nav_area_1931",
+      11
+    ],
+    [
+      "nav_area_1614",
+      5
+    ],
+    [
+      "nav_area_2091",
+      5
+    ],
+    [
+      "nav_area_3056",
+      4
+    ],
+    [
+      "nav_area_1588",
+      4
+    ],
+    [
+      "nav_area_1896",
+      3
+    ],
+    [
+      "nav_area_2303",
+      2
+    ],
+    [
+      "nav_area_1726",
+      2
+    ],
+    [
+      "nav_area_2109",
+      2
+    ]
+  ],
+  "action_examples": [
+    {
+      "state": "de_inferno|ct|nav_area_2625",
+      "scores": {
+        "hold": 0.8783464566929133,
+        "move": 0.12165354330708661
+      }
+    },
+    {
+      "state": "de_inferno|ct|nav_area_2625",
+      "scores": {
+        "hold": 0.8783464566929133,
+        "move": 0.12165354330708661
+      }
+    },
+    {
+      "state": "de_inferno|ct|nav_area_2625",
+      "scores": {
+        "hold": 0.8783464566929133,
+        "move": 0.12165354330708661
+      }
+    },
+    {
+      "state": "de_inferno|ct|nav_area_2625",
+      "scores": {
+        "hold": 0.8783464566929133,
+        "move": 0.12165354330708661
+      }
+    },
+    {
+      "state": "de_inferno|ct|nav_area_2625",
+      "scores": {
+        "hold": 0.8783464566929133,
+        "move": 0.12165354330708661
+      }
+    },
+    {
+      "state": "de_inferno|ct|nav_area_2625",
+      "scores": {
+        "hold": 0.8783464566929133,
+        "move": 0.12165354330708661
+      }
+    },
+    {
+      "state": "de_inferno|ct|nav_area_2625",
+      "scores": {
+        "hold": 0.8783464566929133,
+        "move": 0.12165354330708661
+      }
+    },
+    {
+      "state": "de_inferno|ct|nav_area_2625",
+      "scores": {
+        "hold": 0.8783464566929133,
+        "move": 0.12165354330708661
+      }
+    },
+    {
+      "state": "de_inferno|ct|nav_area_2625",
+      "scores": {
+        "hold": 0.8783464566929133,
+        "move": 0.12165354330708661
+      }
+    },
+    {
+      "state": "de_inferno|ct|nav_area_2625",
+      "scores": {
+        "hold": 0.8783464566929133,
+        "move": 0.12165354330708661
+      }
+    }
+  ]
+}

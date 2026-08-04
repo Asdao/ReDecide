@@ -72,7 +72,7 @@ python -m pip install -e ".[full]"
 For the standalone extractor:
 
 ```powershell
-python -m pip install -e extractor
+python -m pip install -e Noah/extractor
 ```
 
 ## Run the simulator
@@ -80,7 +80,7 @@ python -m pip install -e extractor
 From the repository root:
 
 ```powershell
-$env:PYTHONPATH = "model/src"
+$env:PYTHONPATH = "Noah/model/src;Noah/extractor/src;."
 python main.py
 ```
 
@@ -106,9 +106,9 @@ The documented training workflow is in [`docs/TRAINING.md`](docs/TRAINING.md).
 The main commands are:
 
 ```powershell
-$env:PYTHONPATH = "model/src"
-python -m training.train_snapshot_model
-python -m training.train_full_replay `
+$env:PYTHONPATH = "Noah/model/src;Noah/extractor/src;."
+python -m Noah.training.train_snapshot_model
+python -m Noah.training.train_full_replay `
   --database data/private/databases/cs2_replays_v2.sqlite `
   --output model/artifacts/releases/v2/full_replay_value.txt `
   --small-model-output model/artifacts/releases/v2/small_snapshot_value.json `
@@ -120,7 +120,7 @@ To test the saved artifacts against a database, parsed JSONL file, or native
 demo:
 
 ```powershell
-python -m training.test_replay_models `
+python -m Noah.training.test_replay_models `
   --database data/private/databases/cs2_replays_v2.sqlite `
   --manifest model/artifacts/releases/v2/full_replay_value.manifest.json `
   --limit 500
@@ -136,6 +136,17 @@ python Noah/training/test_harness.py data/private/processed/full_replays.jsonl
 The runner writes an adjacent `.analysis.json` report. Use
 `--record-index` for JSONL files containing multiple replays. It falls back to
 the bundled statistical components when native LightGBM is not installed.
+
+Application code accesses the complete harness through one function. It accepts
+a native demo, JSON/JSONL path, canonical extractor mapping, or normalized
+replay mapping:
+
+```python
+from Noah import analyze_replay
+
+report = analyze_replay("match.dem")
+print(report["summary"])
+```
 
 Load the deployable ensemble in Python:
 
@@ -153,22 +164,23 @@ smoke check.
 
 ## Repository layout
 
-- `model/src/cs2_sim/` — deterministic CS2 state, rules, simulator, and model code.
+- `Noah/model/src/cs2_sim/` — deterministic CS2 state, rules, simulator, and model code.
 - `training/` — feature extraction, replay storage, training, calibration, and
   evaluation scripts.
 - `extractor/` — standalone replay parsing and normalization package.
 - `agent-harness/` — TypeScript/Pi boundary with the bounded simulator tool.
-- `model/artifacts/` — generated model artifacts and metrics.
+- `Noah/model/artifacts/` — generated model artifacts and metrics.
 - `docs/` — detailed plans, training notes, reliability guidance, and target
   analysis architecture.
 - `training/tests/`, `model/tests/`, and `extractor/tests/` — tests grouped by ownership.
 
 ## Programmatic API
 
-Application code should use the object-oriented facades exported by each package:
+Application code should use the public facades exported by each package:
 
+- `Noah.analyze_replay` for the complete replay-analysis harness.
 - `replay_extractor.ReplayExtractor` for parsing and normalization.
-- `training.TrainingPipeline` for database preparation and training.
+- `Noah.training.TrainingPipeline` for database preparation and training.
 - `cs2_sim.ReplayModel` for runtime inference.
 
 The supported imports, lifecycle, error types, and examples are documented in

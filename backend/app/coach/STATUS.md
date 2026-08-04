@@ -1,6 +1,6 @@
 # AI Coach and Reliability Status
 
-Last verified: 2026-08-03 (Asia/Singapore)
+Last verified: 2026-08-04 (Asia/Singapore)
 
 Owner: Person 3 - AI Coach, Rubric, and Reliability
 
@@ -10,9 +10,14 @@ Owner: Person 3 - AI Coach, Rubric, and Reliability
 separate.**
 
 `backend/app/coach/noah_connector.py` accepts one normalized replay mapping and
-forwards it to Noah's deployed `ReplayModel.analyse_replay` facade. The folder
-still contains no provider adapter, versioned rubric, prompt assembly,
-structured-output parser, deterministic validators, or fixture coach.
+forwards it to Noah's package-root `analyze_replay` function. With no explicit
+model configuration, that function follows
+`Noah/model/artifacts/releases/current.json` and currently loads release `v4`.
+Native `.dem` parsing belongs to `Noah/training/test_harness.py` and the
+replacement-extractor adapter; the backend connector intentionally receives
+normalized JSON only. The folder still contains no provider adapter, versioned
+rubric, prompt assembly, structured-output parser, deterministic validators, or
+fixture coach.
 
 ## Required input and output
 
@@ -22,6 +27,140 @@ structured-output parser, deterministic validators, or fixture coach.
 - Model: one pretrained provider model; no training or fine-tuning from scratch
 - Checks: schema, evidence IDs, future language/timestamps, explicit
   contradictions, confidence cap, and abstention
+
+### Model I/O format
+
+The following is the logical provider boundary for the planned RE:DECIDE coach.
+It is not the current Noah connector request shape and is not yet an executable
+schema in `backend/app/coach/`.
+
+Model input is one JSON prompt envelope/.demo file:
+
+```json
+{
+  "decision_packet": {
+    "schema_version": "1.0",
+    "decision_id": "match-round-player-tick",
+    "match_id": "string",
+    "map": "de_mirage",
+    "round_number": 7,
+    "player": "PlayerName",
+    "decision_type": "POST_CONTACT_RESET",
+    "decision_open_tick": 12345,
+    "decision_open_seconds": 96.45,
+    "action_close_tick": 12665,
+    "known_before_decision": [],
+    "observed_action": {},
+    "unknowns": [],
+    "data_quality": {"score": 0.86, "warnings": []}
+  },
+  "intent": {
+    "tag": "TAKE_DUEL",
+    "text": "I thought the enemy was reloading"
+  },
+  "rubric": {
+    "version": "0.1",
+    "content": "versioned coaching rubric text or YAML"
+  },
+  "few_shot_examples": []
+}
+```
+
+Input rules:
+
+- `decision_packet` is the only game evidence. The raw `.dem`, full event log,
+  round winner, and anything after `action_close_tick` are excluded.
+- `intent` is the player's stated intent, not a fact asserted by the parser.
+- `few_shot_examples` contains zero to two reviewed examples using the same
+  schema.
+- The provider must not generate or receive `checks`; validators compute those
+  fields after parsing the response.
+
+The model response must be JSON matching the frozen `DecisionCard` shape:
+
+```json
+{
+  "report_type": "combined_replay_analysis",
+  "schema_version": "replay_analysis_v1",
+  "source": "fixture.dem",
+  "map_name": "de_mirage",
+  "summary": {
+    "moment_count": 4,
+    "kill_count": 4,
+    "kill_analysis_count": 4,
+    "least_risk_fallback_count": 4,
+    "least_risk_candidate_count": 4,
+    "least_risk_usable_count": 0,
+    "decision_classes": {
+      "insufficient_evidence": 4
+    },
+    "probability_decision_classes": {
+      "insufficient_evidence": 4
+    },
+    "recommendations_are_counterfactual_estimates": true,
+    "probability_labels_are_thresholded_estimates": true,
+    "candidate_model_type": "full_lightgbm_blended_with_small_statistical"
+  },
+  "kill_analysis": [
+    {
+      "kill_number": 1,
+      "round_num": 1,
+      "tick": 64,
+      "time_seconds": 1.0,
+      "event_id": "event-000001",
+      "attacker_id": "ct1",
+      "victim_id": "t1",
+      "weapon": "m4a1",
+      "observed_action": "hold",
+      "recommended_action": "hold",
+      "recommendation_supported": false,
+      "recommendation_sample_count": 104,
+      "recommendation_support_level": "backoff",
+      "recommendation_support_reason": "high_entropy",
+      "least_death_risk_action": "hold",
+      "least_death_probability": 0.145985401459854,
+      "least_death_round_loss_probability_proxy": 0.145985401459854,
+      "least_death_is_proxy": true,
+      "least_death_risk_upper_bound": 0.19542941544969175,
+      "least_death_risk_support": 135,
+      "least_death_risk_supported": false,
+      "least_death_risk_status": "unsupported_candidate_state",
+      "least_death_risk_source": "round_loss_proxy_posterior",
+      "round_win_probability": 0.14458186005395898,
+      "round_loss_probability_proxy": 0.855418139946041,
+      "probability_of_improvement": null,
+      "expected_regret": null,
+      "probability_decision_class": "insufficient_evidence",
+      "estimate_type": "simulator_action_value_estimate"
+    }
+  ]
+}
+```
+
+`checks` is shown here to document the final API output, but it is appended or
+overwritten by deterministic backend validation. A response with invalid JSON,
+unknown evidence IDs, forbidden future information, contradictions, or weak
+evidence is rejected, repaired at most once when appropriate, or converted to
+`INSUFFICIENT_EVIDENCE`.
+
+### Current Noah connector I/O
+
+The implemented boundary is different: `NoahCoachConnector.analyse_json()`
+accepts a normalized replay object such as the checked-in
+`backend/tests/fixtures/coach_replay.json` and returns a report with
+`report_type: "combined_replay_analysis"`. The report contains `full_match`,
+`moments`, `kill_analysis`, `summary`, model configuration, and probability /
+abstention metadata. Release v4 additionally exposes `decision_tick`,
+`decision_lead_seconds`, `coached_player_id`, `coached_player_role`,
+`coaching_utility`, and survival/death/kill/trade/damage/round-win
+probabilities on kill-analysis rows. It is a replay-analysis report, not a
+`DecisionCard`, and must not be sent to the frontend as the final coaching
+response.
+
+Engagement-window rows also retain `observed_action` as a canonical string and
+add `observed_action_family`, `observed_action_parameters`,
+`observed_action_confidence`, and `observed_action_evidence`. Parameter values
+such as `target_zone` and `utility_type` are not separate action classes.
 
 ## Existing work to review
 
@@ -35,29 +174,28 @@ training pipeline (`Noah/training/`). It is the correct implementation to
 reuse for RE:DECIDE, but it has not yet been wired to the frozen
 `DecisionPacket`/`DecisionCard` coach contract.
 
-### Legacy model probability behavior
+### Current v4 model probability behavior
 
-The existing `Noah/` implementation does not currently estimate a calibrated
-player-death probability for an arbitrary action sequence such as `A -> B -> C`.
-Its probability fields come from three distinct paths:
+Release `v4` has three related probability paths:
 
-- The candidate-action path scores one legal first action from a reconstructed
-  simulator state. The small model combines a Beta-smoothed observed-outcome
-  estimate (75%) with an action-frequency prior (25%). The optional full model
-  blends an 80% LightGBM score with the small-model score.
-- Candidate-action training labels define `success` as the player's team
-  winning the simulated round. The simulator forces the candidate first action
-  and then lets the policy choose subsequent actions. Therefore the analysis
-  field `death_probability = 1 - success_probability` is a proxy for simulated
-  round loss, not literal probability that the player dies.
-- The observed-engagement path estimates death from replay labels in a future
-  time window using a Beta-smoothed state key based on map, side, role, contact
-  type, weapon, and horizon. It does not receive an action sequence.
+- The full-match path predicts `P(CT wins the round | snapshot)` from the
+  replay-value LightGBM/Bayesian ensemble.
+- The engagement path is anchored one second before first damage. It uses three
+  seconds of pre-cutoff movement, health, armor, damage, place, and team-distance
+  history. Future-only labels train kill, death, survival, trade, damage, and
+  round-win heads. The statistical model reports exact or hierarchical-backoff
+  support; LightGBM is blended only when statistical support exists. Action
+  labels use `hold`, `peek`, `move_to_adjacent_zone`, `use_utility`, `plant`,
+  `defuse`, and `unknown`; target zones and utility types remain parameters.
+- For kill moments, the harness coaches the victim and scores legal observed
+  action alternatives using 35% round win, 25% survival, 15% kill, 10% trade,
+  10% damage, and 5% simulator value. Adding a learned action requires new
+  labeled windows and retraining, but not a separate model.
 
-Consequently, `A -> B -> C` is not learned as one sequence-level event. A true
-`P(death | A, B, C)` requires a sequence model or repeated fixed-action
-rollouts that count deaths across the complete sequence. This legacy behavior
-must not be presented as the frozen RE:DECIDE coaching contract.
+The engagement death head is an observational probability conditioned on the
+replay state and measured action, not causal proof of `P(death | A -> B -> C)`.
+The harness exposes support, uncertainty, and abstention fields and must not
+turn an unsupported estimate into a definitive coaching instruction.
 
 ### Internal data flow
 
@@ -72,16 +210,20 @@ The canonical implementation has three related inference paths:
    This returns `P(CT wins the round | snapshot)` plus Bayesian support and
    uncertainty. Each timeline point is scored independently; the harness can
    compare adjacent probabilities to report a swing.
-2. **Observed engagement windows.** The engagement extractor chooses a contact
-   anchor and builds a fixed future horizon such as one, two, or five seconds.
-   Features before the cutoff form a compact state key: map, side, role, anchor
-   type, weapon, and horizon. Future replay labels are used only to train the
-   descriptive outcomes. The runtime uses Beta-smoothed local counts backed off
-   toward global counts, and may blend an optional LightGBM engagement head.
-   This path reports observed kill, death, trade, and post-kill survival rates;
-   it does not infer whether an unobserved alternative action would have been
-   better.
-3. **Candidate-action analysis.** The harness selects important replay moments,
+2. **Observed engagement windows.** The engagement extractor places the
+   decision cutoff one second before first damage and builds a five-second
+   future label horizon. Three seconds of pre-cutoff movement, health, armor,
+   damage, place, and teammate/enemy distance form the input history. Future
+   replay labels train kill, death, survival, trade, damage, and round-win
+   heads. The runtime uses Beta-smoothed exact/hierarchical support and may
+   blend an optional LightGBM engagement head. Action labels include a
+   canonical name, family, parameters, confidence, and evidence.
+3. **Action-conditioned coaching.** For kill moments, the harness coaches the
+   victim, measures the observed post-cutoff canonical action and parameters,
+   and scores legal alternatives with the multi-head probabilities plus a
+   small simulator value. It reports a directional label only when support and
+   posterior uncertainty thresholds pass.
+4. **Candidate-action analysis.** The harness selects important replay moments,
    reconstructs a simulator `GameState`, finds legal actions, and scores each
    candidate for the identified player. The small statistical model uses a
    state/action count prior plus observed binary outcomes. The full action model
@@ -98,21 +240,30 @@ round-value estimate rather than a per-event death hazard.
 
 ### Backend connector
 
-The backend coach boundary can call the deployed analysis without importing
-the harness internals:
+The backend coach boundary can call the deployed analysis through Noah's one
+public harness function without importing harness internals:
 
 ```python
 from backend.app.coach.noah_connector import NoahCoachConnector
 
 connector = NoahCoachConnector()
-report = connector.analyse(normalized_replay)
+report = connector.analyse(
+    normalized_replay,
+    max_moments=25,
+    sample_every=8,
+    min_support=5,
+)
 ```
 
 `analyse_json` is available for a JSON request body, and `analyze` is an
 American-English alias. The connector validates that the returned object is a
-`combined_replay_analysis` report and wraps load/runtime failures in the stable
+`combined_replay_analysis` report and wraps facade/runtime failures in the stable
 `NoahCoachError`. It does not convert the report into a `DecisionCard` or make
-provider calls.
+provider calls. The request must already be a normalized replay mapping with
+`header`, `rounds`, `ticks`, `kills`, `damages`, and `bomb` fields; use
+`NoahCoachConnector.analyse_json()` for a JSON request body. Native `.dem`
+files must first go through `Noah/training/test_harness.py` or the replacement
+extractor.
 
 The harness then compares the observed action with the best supported candidate.
 Its estimated regret is:
@@ -134,6 +285,13 @@ High-entropy rankings, missing labelled outcome counts, and constant
 within-state rollout outcomes also abstain; action-observation support alone
 is not treated as a success/failure sample size.
 
+For a kill moment, the primary v4 comparison is action-conditioned coaching
+utility. The row also includes the selected candidate's
+`engagement_death_head`, `survival_probability`, `kill_probability`,
+`trade_probability`, `damage_probability`, and `round_win_probability`. A
+`good`, `bad`, or `neutral` label is probabilistic and thresholded; consumers
+must display `probability_abstention` when its `abstained` flag is true.
+
 ## Important paths
 
 ```text
@@ -146,8 +304,18 @@ data/eval/model/**
 
 The connector tests are in `backend/tests/test_coach_noah_connector.py` and
 cover forwarding, JSON input, invalid input, stable configuration errors, and
-the real checked-in fixture flowing through the deployed runtime.
+the real checked-in fixture flowing through the deployed runtime. The default
+path is verified to call `Noah.analyze_replay`; injected runtimes remain
+available for deterministic unit tests.
 The RE:DECIDE coach contract itself still has no fixture tests in the new path.
+
+Latest focused validation:
+
+```powershell
+uv run pytest backend/tests/test_coach_noah_connector.py Noah/training/tests/test_test_harness.py -q
+```
+
+Result: 16 passed on 2026-08-04.
 
 The user-facing Noah smoke runner is:
 
@@ -162,6 +330,22 @@ data:
 ```powershell
 python Noah/training/test_harness.py backend/tests/fixtures/coach_full_replay.json --all-moments --sample-every 1 --output data/private/processed/coach_fixture.analysis.json
 ```
+
+For a downloaded native demo, the replacement extractor is called in memory
+by the same runner:
+
+```powershell
+python Noah/training/test_harness.py `
+  data/private/benchmark_cache/demos/shard-europe-1574a6a2/2393084/3dmax-vs-falcons-m2-ancient.dem `
+  --all-moments `
+  --sample-every 1 `
+  --version v4 `
+  --output data/private/processed/ancient-match.analysis.json
+```
+
+On the current workstation this example takes roughly 30-40 seconds. The
+output remains the same combined JSON report shape, with v4 coaching fields
+added to `moments` and `kill_analysis`.
 
 The backend boundary can use that same object directly, or decode a request
 body with `NoahCoachConnector.analyse_json(payload)`. The fixture is tiny, so
