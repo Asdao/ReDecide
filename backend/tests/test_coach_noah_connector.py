@@ -47,7 +47,7 @@ class NoahCoachConnectorTests(unittest.TestCase):
             "moments": [],
             "summary": {"moment_count": 0},
         }
-        with patch("Noah.analyze_replay", return_value=expected) as analyze:
+        with patch("Blackbox.analyze_replay", return_value=expected) as analyze:
             report = NoahCoachConnector().analyse(replay, max_moments=2)
 
         self.assertEqual(report, expected)
@@ -62,7 +62,7 @@ class NoahCoachConnectorTests(unittest.TestCase):
             "moments": [],
             "summary": {},
         }
-        with patch("Noah.analyze_replay", return_value=expected) as analyze:
+        with patch("Blackbox.analyze_replay", return_value=expected) as analyze:
             report = NoahCoachConnector().analyse_outcome_blind(replay, max_moments=2)
 
         self.assertEqual(report, expected)

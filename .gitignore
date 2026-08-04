@@ -4,6 +4,22 @@ __pycache__/
 *.part
 *.egg-info/
 .env
+
+# Local Python environments and test caches.
+.venv/
+.venv-wsl/
+venv/
+.pytest_cache/
+
+# Node projects live under frontend/ and agent-harness/. Ignore dependency
+# trees everywhere and accidental package-manager files created at repo root.
+node_modules/
+.pnpm-store/
+/package.json
+/package-lock.json
+/pnpm-lock.yaml
+/pnpm-workspace.yaml
+
 # Public metadata, map assets, manifests, schemas, and sanitized fixtures may
 # be uploaded.  Raw demos, parsed replays, databases, features, and user
 # uploads stay private and are ignored by Git.
@@ -31,8 +47,8 @@ data/eval/human/*
 !data/eval/human/.gitkeep
 
 # Keep the deployable replay-value model bundle available to users after clone.
-!Noah/model/artifacts/full_replay_value.txt
-!Noah/model/artifacts/full_replay_value.txt.json
-!Noah/model/artifacts/full_replay_value.manifest.json
-!Noah/model/artifacts/full_replay_calibrator.json
-!Noah/model/artifacts/small_snapshot_value.json
+!Blackbox/model/artifacts/full_replay_value.txt
+!Blackbox/model/artifacts/full_replay_value.txt.json
+!Blackbox/model/artifacts/full_replay_value.manifest.json
+!Blackbox/model/artifacts/full_replay_calibrator.json
+!Blackbox/model/artifacts/small_snapshot_value.json

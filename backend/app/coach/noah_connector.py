@@ -1,6 +1,6 @@
-"""Backend connector for Noah's deployed replay-analysis runtime.
+"""Backend connector for Blackbox's deployed replay-analysis runtime.
 
-The coach boundary accepts one normalized replay mapping and returns Noah's
+The coach boundary accepts one normalized replay mapping and returns Blackbox's
 combined analysis report.  It deliberately does not invent a provider prompt
 or a RE:DECIDE ``DecisionCard``; those are separate contract layers.
 """
@@ -21,7 +21,7 @@ class NoahCoachError(RuntimeError):
 
 
 class NoahCoachConnector:
-    """Call the deployed Noah harness from the backend coach boundary."""
+    """Call the deployed Blackbox harness from the backend coach boundary."""
 
     def __init__(
         self,
@@ -43,7 +43,7 @@ class NoahCoachConnector:
             if self._runtime is not None:
                 report = self._runtime.analyse_replay(replay, **kwargs)
             else:
-                from Noah import analyze_replay
+                from Blackbox import analyze_replay
 
                 options = dict(kwargs)
                 if self._model_config is not None:
@@ -54,7 +54,7 @@ class NoahCoachConnector:
         except Exception as exc:
             raise NoahCoachError(f"could not analyze replay for coaching: {exc}") from exc
         if not isinstance(report, dict) or report.get("report_type") != "combined_replay_analysis":
-            raise NoahCoachError("Noah returned an invalid combined replay-analysis report")
+            raise NoahCoachError("Blackbox returned an invalid combined replay-analysis report")
         return report
 
     def analyze(self, replay: Mapping[str, Any], **kwargs: Any) -> dict[str, Any]:
@@ -73,7 +73,7 @@ class NoahCoachConnector:
         """
 
         report = self.analyse(replay, **kwargs)
-        from Noah.training.analysis_report import outcome_blind_report
+        from Blackbox.training.analysis_report import outcome_blind_report
 
         return outcome_blind_report(report)
 

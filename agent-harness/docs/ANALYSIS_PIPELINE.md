@@ -39,7 +39,7 @@ src/analysis/      timeline, pivotal-event detection, state diff, win score
 src/pipeline/      demo -> replay -> report orchestration
 src/tools/         policy-checked Pi adapters around bounded use cases
 skills/            reviewed instructions for explaining reports
-web/ or server/    future HTTP/SSE wrapper; no simulator logic
+web/ or server/    HTTP/SSE transport; no simulator logic
 ```
 
 Application code should call `ReplayModel`, `ReplayExtractor`, and
@@ -54,7 +54,7 @@ requires one.
 1. `run_demo` creates a deterministic replay from `{seed, scenario, policy}` and stores or returns a `replay_id`.
 2. `build_timeline` converts simulator events into chronological, user-facing events with state snapshots or references to snapshots.
 3. `analyze_replay` indexes the first damage contact for each `(round, player)` pair. Each candidate carries a stable `decision_id`, the pre-contact decision window, opponent/team identity, observed action, and evidence. This avoids selecting only deaths and therefore preserves successful reset decisions.
-4. The UI filters candidates by the original `player_id` (or shows all players), then can request the same report with `decision_id` to select one window.
+4. The UI filters candidates by the original `player_id` (or shows all players), then sends that player to `POST /api/analysis/{analysis_id}/run`.
 5. At the Pi boundary, the bridge replaces player IDs/names with replay-local aliases and turns decision IDs into opaque references. A follow-up Pi tool call is translated back locally; original identifiers remain in the backend/UI only.
 6. The shared release-backed model produces bounded team win-estimator points. Pi uses the outcome-blind report and the analysis skill to write a full-sentence explanation; the webapp keeps the complete replay and event markers for replay rendering.
 
@@ -265,12 +265,38 @@ Do not put the pipeline algorithm in `SKILL.md`, and do not ask Pi to calculate 
 
 ## FastAPI usage
 
-The backend exposes a two-stage job. The replay is accepted once; selecting a
-player references the prepared job and never reparses the source:
+The normal native-demo path uses two FastAPI applications and one shared
+replay ID. Replay FastAPI parses the `.dem` once and writes `manifest.json`,
+`coaching.json`, and `visualization.json`; Coaching FastAPI consumes only the
+coaching branch:
 
 ```text
-POST /api/analysis/prepare       { replay: <processed replay JSON> }
-  <- { analysis_id, status, players_url, events_url, result_url }
+POST /api/replay/upload                 multipart .dem
+  <- safe player/map manifest, replay_id
+POST /api/analysis/prepare              { replay_id }
+  <- analysis_id
+GET  /api/analysis/{id}                 poll players_available
+GET  /api/analysis/{id}/players         all players and decision_ids
+POST /api/analysis/{id}/run             { player_id }
+GET  /api/analysis/{id}/result          selected-player UI result
+GET  /api/replay/{replay_id}/json       full map/events/positions after unlock
+```
+
+The compatibility path accepts normalized JSON directly. It does not create
+a Replay API artifact or unlock a visualization file:
+
+```text
+POST /api/analysis/prepare              { replay }
+```
+
+The replay is accepted once; selecting a player references the prepared job
+and never reparses the source:
+
+```text
+POST /api/analysis/prepare       { replay_id: <shared ID> }
+                                  or { replay: <processed replay JSON> }
+  <- { analysis_id, status, players_available, result_available,
+       logs_url, events_url, result_url }
 
 GET /api/analysis/{id}/players   selector-ready player names and IDs
 GET /api/analysis/{id}/events    SSE log/progress stream
@@ -285,7 +311,16 @@ selected player. The `win_estimator` remains global to preserve the distinct
 CT/T team context. The FastAPI adapter is in `backend/app/main.py`; its
 transport-neutral job state and JSONL logging are in
 `backend/app/orchestration.py`. Keep API keys, replay storage, and model calls
-on the server.
+on the server. The default service constructs
+`backend.app.coach.PiCoachAdapter`. For each Pi process it preserves
+deployment environment variables and, when no explicit `HARNESS_ENV_FILE` is
+configured, points the harness at the repository-root `.env`. The adapter
+receives the selected anonymized decision packet; it does not give Pi a replay
+path or a replay-analysis tool.
+
+See [`backend/app/API.md`](../../backend/app/API.md) and
+[`backend/replay_api/API.md`](../../backend/replay_api/API.md) for complete
+JSON output variables, status codes, and artifact unlock behavior.
 
 ## Implementation order
 
@@ -295,6 +330,7 @@ on the server.
 4. Add the replay store and bounded `run_demo` bridge operation if the webapp needs opaque replay IDs instead of local paths.
 5. Extend the current composite `analyze_replay` tool with persisted replay IDs and richer state diffs after the UI contract is fixed.
 6. Add `skills/analyze-cs2-round/` instructions for the structured report format.
-7. Add the HTTP/SSE wrapper without moving domain logic into the web layer.
+7. Extend the existing HTTP/SSE transport without moving domain logic into the
+   web layer.
 
 Keep the first release narrow: one replay, one pivotal event, one team perspective, and a bounded evidence window. Expand to multiple events or counterfactual simulations only after the basic report is deterministic and reviewable.

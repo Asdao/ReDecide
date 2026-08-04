@@ -20,7 +20,7 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, PlainTextResponse, StreamingResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from backend.app.contracts import (
     APIErrorCode,
@@ -34,6 +34,7 @@ from backend.app.contracts import (
     SamplesResponse,
 )
 from backend.app.errors import IntegrationError
+from backend.app.coach import PiCoachAdapter
 from backend.app.orchestration import (
     AnalysisNotFound,
     AnalysisNotReady,
@@ -46,7 +47,18 @@ from backend.app.orchestration import (
 class PrepareRequest(BaseModel):
     """Internal replay-pipeline request; not a frozen product contract."""
 
-    replay: dict[str, Any] = Field(description="Normalized replay JSON object")
+    replay: dict[str, Any] | None = Field(
+        default=None, description="Normalized replay JSON object"
+    )
+    replay_id: str | None = Field(
+        default=None, description="Replay artifact created by the Replay API"
+    )
+
+    @model_validator(mode="after")
+    def require_exactly_one_source(self) -> "PrepareRequest":
+        if (self.replay is None) == (self.replay_id is None):
+            raise ValueError("provide exactly one of replay or replay_id")
+        return self
 
 
 class PlayerSelectionRequest(BaseModel):
@@ -147,13 +159,13 @@ def create_fixture_app(
 def create_app(*, service: AnalysisService | None = None) -> FastAPI:
     """Create the internal asynchronous replay-job transport.
 
-    This compatibility factory preserves the teammate's pipeline API and its
-    tests.  It must not be used as the browser contract until its output is
-    adapted to the frozen ``DecisionPacket`` and ``DecisionCard`` interfaces.
+    The transport accepts either normalized replay JSON or a ``replay_id``
+    created by the upload API. Tests may inject a deterministic service;
+    otherwise the live Pi coach adapter is used.
     """
 
-    analysis_app = FastAPI(title="RE:DECIDE Replay Pipeline API", version="0.1.0")
-    analysis = service or AnalysisService()
+    analysis_app = FastAPI(title="RE:DECIDE Replay Pipeline API", version="1.0")
+    analysis = service or AnalysisService(coach_adapter=PiCoachAdapter())
 
     @analysis_app.get("/api/health")
     def health() -> dict[str, str]:
@@ -161,7 +173,23 @@ def create_app(*, service: AnalysisService | None = None) -> FastAPI:
 
     @analysis_app.post("/api/analysis/prepare", status_code=202)
     def prepare(request: PrepareRequest) -> dict[str, Any]:
-        return analysis.prepare(request.replay)
+        if request.replay_id:
+            from backend.replay_api.store import load_coaching_replay
+
+            try:
+                replay = load_coaching_replay(request.replay_id)
+            except (FileNotFoundError, ValueError) as exc:
+                raise HTTPException(
+                    status_code=404,
+                    detail="replay coaching artifact not found",
+                ) from exc
+        elif request.replay is not None:
+            replay = request.replay
+        else:
+            raise HTTPException(status_code=422, detail="replay or replay_id is required")
+        if request.replay_id:
+            return analysis.prepare(replay, source_replay_id=request.replay_id)
+        return analysis.prepare(replay)
 
     @analysis_app.get("/api/analysis/{analysis_id}")
     def metadata(analysis_id: str) -> dict[str, Any]:
@@ -184,11 +212,17 @@ def create_app(*, service: AnalysisService | None = None) -> FastAPI:
         analysis_id: str, request: PlayerSelectionRequest
     ) -> dict[str, Any]:
         try:
-            return analysis.select_player(
+            result = analysis.select_player(
                 analysis_id,
                 player_id=request.player_id,
                 player_name=request.player_name,
             )
+            replay_id = analysis.source_replay_id(analysis_id)
+            if replay_id:
+                from backend.replay_api.store import unlock_visualization
+
+                unlock_visualization(replay_id)
+            return result
         except AnalysisNotFound as exc:
             raise HTTPException(status_code=404, detail="analysis job not found") from exc
         except AnalysisNotReady as exc:

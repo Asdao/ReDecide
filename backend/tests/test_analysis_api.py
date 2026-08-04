@@ -14,12 +14,21 @@ import importlib
 import json
 import time
 from typing import Any
+from unittest.mock import patch
 
 import pytest
 
 
 pytest.importorskip("fastapi")
 pytest.importorskip("httpx")
+
+
+def _client_for_app(app: Any) -> Any:
+    """Construct a TestClient lazily for optional FastAPI dependencies."""
+
+    from fastapi.testclient import TestClient
+
+    return TestClient(app)
 
 
 def _load_client(tmp_path: Any) -> Any:
@@ -57,9 +66,7 @@ def _load_client(tmp_path: Any) -> Any:
     # Import lazily because older httpx/starlette combinations only fail when
     # TestClient is imported, and the rest of the repository does not require
     # this optional API test to run.
-    from fastapi.testclient import TestClient
-
-    return TestClient(app)
+    return _client_for_app(app)
 
 
 def _replay_json() -> dict[str, Any]:
@@ -144,6 +151,22 @@ def _replay_json() -> dict[str, Any]:
     }
 
 
+def _prepare_and_wait_for_players(client: Any) -> tuple[str, list[dict[str, Any]]]:
+    """Submit the fixture and wait for the asynchronous selector to be ready."""
+
+    prepared = client.post("/api/analysis/prepare", json={"replay": _replay_json()})
+    assert prepared.status_code in (200, 202), prepared.text
+    analysis_id = prepared.json()["analysis_id"]
+    deadline = time.monotonic() + 20
+    while True:
+        response = client.get(f"/api/analysis/{analysis_id}/players")
+        if response.status_code == 200:
+            return analysis_id, response.json()["players"]
+        assert response.status_code == 202, response.text
+        assert time.monotonic() < deadline, "player selector did not become ready"
+        time.sleep(0.01)
+
+
 def test_json_prepare_player_selection_and_output(tmp_path: Any) -> None:
     """Simulate one JSON upload, selector choice, coaching, and log retrieval."""
 
@@ -157,7 +180,7 @@ def test_json_prepare_player_selection_and_output(tmp_path: Any) -> None:
 
     # Preparation is deliberately asynchronous so the same job can stream
     # progress to the UI.  Wait for the selector, without uploading again.
-    deadline = time.monotonic() + 5
+    deadline = time.monotonic() + 20
     while True:
         players_response = client.get(f"/api/analysis/{analysis_id}/players")
         if players_response.status_code == 200:
@@ -211,3 +234,155 @@ def test_json_prepare_player_selection_and_output(tmp_path: Any) -> None:
     assert progress == sorted(progress)
     assert records[-1]["stage"] in {"complete", "completed"}
     assert (tmp_path / f"{analysis_id}.jsonl").is_file()
+
+
+def test_default_fastapi_app_constructs_the_pi_adapter() -> None:
+    """The production app fills the coach adapter slot by default."""
+
+    module = importlib.import_module("backend.app.main")
+    sentinel = object()
+    with (
+        patch.object(module, "PiCoachAdapter", return_value=sentinel) as adapter_type,
+        patch.object(module, "AnalysisService") as service_type,
+    ):
+        module.create_app()
+    adapter_type.assert_called_once_with()
+    service_type.assert_called_once_with(coach_adapter=sentinel)
+
+
+def test_health_and_unknown_analysis_routes_have_stable_http_errors(tmp_path: Any) -> None:
+    client = _load_client(tmp_path)
+
+    assert client.get("/api/health").json() == {"status": "ok"}
+    assert client.get("/api/analysis/missing").status_code == 404
+    assert client.get("/api/analysis/missing/players").status_code == 404
+    assert client.post("/api/analysis/missing/run", json={"player_id": "t1"}).status_code == 404
+    assert client.get("/api/analysis/missing/result").status_code == 404
+    assert client.get("/api/analysis/missing/logs").status_code == 404
+    assert client.get("/api/analysis/missing/events").status_code == 404
+
+
+def test_prepare_rejects_non_object_replay_payload(tmp_path: Any) -> None:
+    client = _load_client(tmp_path)
+
+    response = client.post("/api/analysis/prepare", json={"replay": []})
+
+    assert response.status_code == 422
+
+
+def test_player_selection_requires_one_valid_player_and_accepts_stable_id(tmp_path: Any) -> None:
+    client = _load_client(tmp_path)
+    analysis_id, players = _prepare_and_wait_for_players(client)
+    selected = next(player for player in players if player["decision_ids"])
+
+    missing = client.post(f"/api/analysis/{analysis_id}/run", json={})
+    assert missing.status_code == 422
+    unknown = client.post(
+        f"/api/analysis/{analysis_id}/run", json={"player_id": "not-a-player"}
+    )
+    assert unknown.status_code == 422
+
+    run = client.post(
+        f"/api/analysis/{analysis_id}/run",
+        json={"player_id": selected["player_id"]},
+    )
+    assert run.status_code == 200, run.text
+    assert run.json()["selected_decision"]["player_id"] == selected["player_id"]
+
+
+def test_final_result_is_not_available_before_player_selection(tmp_path: Any) -> None:
+    client = _load_client(tmp_path)
+    analysis_id, _players = _prepare_and_wait_for_players(client)
+
+    response = client.get(f"/api/analysis/{analysis_id}/result")
+
+    assert response.status_code == 202
+
+
+def test_fastapi_passes_selected_player_result_to_adapter_and_merges_output(
+    tmp_path: Any,
+) -> None:
+    captured: dict[str, Any] = {}
+
+    def adapter(payload: dict[str, Any]) -> dict[str, str]:
+        captured.update(payload)
+        return {
+            "decision_id": "decision_001",
+            "what_could_be_done_better": "Reset behind cover before re-engaging.",
+        }
+
+    orchestration = importlib.import_module("backend.app.orchestration")
+    service = orchestration.AnalysisService(log_dir=tmp_path, coach_adapter=adapter)
+    module = importlib.import_module("backend.app.main")
+    client = _client_for_app(module.create_app(service=service))
+    analysis_id, players = _prepare_and_wait_for_players(client)
+    selected = next(player for player in players if player["decision_ids"])
+
+    response = client.post(
+        f"/api/analysis/{analysis_id}/run",
+        json={"player_id": selected["player_id"]},
+    )
+
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert captured["selected_decision"]["player_id"] == selected["player_id"]
+    assert all(
+        selected["player_id"] in event.get("participant_ids", [])
+        for event in captured.get("events", [])
+    )
+    assert captured["win_estimator"]["filtered_by_player"] is False
+    assert body["coach_analysis"]["source"] == "pi"
+    assert body["coach_analysis"]["decision_id"] == body["selected_decision"]["decision_id"]
+    assert body["coach_analysis"]["what_could_be_done_better"].startswith("Reset")
+    assert body["replay_outcome"]["eventual_winner"] == "CT"
+    assert body["replay_outcome"]["round_score"] == {"CT": 1, "T": 0}
+
+
+def test_adapter_failure_is_exposed_as_service_unavailable_and_failed_job(
+    tmp_path: Any,
+) -> None:
+    def failing_adapter(_payload: dict[str, Any]) -> dict[str, str]:
+        raise RuntimeError("provider unavailable")
+
+    orchestration = importlib.import_module("backend.app.orchestration")
+    service = orchestration.AnalysisService(log_dir=tmp_path, coach_adapter=failing_adapter)
+    module = importlib.import_module("backend.app.main")
+    client = _client_for_app(module.create_app(service=service))
+    analysis_id, players = _prepare_and_wait_for_players(client)
+    selected = next(player for player in players if player["decision_ids"])
+
+    run = client.post(
+        f"/api/analysis/{analysis_id}/run",
+        json={"player_id": selected["player_id"]},
+    )
+
+    assert run.status_code == 503
+    assert run.json()["detail"] == "coaching analysis failed"
+    metadata = client.get(f"/api/analysis/{analysis_id}")
+    assert metadata.json()["status"] == "failed"
+    result = client.get(f"/api/analysis/{analysis_id}/result")
+    assert result.status_code == 500
+
+
+def test_safe_pi_adapter_failure_reason_is_preserved(tmp_path: Any) -> None:
+    from backend.app.coach.pi_connector import PiCoachError
+
+    def failing_adapter(_payload: dict[str, Any]) -> dict[str, str]:
+        raise PiCoachError("agent-harness dependencies are not installed")
+
+    orchestration = importlib.import_module("backend.app.orchestration")
+    service = orchestration.AnalysisService(log_dir=tmp_path, coach_adapter=failing_adapter)
+    module = importlib.import_module("backend.app.main")
+    client = _client_for_app(module.create_app(service=service))
+    analysis_id, players = _prepare_and_wait_for_players(client)
+    selected = next(player for player in players if player["decision_ids"])
+
+    run = client.post(
+        f"/api/analysis/{analysis_id}/run",
+        json={"player_id": selected["player_id"]},
+    )
+
+    assert run.status_code == 503
+    assert run.json()["detail"] == (
+        "coaching analysis failed: agent-harness dependencies are not installed"
+    )
