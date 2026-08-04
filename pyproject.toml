@@ -5,6 +5,7 @@ requires-python = ">=3.12"
 dependencies = [
     "fastapi>=0.115,<1",
     "pydantic>=2.7,<3",
+    "python-multipart>=0.0.9,<1",
 ]
 
 [project.optional-dependencies]
@@ -18,18 +19,18 @@ build-backend = "setuptools.build_meta"
 
 [tool.setuptools]
 packages = [
-    "Noah",
-    "Noah.training",
-    "Noah.training.tests",
+    "Blackbox",
+    "Blackbox.training",
+    "Blackbox.training.tests",
     "replay_extractor",
     "cs2_sim",
     "cs2_sim.core",
     "cs2_sim.core.model",
     "cs2_sim.models",
 ]
-package-dir = {"Noah" = "Noah", "replay_extractor" = "Noah/extractor/src/replay_extractor", "cs2_sim" = "Noah/model/src/cs2_sim"}
+package-dir = {"Blackbox" = "Blackbox", "replay_extractor" = "Blackbox/extractor/src/replay_extractor", "cs2_sim" = "Blackbox/model/src/cs2_sim"}
 
 [tool.pytest.ini_options]
-testpaths = ["backend/tests", "Noah/tests", "Noah/model/tests", "Noah/training/tests", "Noah/extractor/tests", "Noah/backend demo", "agent-harness/tests"]
+testpaths = ["backend/tests", "Blackbox/tests", "Blackbox/model/tests", "Blackbox/training/tests", "Blackbox/extractor/tests", "Blackbox/backend demo", "agent-harness/tests"]
 addopts = ["--import-mode=importlib"]
-pythonpath = ["Noah/model/src", "Noah/extractor/src", "."]
+pythonpath = ["Blackbox/model/src", "Blackbox/extractor/src", "."]

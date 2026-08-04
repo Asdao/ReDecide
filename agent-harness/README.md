@@ -23,7 +23,7 @@ Override paths with `--bridge`, `--cwd`, `--python`, and `--skill-dir`.
 
 The bridge is a transport boundary, not the Python domain API. Python callers
 should use the package-root facades documented in
-[`../docs/MODULE_API.md`](../Noah/docs/MODULE_API.md); the harness invokes only the
+[`../docs/MODULE_API.md`](../Blackbox/docs/MODULE_API.md); the harness invokes only the
 bounded bridge contract.
 
 Model selection and credentials can be supplied through environment variables

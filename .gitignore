@@ -30,8 +30,8 @@ data/eval/human/*
 !data/eval/human/.gitkeep
 
 # Keep the deployable replay-value model bundle available to users after clone.
-!Noah/model/artifacts/full_replay_value.txt
-!Noah/model/artifacts/full_replay_value.txt.json
-!Noah/model/artifacts/full_replay_value.manifest.json
-!Noah/model/artifacts/full_replay_calibrator.json
-!Noah/model/artifacts/small_snapshot_value.json
+!Blackbox/model/artifacts/full_replay_value.txt
+!Blackbox/model/artifacts/full_replay_value.txt.json
+!Blackbox/model/artifacts/full_replay_value.manifest.json
+!Blackbox/model/artifacts/full_replay_calibrator.json
+!Blackbox/model/artifacts/small_snapshot_value.json

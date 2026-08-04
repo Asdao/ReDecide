@@ -6,7 +6,7 @@ import json
 import time
 from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from backend.app.coach import PiCoachAdapter
 from backend.app.orchestration import (
@@ -24,7 +24,14 @@ except ImportError as exc:  # pragma: no cover - dependency boundary
 
 
 class PrepareRequest(BaseModel):
-    replay: dict[str, Any] = Field(description="Normalized replay JSON object")
+    replay: dict[str, Any] | None = Field(default=None, description="Normalized replay JSON object")
+    replay_id: str | None = Field(default=None, description="Replay artifact created by the Replay API")
+
+    @model_validator(mode="after")
+    def require_exactly_one_source(self) -> "PrepareRequest":
+        if (self.replay is None) == (self.replay_id is None):
+            raise ValueError("provide exactly one of replay or replay_id")
+        return self
 
 
 class PlayerSelectionRequest(BaseModel):
@@ -42,7 +49,20 @@ def create_app(*, service: AnalysisService | None = None) -> FastAPI:
 
     @app.post("/api/analysis/prepare", status_code=202)
     def prepare(request: PrepareRequest) -> dict[str, Any]:
-        return analysis.prepare(request.replay)
+        if request.replay_id:
+            from backend.replay_api.store import load_coaching_replay
+
+            try:
+                replay = load_coaching_replay(request.replay_id)
+            except (FileNotFoundError, ValueError) as exc:
+                raise HTTPException(status_code=404, detail="replay coaching artifact not found") from exc
+        elif request.replay is not None:
+            replay = request.replay
+        else:
+            raise HTTPException(status_code=422, detail="replay or replay_id is required")
+        if request.replay_id:
+            return analysis.prepare(replay, source_replay_id=request.replay_id)
+        return analysis.prepare(replay)
 
     @app.get("/api/analysis/{analysis_id}")
     def metadata(analysis_id: str) -> dict[str, Any]:
@@ -63,11 +83,17 @@ def create_app(*, service: AnalysisService | None = None) -> FastAPI:
     @app.post("/api/analysis/{analysis_id}/run")
     def run(analysis_id: str, request: PlayerSelectionRequest) -> dict[str, Any]:
         try:
-            return analysis.select_player(
+            result = analysis.select_player(
                 analysis_id,
                 player_id=request.player_id,
                 player_name=request.player_name,
             )
+            replay_id = analysis.source_replay_id(analysis_id)
+            if replay_id:
+                from backend.replay_api.store import unlock_visualization
+
+                unlock_visualization(replay_id)
+            return result
         except AnalysisNotFound as exc:
             raise HTTPException(status_code=404, detail="analysis job not found") from exc
         except AnalysisNotReady as exc:

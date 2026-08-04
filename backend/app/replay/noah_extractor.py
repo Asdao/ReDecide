@@ -1,6 +1,6 @@
-"""Backend adapter for Noah's canonical replay extractor.
+"""Backend adapter for Blackbox's canonical replay extractor.
 
-This module deliberately stops at Noah's stable canonical replay types.  The
+This module deliberately stops at Blackbox's stable canonical replay types.  The
 RE:DECIDE ``DecisionPacket`` does not yet have an executable shared schema, so
 packet selection, evidence IDs, and knowledge-boundary filtering belong in the
 next adapter layer rather than being invented here....
@@ -22,7 +22,7 @@ from replay_extractor.segmenter import SegmentedReplay
 
 
 class _ExtractorFacade(Protocol):
-    """Subset of Noah's public facade used by this connector."""
+    """Subset of Blackbox's public facade used by this connector."""
 
     def parse(self, path: str | Path) -> ReplayRecord: ...
 
@@ -41,9 +41,9 @@ class NoahExtractorError(RuntimeError):
 
 @dataclass(frozen=True, slots=True)
 class ExtractedReplay:
-    """Canonical replay data returned by the backend-to-Noah adapter.
+    """Canonical replay data returned by the backend-to-Blackbox adapter.
 
-    ``replay`` is Noah's normalized record. ``segments`` contains its ordered
+    ``replay`` is Blackbox's normalized record. ``segments`` contains its ordered
     round, event, tick, and heatmap projections for a future decision detector.
     No future-information cutoff is applied by this class yet; that is part of
     the eventual ``DecisionPacket`` exporter.
@@ -54,7 +54,7 @@ class ExtractedReplay:
 
 
 class NoahExtractorConnector:
-    """Adapt Noah's extractor facade to the backend replay boundary."""
+    """Adapt Blackbox's extractor facade to the backend replay boundary."""
 
     def __init__(
         self,
@@ -69,7 +69,7 @@ class NoahExtractorConnector:
     def extract(self, path: str | Path) -> ExtractedReplay:
         """Parse, normalize, and segment one replay file.
 
-        Noah may use its configured ``.analysis.json`` sidecar fallback.  Any
+        Blackbox may use its configured ``.analysis.json`` sidecar fallback.  Any
         parser or segmentation failure is converted into one stable connector
         error for the future API boundary.
         """

@@ -42,6 +42,7 @@ class AnalysisJob:
     analysis_id: str
     replay: Mapping[str, Any]
     log_path: Path
+    source_replay_id: str | None = None
     status: str = "processing"
     selector: dict[str, Any] | None = None
     prepared_result: dict[str, Any] | None = None
@@ -71,7 +72,7 @@ class AnalysisService:
         self._jobs_lock = threading.RLock()
         self._executor = executor or ThreadPoolExecutor(max_workers=2, thread_name_prefix="replay-analysis")
 
-    def prepare(self, replay: Mapping[str, Any]) -> dict[str, Any]:
+    def prepare(self, replay: Mapping[str, Any], *, source_replay_id: str | None = None) -> dict[str, Any]:
         if not isinstance(replay, Mapping):
             raise TypeError("replay must be a JSON object")
         analysis_id = uuid4().hex
@@ -79,12 +80,16 @@ class AnalysisService:
             analysis_id=analysis_id,
             replay=dict(replay),
             log_path=self.log_dir / f"{analysis_id}.jsonl",
+            source_replay_id=source_replay_id,
         )
         with self._jobs_lock:
             self._jobs[analysis_id] = job
         self._write_log(job, {"stage": "received", "progress": 0, "message": "Replay accepted."})
         self._executor.submit(self._prepare_worker, job)
         return self.metadata(analysis_id)
+
+    def source_replay_id(self, analysis_id: str) -> str | None:
+        return self.get_job(analysis_id).source_replay_id
 
     def metadata(self, analysis_id: str) -> dict[str, Any]:
         job = self.get_job(analysis_id)

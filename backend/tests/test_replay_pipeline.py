@@ -8,7 +8,7 @@ from backend.app.replay.pipeline import (
     merge_pi_output,
     stream_replay_pipeline,
 )
-from Noah.harness import load_replay_record
+from Blackbox.harness import load_replay_record
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
