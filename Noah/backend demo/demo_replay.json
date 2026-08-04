@@ -1,0 +1,32 @@
+{
+  "schema_version": 1,
+  "replay_id": "backend-demo",
+  "demo_file": "backend-demo.dem",
+  "header": {"map_name": "de_mirage", "tick_rate": 64},
+  "rounds": [{"round_num": 1, "start": 100, "end": 300, "winner": "CT"}],
+  "damages": [{
+    "round_num": 1,
+    "tick": 164,
+    "attacker_steamid": "t1",
+    "victim_steamid": "ct1",
+    "attacker_side": "T",
+    "victim_side": "CT",
+    "weapon": "ak47",
+    "dmg_health": 20
+  }],
+  "kills": [{
+    "round_num": 1,
+    "tick": 240,
+    "attacker_steamid": "t1",
+    "victim_steamid": "ct1",
+    "attacker_side": "T",
+    "victim_side": "CT",
+    "weapon": "ak47"
+  }],
+  "ticks": [
+    {"round_num": 1, "tick": 100, "steamid": "t1", "player_name": "T One", "team_name": "T", "health": 100, "alive": true, "X": 1, "Y": 1},
+    {"round_num": 1, "tick": 100, "steamid": "ct1", "player_name": "CT One", "team_name": "CT", "health": 100, "alive": true, "X": 2, "Y": 2},
+    {"round_num": 1, "tick": 164, "steamid": "t1", "player_name": "T One", "team_name": "T", "health": 100, "alive": true, "X": 1, "Y": 1},
+    {"round_num": 1, "tick": 164, "steamid": "ct1", "player_name": "CT One", "team_name": "CT", "health": 80, "alive": true, "X": 2, "Y": 2}
+  ]
+}
