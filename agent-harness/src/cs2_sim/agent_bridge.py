@@ -14,6 +14,7 @@ simulator internals so a TypeScript tool adapter can validate the boundary.
 from __future__ import annotations
 
 import json
+import os
 import sys
 from collections.abc import Mapping
 from pathlib import Path
@@ -25,13 +26,32 @@ MAX_REQUEST_BYTES = 64 * 1024
 MAX_RESPONSE_BYTES = 256 * 1024
 DEFAULT_MAX_EVENTS = 100
 MAX_EVENTS = 1_000
+MAX_REPLAY_PATH_LENGTH = 2_048
+DEFAULT_MAX_DECISIONS = 100
+MAX_DECISIONS = 500
+DEFAULT_MAX_TIMELINE_POINTS = 120
+MAX_TIMELINE_POINTS = 500
 MIN_SEED = -(2**31)
 MAX_SEED = 2**31 - 1
 
 _TOP_LEVEL_FIELDS = frozenset({"version", "operation", "arguments"})
-_ARGUMENT_FIELDS = frozenset({"seed", "scenario", "policy", "max_events"})
+_ARGUMENT_FIELDS = frozenset(
+    {
+        "seed",
+        "scenario",
+        "policy",
+        "max_events",
+        "replay_path",
+        "max_decisions",
+        "max_timeline_points",
+        "sample_every",
+        "version",
+        "decision_id",
+    }
+)
 _SCENARIOS = frozenset({"example", "planted"})
 _POLICIES = frozenset({"baseline", "bayesian"})
+_REPLAY_SUFFIXES = frozenset({".dem", ".json", ".jsonl"})
 
 
 def _project_source_dir() -> Path:
@@ -94,14 +114,53 @@ def _validate_request(request: Mapping[str, Any]) -> tuple[dict[str, Any] | None
     operation = request.get("operation")
     if not isinstance(operation, str) or not operation:
         return None, _error("INVALID_REQUEST", "operation must be a non-empty string.")
-    if operation != "simulate_round":
-        return None, _error("UNKNOWN_OPERATION", "Unknown operation.")
     arguments = request.get("arguments", {})
     if not isinstance(arguments, Mapping):
         return None, _error("INVALID_ARGUMENTS", "arguments must be an object.")
     unknown_args = set(arguments) - _ARGUMENT_FIELDS
     if unknown_args:
         return None, _error("INVALID_ARGUMENTS", "Arguments contain unsupported fields.")
+
+    if operation == "analyze_replay":
+        replay_path = arguments.get("replay_path")
+        if not isinstance(replay_path, str) or not replay_path.strip():
+            return None, _error("INVALID_REPLAY_PATH", "replay_path must be a non-empty path.")
+        if len(replay_path) > MAX_REPLAY_PATH_LENGTH:
+            return None, _error("LIMIT_EXCEEDED", "replay_path is too long.")
+        source = Path(replay_path).expanduser()
+        if source.suffix.lower() not in _REPLAY_SUFFIXES:
+            return None, _error("INVALID_REPLAY_PATH", "replay_path must point to a .dem, .json, or .jsonl file.")
+        if not source.is_file():
+            return None, _error("REPLAY_NOT_FOUND", "Replay file does not exist.")
+        allowed_replay = os.environ.get("HARNESS_REPLAY_FILE", "").strip()
+        if allowed_replay and source.resolve() != Path(allowed_replay).expanduser().resolve():
+            return None, _error("REPLAY_NOT_ALLOWED", "Replay path is not the approved input for this session.")
+        max_decisions = arguments.get("max_decisions", DEFAULT_MAX_DECISIONS)
+        if not _is_int(max_decisions) or not 1 <= max_decisions <= MAX_DECISIONS:
+            return None, _error("LIMIT_EXCEEDED", "max_decisions is outside the allowed range.")
+        max_timeline_points = arguments.get("max_timeline_points", DEFAULT_MAX_TIMELINE_POINTS)
+        if not _is_int(max_timeline_points) or not 1 <= max_timeline_points <= MAX_TIMELINE_POINTS:
+            return None, _error("LIMIT_EXCEEDED", "max_timeline_points is outside the allowed range.")
+        sample_every = arguments.get("sample_every", 8)
+        if not _is_int(sample_every) or not 1 <= sample_every <= 256:
+            return None, _error("LIMIT_EXCEEDED", "sample_every is outside the allowed range.")
+        version = arguments.get("version")
+        if version is not None and (not isinstance(version, str) or not 0 < len(version) <= 32):
+            return None, _error("INVALID_VERSION", "version must be a short string.")
+        decision_id = arguments.get("decision_id")
+        if decision_id is not None and (not isinstance(decision_id, str) or not 0 < len(decision_id) <= 256):
+            return None, _error("INVALID_DECISION", "decision_id must be a short string.")
+        return {
+            "replay_path": str(source.resolve()),
+            "max_decisions": max_decisions,
+            "max_timeline_points": max_timeline_points,
+            "sample_every": sample_every,
+            "version": version,
+            "decision_id": decision_id,
+        }, None
+
+    if operation != "simulate_round":
+        return None, _error("UNKNOWN_OPERATION", "Unknown operation.")
 
     seed = arguments.get("seed", 0)
     if not _is_int(seed) or not MIN_SEED <= seed <= MAX_SEED:
@@ -230,6 +289,85 @@ def _run_simulation(arguments: Mapping[str, Any]) -> dict[str, Any]:
     }
 
 
+def _project_repository_root() -> Path:
+    """Find the repository root containing the Noah package."""
+
+    here = Path(__file__).resolve()
+    for parent in here.parents:
+        if (parent / "Noah" / "harness.py").is_file():
+            return parent
+    return here.parents[3]
+
+
+def _ensure_noah_importable() -> None:
+    root = _project_repository_root()
+    for source in (root, root / "Noah" / "model" / "src", root / "Noah" / "extractor" / "src"):
+        if str(source) not in sys.path:
+            sys.path.insert(0, str(source))
+
+
+def _run_replay_analysis(arguments: Mapping[str, Any]) -> dict[str, Any]:
+    _ensure_noah_importable()
+    from backend.app.replay.pipeline import stream_replay_pipeline
+
+    updates = stream_replay_pipeline(
+        str(arguments["replay_path"]),
+        version=arguments.get("version"),
+        sample_every=int(arguments["sample_every"]),
+        max_decisions=int(arguments["max_decisions"]),
+        max_timeline_points=int(arguments["max_timeline_points"]),
+        decision_id=arguments.get("decision_id"),
+    )
+    final = None
+    for update in updates:
+        if update.get("done") is True:
+            final = update.get("result")
+    if not isinstance(final, Mapping):
+        raise RuntimeError("replay pipeline did not produce a final result")
+    # The reusable backend pipeline retains the full event index for the UI.
+    # Pi receives only the bounded evidence/key-event projection so a normal
+    # replay cannot overflow the process boundary or expose irrelevant data.
+    model_result = dict(final)
+    model_result.pop("events", None)
+    ui_key_events = list(model_result.get("key_events", []))
+    ui_win_estimator = model_result.get("win_estimator")
+    model_result["key_events"] = [
+        event
+        for event in ui_key_events
+        if isinstance(event, Mapping) and event.get("is_coaching_anchor") is True
+    ]
+    model_result["players"] = [
+        {
+            key: value
+            for key, value in player.items()
+            if key not in {"event_ids", "key_event_ids"}
+        }
+        for player in model_result.get("players", [])
+        if isinstance(player, Mapping)
+    ]
+    if isinstance(ui_win_estimator, Mapping):
+        model_result["win_estimator"] = {
+            key: value
+            for key, value in ui_win_estimator.items()
+            if key != "timeline"
+        }
+        model_result["win_estimator"]["timeline_omitted_from_model"] = True
+    if isinstance(model_result.get("summary"), Mapping):
+        model_result["summary"] = {
+            key: value
+            for key, value in model_result["summary"].items()
+            if key not in {"event_count", "key_event_count"}
+        }
+    model_result["ui_handoff"] = {
+        "events_omitted_from_model": True,
+        "replay_markers_omitted_from_model": True,
+        "win_estimator_timeline_omitted_from_model": True,
+        "selector_function": "extract_players_for_selector",
+        "progress_function": "stream_replay_pipeline",
+    }
+    return model_result
+
+
 def handle_request(raw: str | bytes | Mapping[str, Any]) -> dict[str, Any]:
     """Parse and execute one request without raising protocol-facing errors."""
 
@@ -260,6 +398,8 @@ def handle_request(raw: str | bytes | Mapping[str, Any]) -> dict[str, Any]:
         if error is not None:
             return error
         assert arguments is not None
+        if request.get("operation") == "analyze_replay":
+            return _success(_run_replay_analysis(arguments))
         return _success(_run_simulation(arguments))
     except Exception:
         # Never expose simulator internals or tracebacks to the model.  The

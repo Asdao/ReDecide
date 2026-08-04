@@ -3,6 +3,7 @@ import { validateComparePolicies } from "../src/tools/compare-policies.js";
 import { boundedJson } from "../src/tools/common.js";
 import { validateInspectLegalActions } from "../src/tools/inspect-legal-actions.js";
 import { validateSimulateRound } from "../src/tools/simulate-round.js";
+import { validateAnalyzeReplay } from "../src/tools/analyze-replay.js";
 
 describe("domain tool contracts", () => {
   it("accepts documented simulation arguments and rejects unknown fields", () => {
@@ -23,5 +24,18 @@ describe("domain tool contracts", () => {
     expect(Buffer.byteLength(output)).toBeGreaterThan(0);
     expect(Buffer.byteLength(output)).toBeLessThanOrEqual(40);
     expect(output).toContain("truncated");
+  });
+
+  it("validates the replay pipeline path and bounded selectors", () => {
+    expect(validateAnalyzeReplay({
+      replay_path: "C:/replays/match.dem",
+      max_decisions: 10,
+      max_timeline_points: 20,
+      sample_every: 8,
+      decision_id: "r1:p1:t100",
+    })).toMatchObject({ replay_path: "C:/replays/match.dem", max_decisions: 10 });
+    expect(() => validateAnalyzeReplay({ replay_path: "C:/replays/match.txt" })).toThrow(/\.dem/);
+    expect(() => validateAnalyzeReplay({ replay_path: "C:/replays/match.dem", max_decisions: 501 })).toThrow(/between 1 and 500/);
+    expect(() => validateAnalyzeReplay({ replay_path: "C:/replays/match.dem", extra: true })).toThrow(/Unknown argument/);
   });
 });

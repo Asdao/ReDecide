@@ -15,7 +15,10 @@ pnpm dev -- --prompt "Run seed 7 for the example scenario with the baseline poli
 ```
 
 The CLI defaults to `src/cs2_sim/agent_bridge.py` inside this folder, uses the
-`simulate_round` tool only, and disables Pi built-in shell/filesystem tools.
+`simulate_round` by default, and disables Pi built-in shell/filesystem tools.
+Use `--replay <path>` to enable the outcome-blind `analyze_replay` pipeline,
+which indexes first-damage decisions for every player and returns bounded
+win-estimator points.
 Override paths with `--bridge`, `--cwd`, `--python`, and `--skill-dir`.
 
 The bridge is a transport boundary, not the Python domain API. Python callers
