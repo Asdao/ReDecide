@@ -1,0 +1,38 @@
+{
+  "release_version": "v3",
+  "created_at": "2026-08-03T12:00:34.351041+00:00",
+  "python": "3.12.13",
+  "platform": "Windows-11-10.0.26200-SP0",
+  "files": [
+    {
+      "path": "Noah/model/artifacts/releases/v3/full_replay_value.txt",
+      "bytes": 88468,
+      "sha256": "ad8f1d265b5d6463c899a271156d5d75ebcedbc77a4dff6339c4d1f7747a80b5"
+    },
+    {
+      "path": "Noah/model/artifacts/releases/v3/full_replay_value.manifest.json",
+      "bytes": 2034,
+      "sha256": "54e7916698f8c7cdd5d4b3bebe309b5501a4e58543d8a14e61b8c87e8b1ea979"
+    },
+    {
+      "path": "Noah/model/artifacts/releases/v3/small_snapshot_value.json",
+      "bytes": 20347,
+      "sha256": "dbdeb2dd4ac5afe7e875e5505a5c6947c4a208057d4850ccd702e36306c017f9"
+    },
+    {
+      "path": "Noah/model/artifacts/releases/v3/engagement_model.json",
+      "bytes": 2967883,
+      "sha256": "45efe2c953f223b3c582b7e5c47280ebb4313eb43a5e4fc984e78109f31100eb"
+    },
+    {
+      "path": "Noah/model/artifacts/releases/v3/engagement_lightgbm.json",
+      "bytes": 807670,
+      "sha256": "6756843c041470a0f14ef494ff36ca16c175df495634418ba434bbfdf158905e"
+    },
+    {
+      "path": "data/private/processed/engagement_windows_v2_5s.jsonl",
+      "bytes": 20171960,
+      "sha256": "34edd4562c8f08b130e36711191e4139d75ed9955da79c73445cb7a00af14358"
+    }
+  ]
+}

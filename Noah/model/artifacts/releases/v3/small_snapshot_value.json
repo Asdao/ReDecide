@@ -1,0 +1,1176 @@
+{
+  "version": 2,
+  "alpha": 1.0,
+  "beta": 1.0,
+  "prior_strength": 8.0,
+  "counts": {
+    "global": [
+      470,
+      424
+    ],
+    "map|de_inferno": [
+      64,
+      55
+    ],
+    "coarse|0|False|1": [
+      181,
+      219
+    ],
+    "state|5|5|False|3|0": [
+      113,
+      142
+    ],
+    "exact|de_inferno|tick|5|5|False|none|3|0": [
+      16,
+      21
+    ],
+    "state|4|4|False|4|2": [
+      9,
+      5
+    ],
+    "exact|de_inferno|tick|4|4|False|none|4|2": [
+      4,
+      0
+    ],
+    "coarse|-1|False|1": [
+      10,
+      71
+    ],
+    "state|4|5|False|3|1": [
+      3,
+      33
+    ],
+    "exact|de_inferno|tick|4|5|False|none|3|1": [
+      0,
+      3
+    ],
+    "coarse|0|False|3": [
+      18,
+      19
+    ],
+    "state|5|5|False|9|0": [
+      7,
+      8
+    ],
+    "exact|de_inferno|tick|5|5|False|none|9|0": [
+      2,
+      2
+    ],
+    "state|5|5|False|10|0": [
+      6,
+      6
+    ],
+    "exact|de_inferno|tick|5|5|False|none|10|0": [
+      0,
+      1
+    ],
+    "state|5|5|False|4|0": [
+      48,
+      46
+    ],
+    "exact|de_inferno|tick|5|5|False|none|4|0": [
+      12,
+      8
+    ],
+    "coarse|0|False|2": [
+      95,
+      37
+    ],
+    "state|5|5|False|7|0": [
+      29,
+      14
+    ],
+    "exact|de_inferno|tick|5|5|False|none|7|0": [
+      7,
+      0
+    ],
+    "state|5|5|False|5|0": [
+      4,
+      22
+    ],
+    "exact|de_inferno|tick|5|5|False|none|5|0": [
+      1,
+      4
+    ],
+    "state|4|5|False|5|1": [
+      2,
+      13
+    ],
+    "exact|de_inferno|tick|4|5|False|none|5|1": [
+      1,
+      3
+    ],
+    "state|4|5|False|4|1": [
+      5,
+      22
+    ],
+    "exact|de_inferno|tick|4|5|False|none|4|1": [
+      0,
+      3
+    ],
+    "coarse|-2|False|1": [
+      0,
+      10
+    ],
+    "state|3|5|False|5|2": [
+      0,
+      5
+    ],
+    "exact|de_inferno|tick|3|5|False|none|5|2": [
+      0,
+      3
+    ],
+    "coarse|1|False|1": [
+      58,
+      18
+    ],
+    "state|5|4|False|3|1": [
+      34,
+      8
+    ],
+    "exact|de_inferno|tick|5|4|False|none|3|1": [
+      2,
+      0
+    ],
+    "state|4|4|False|3|2": [
+      4,
+      2
+    ],
+    "exact|de_inferno|tick|4|4|False|none|3|2": [
+      1,
+      0
+    ],
+    "state|5|5|False|8|0": [
+      25,
+      3
+    ],
+    "exact|de_inferno|tick|5|5|False|none|8|0": [
+      8,
+      0
+    ],
+    "coarse|1|False|2": [
+      36,
+      4
+    ],
+    "state|5|4|False|8|1": [
+      6,
+      2
+    ],
+    "exact|de_inferno|tick|5|4|False|none|8|1": [
+      1,
+      0
+    ],
+    "coarse|1|False|3": [
+      11,
+      2
+    ],
+    "state|5|4|False|9|1": [
+      8,
+      0
+    ],
+    "exact|de_inferno|tick|5|4|False|none|9|1": [
+      2,
+      0
+    ],
+    "state|3|5|False|3|2": [
+      0,
+      2
+    ],
+    "exact|de_inferno|tick|3|5|False|none|3|2": [
+      0,
+      2
+    ],
+    "map|de_anubis": [
+      22,
+      19
+    ],
+    "exact|de_anubis|tick|5|5|False|none|3|0": [
+      10,
+      9
+    ],
+    "state|5|4|False|6|1": [
+      9,
+      2
+    ],
+    "exact|de_anubis|tick|5|4|False|none|6|1": [
+      1,
+      0
+    ],
+    "state|4|4|False|6|2": [
+      4,
+      1
+    ],
+    "exact|de_anubis|tick|4|4|False|none|6|2": [
+      2,
+      0
+    ],
+    "coarse|-1|False|2": [
+      7,
+      21
+    ],
+    "state|4|5|False|6|1": [
+      3,
+      9
+    ],
+    "exact|de_anubis|tick|4|5|False|none|6|1": [
+      0,
+      2
+    ],
+    "exact|de_anubis|tick|4|5|False|none|3|1": [
+      1,
+      5
+    ],
+    "exact|de_anubis|tick|5|5|False|none|4|0": [
+      1,
+      1
+    ],
+    "coarse|0|False|0": [
+      11,
+      11
+    ],
+    "state|5|5|False|2|0": [
+      11,
+      11
+    ],
+    "exact|de_anubis|tick|5|5|False|none|2|0": [
+      0,
+      1
+    ],
+    "exact|de_anubis|tick|4|4|False|none|3|2": [
+      0,
+      1
+    ],
+    "exact|de_anubis|tick|4|5|False|none|4|1": [
+      1,
+      0
+    ],
+    "exact|de_anubis|tick|4|5|False|none|5|1": [
+      1,
+      0
+    ],
+    "exact|de_anubis|tick|5|4|False|none|3|1": [
+      1,
+      0
+    ],
+    "state|3|3|False|3|4": [
+      2,
+      0
+    ],
+    "exact|de_anubis|tick|3|3|False|none|3|4": [
+      2,
+      0
+    ],
+    "exact|de_anubis|tick|5|5|False|none|5|0": [
+      2,
+      0
+    ],
+    "map|de_nuke": [
+      111,
+      112
+    ],
+    "exact|de_nuke|tick|5|5|False|none|4|0": [
+      14,
+      18
+    ],
+    "state|3|5|False|4|2": [
+      0,
+      3
+    ],
+    "exact|de_nuke|tick|3|5|False|none|4|2": [
+      0,
+      2
+    ],
+    "state|3|4|False|4|3": [
+      0,
+      1
+    ],
+    "exact|de_nuke|tick|3|4|False|none|4|3": [
+      0,
+      1
+    ],
+    "exact|de_nuke|tick|5|5|False|none|3|0": [
+      29,
+      38
+    ],
+    "exact|de_nuke|tick|4|5|False|none|3|1": [
+      0,
+      14
+    ],
+    "exact|de_nuke|tick|5|5|False|none|7|0": [
+      8,
+      5
+    ],
+    "state|5|4|False|7|1": [
+      15,
+      0
+    ],
+    "exact|de_nuke|tick|5|4|False|none|7|1": [
+      4,
+      0
+    ],
+    "exact|de_nuke|tick|5|5|False|none|5|0": [
+      0,
+      7
+    ],
+    "state|5|5|False|6|0": [
+      32,
+      16
+    ],
+    "exact|de_nuke|tick|5|5|False|none|6|0": [
+      6,
+      6
+    ],
+    "state|4|3|False|3|3": [
+      2,
+      1
+    ],
+    "exact|de_nuke|tick|4|3|False|none|3|3": [
+      1,
+      1
+    ],
+    "state|5|4|False|5|1": [
+      5,
+      5
+    ],
+    "exact|de_nuke|tick|5|4|False|none|5|1": [
+      1,
+      3
+    ],
+    "exact|de_nuke|tick|5|5|False|none|10|0": [
+      6,
+      0
+    ],
+    "state|5|4|False|11|1": [
+      2,
+      0
+    ],
+    "exact|de_nuke|tick|5|4|False|none|11|1": [
+      2,
+      0
+    ],
+    "state|5|5|False|12|0": [
+      0,
+      1
+    ],
+    "exact|de_nuke|tick|5|5|False|none|12|0": [
+      0,
+      1
+    ],
+    "state|4|3|False|12|3": [
+      0,
+      2
+    ],
+    "exact|de_nuke|tick|4|3|False|none|12|3": [
+      0,
+      2
+    ],
+    "exact|de_nuke|tick|5|4|False|none|8|1": [
+      2,
+      0
+    ],
+    "state|4|3|False|8|3": [
+      3,
+      0
+    ],
+    "exact|de_nuke|tick|4|3|False|none|8|3": [
+      1,
+      0
+    ],
+    "exact|de_nuke|tick|5|4|False|none|3|1": [
+      5,
+      3
+    ],
+    "state|4|4|False|5|2": [
+      1,
+      2
+    ],
+    "exact|de_nuke|tick|4|4|False|none|5|2": [
+      1,
+      1
+    ],
+    "state|3|4|False|5|3": [
+      0,
+      1
+    ],
+    "exact|de_nuke|tick|3|4|False|none|5|3": [
+      0,
+      1
+    ],
+    "state|4|5|False|7|1": [
+      2,
+      5
+    ],
+    "exact|de_nuke|tick|4|5|False|none|7|1": [
+      1,
+      2
+    ],
+    "exact|de_nuke|tick|4|5|False|none|6|1": [
+      0,
+      2
+    ],
+    "exact|de_nuke|tick|5|5|False|none|8|0": [
+      10,
+      0
+    ],
+    "exact|de_nuke|tick|5|4|False|none|6|1": [
+      2,
+      1
+    ],
+    "exact|de_nuke|tick|5|5|False|none|9|0": [
+      3,
+      0
+    ],
+    "coarse|4|False|1": [
+      1,
+      0
+    ],
+    "state|5|1|False|3|4": [
+      1,
+      0
+    ],
+    "exact|de_nuke|tick|5|1|False|none|3|4": [
+      1,
+      0
+    ],
+    "state|4|4|False|7|2": [
+      3,
+      2
+    ],
+    "exact|de_nuke|tick|4|4|False|none|7|2": [
+      1,
+      0
+    ],
+    "coarse|-2|False|3": [
+      1,
+      0
+    ],
+    "state|3|5|False|9|2": [
+      1,
+      0
+    ],
+    "exact|de_nuke|tick|3|5|False|none|9|2": [
+      1,
+      0
+    ],
+    "state|5|4|False|4|1": [
+      15,
+      4
+    ],
+    "exact|de_nuke|tick|5|4|False|none|4|1": [
+      1,
+      0
+    ],
+    "map|de_ancient": [
+      29,
+      69
+    ],
+    "exact|de_ancient|tick|5|5|False|none|5|0": [
+      0,
+      2
+    ],
+    "exact|de_ancient|tick|5|4|False|none|5|1": [
+      0,
+      2
+    ],
+    "coarse|-2|False|2": [
+      0,
+      6
+    ],
+    "state|3|5|False|7|2": [
+      0,
+      5
+    ],
+    "exact|de_ancient|tick|3|5|False|none|7|2": [
+      0,
+      2
+    ],
+    "exact|de_ancient|tick|5|5|False|none|2|0": [
+      0,
+      5
+    ],
+    "exact|de_ancient|tick|5|5|False|none|3|0": [
+      13,
+      36
+    ],
+    "exact|de_ancient|tick|5|5|False|none|6|0": [
+      7,
+      0
+    ],
+    "exact|de_ancient|tick|4|5|False|none|3|1": [
+      0,
+      3
+    ],
+    "exact|de_ancient|tick|4|5|False|none|4|1": [
+      0,
+      4
+    ],
+    "exact|de_ancient|tick|5|4|False|none|3|1": [
+      2,
+      3
+    ],
+    "exact|de_ancient|tick|5|5|False|none|4|0": [
+      4,
+      5
+    ],
+    "map|de_mirage": [
+      127,
+      98
+    ],
+    "exact|de_mirage|tick|5|5|False|none|4|0": [
+      17,
+      7
+    ],
+    "exact|de_mirage|tick|5|5|False|none|6|0": [
+      13,
+      6
+    ],
+    "exact|de_mirage|tick|5|5|False|none|7|0": [
+      7,
+      4
+    ],
+    "exact|de_mirage|tick|4|5|False|none|7|1": [
+      1,
+      2
+    ],
+    "exact|de_mirage|tick|5|4|False|none|4|1": [
+      8,
+      0
+    ],
+    "exact|de_mirage|tick|5|5|False|none|3|0": [
+      28,
+      19
+    ],
+    "exact|de_mirage|tick|4|5|False|none|4|1": [
+      2,
+      10
+    ],
+    "exact|de_mirage|tick|5|5|False|none|5|0": [
+      0,
+      8
+    ],
+    "exact|de_mirage|tick|4|5|False|none|5|1": [
+      0,
+      3
+    ],
+    "state|3|5|False|6|2": [
+      0,
+      1
+    ],
+    "exact|de_mirage|tick|3|5|False|none|6|2": [
+      0,
+      1
+    ],
+    "exact|de_mirage|tick|3|5|False|none|7|2": [
+      0,
+      3
+    ],
+    "exact|de_mirage|tick|4|3|False|none|8|3": [
+      1,
+      0
+    ],
+    "coarse|2|False|2": [
+      14,
+      0
+    ],
+    "state|4|2|False|8|4": [
+      1,
+      0
+    ],
+    "exact|de_mirage|tick|4|2|False|none|8|4": [
+      1,
+      0
+    ],
+    "exact|de_mirage|tick|5|5|False|none|8|0": [
+      0,
+      1
+    ],
+    "coarse|2|False|1": [
+      13,
+      0
+    ],
+    "state|5|3|False|3|2": [
+      7,
+      0
+    ],
+    "exact|de_nuke|tick|5|3|False|none|3|2": [
+      2,
+      0
+    ],
+    "state|5|3|False|8|2": [
+      5,
+      0
+    ],
+    "exact|de_nuke|tick|5|3|False|none|8|2": [
+      1,
+      0
+    ],
+    "coarse|2|False|3": [
+      7,
+      0
+    ],
+    "state|5|3|False|9|2": [
+      3,
+      0
+    ],
+    "exact|de_nuke|tick|5|3|False|none|9|2": [
+      1,
+      0
+    ],
+    "state|4|3|False|5|3": [
+      1,
+      0
+    ],
+    "exact|de_nuke|tick|4|3|False|none|5|3": [
+      1,
+      0
+    ],
+    "exact|de_nuke|tick|5|4|False|none|9|1": [
+      1,
+      0
+    ],
+    "state|4|3|False|6|3": [
+      1,
+      0
+    ],
+    "exact|de_nuke|tick|4|3|False|none|6|3": [
+      1,
+      0
+    ],
+    "state|4|3|False|7|3": [
+      2,
+      0
+    ],
+    "exact|de_nuke|tick|4|3|False|none|7|3": [
+      1,
+      0
+    ],
+    "exact|de_nuke|tick|4|5|False|none|4|1": [
+      2,
+      0
+    ],
+    "exact|de_nuke|tick|4|4|False|none|4|2": [
+      1,
+      2
+    ],
+    "exact|de_nuke|tick|4|5|False|none|5|1": [
+      0,
+      2
+    ],
+    "exact|de_inferno|tick|5|3|False|none|9|2": [
+      1,
+      0
+    ],
+    "coarse|4|False|3": [
+      1,
+      0
+    ],
+    "state|5|1|False|10|4": [
+      1,
+      0
+    ],
+    "exact|de_inferno|tick|5|1|False|none|10|4": [
+      1,
+      0
+    ],
+    "exact|de_inferno|tick|5|4|False|none|7|1": [
+      1,
+      0
+    ],
+    "exact|de_inferno|tick|5|4|False|none|4|1": [
+      1,
+      0
+    ],
+    "exact|de_inferno|tick|4|4|False|none|7|2": [
+      1,
+      0
+    ],
+    "coarse|-1|False|3": [
+      3,
+      1
+    ],
+    "state|4|5|False|9|1": [
+      3,
+      1
+    ],
+    "exact|de_inferno|tick|4|5|False|none|9|1": [
+      2,
+      0
+    ],
+    "exact|de_inferno|tick|5|5|False|none|6|0": [
+      0,
+      2
+    ],
+    "exact|de_inferno|tick|4|5|False|none|7|1": [
+      0,
+      1
+    ],
+    "state|4|5|False|8|1": [
+      2,
+      6
+    ],
+    "exact|de_inferno|tick|4|5|False|none|8|1": [
+      0,
+      1
+    ],
+    "state|4|4|False|8|2": [
+      0,
+      1
+    ],
+    "exact|de_inferno|tick|4|4|False|none|8|2": [
+      0,
+      1
+    ],
+    "exact|de_mirage|tick|5|4|False|none|6|1": [
+      3,
+      1
+    ],
+    "state|5|3|False|6|2": [
+      4,
+      0
+    ],
+    "exact|de_mirage|tick|5|3|False|none|6|2": [
+      1,
+      0
+    ],
+    "exact|de_mirage|tick|5|4|False|none|3|1": [
+      8,
+      2
+    ],
+    "exact|de_mirage|tick|5|3|False|none|3|2": [
+      2,
+      0
+    ],
+    "exact|de_mirage|tick|5|5|False|none|9|0": [
+      0,
+      3
+    ],
+    "exact|de_mirage|tick|5|4|False|none|7|1": [
+      7,
+      0
+    ],
+    "state|5|3|False|7|2": [
+      3,
+      0
+    ],
+    "exact|de_mirage|tick|5|3|False|none|7|2": [
+      3,
+      0
+    ],
+    "exact|de_mirage|tick|4|4|False|none|3|2": [
+      3,
+      1
+    ],
+    "exact|de_mirage|tick|4|4|False|none|4|2": [
+      4,
+      3
+    ],
+    "exact|de_mirage|tick|5|4|False|none|8|1": [
+      1,
+      2
+    ],
+    "coarse|0|True|3": [
+      0,
+      1
+    ],
+    "state|5|5|True|11|0": [
+      0,
+      1
+    ],
+    "exact|de_mirage|tick|5|5|True|a|11|0": [
+      0,
+      1
+    ],
+    "coarse|-1|True|3": [
+      0,
+      2
+    ],
+    "state|4|5|True|11|1": [
+      0,
+      1
+    ],
+    "exact|de_mirage|tick|4|5|True|a|11|1": [
+      0,
+      1
+    ],
+    "state|3|4|True|11|3": [
+      0,
+      1
+    ],
+    "exact|de_mirage|tick|3|4|True|a|11|3": [
+      0,
+      1
+    ],
+    "exact|de_mirage|tick|3|5|False|none|5|2": [
+      0,
+      1
+    ],
+    "coarse|-3|False|1": [
+      0,
+      1
+    ],
+    "state|2|5|False|5|3": [
+      0,
+      1
+    ],
+    "exact|de_mirage|tick|2|5|False|none|5|3": [
+      0,
+      1
+    ],
+    "exact|de_mirage|tick|5|5|False|none|10|0": [
+      0,
+      4
+    ],
+    "exact|de_mirage|tick|4|5|False|none|8|1": [
+      2,
+      2
+    ],
+    "state|5|3|False|5|2": [
+      3,
+      0
+    ],
+    "exact|de_mirage|tick|5|3|False|none|5|2": [
+      1,
+      0
+    ],
+    "coarse|3|False|2": [
+      2,
+      0
+    ],
+    "state|5|2|False|6|3": [
+      2,
+      0
+    ],
+    "exact|de_mirage|tick|5|2|False|none|6|3": [
+      1,
+      0
+    ],
+    "exact|de_mirage|tick|4|3|False|none|7|3": [
+      1,
+      0
+    ],
+    "state|4|2|False|7|4": [
+      1,
+      0
+    ],
+    "exact|de_mirage|tick|4|2|False|none|7|4": [
+      1,
+      0
+    ],
+    "exact|de_mirage|tick|4|4|False|none|5|2": [
+      0,
+      1
+    ],
+    "exact|de_mirage|tick|4|5|False|none|6|1": [
+      1,
+      5
+    ],
+    "state|5|5|False|11|0": [
+      0,
+      1
+    ],
+    "exact|de_mirage|tick|5|5|False|none|11|0": [
+      0,
+      1
+    ],
+    "map|de_dust2": [
+      117,
+      71
+    ],
+    "exact|de_dust2|tick|5|5|False|none|3|0": [
+      17,
+      19
+    ],
+    "exact|de_dust2|tick|4|5|False|none|4|1": [
+      0,
+      5
+    ],
+    "exact|de_dust2|tick|5|5|False|none|8|0": [
+      7,
+      2
+    ],
+    "exact|de_dust2|tick|5|4|False|none|8|1": [
+      2,
+      0
+    ],
+    "exact|de_dust2|tick|5|4|False|none|9|1": [
+      3,
+      0
+    ],
+    "exact|de_dust2|tick|5|3|False|none|9|2": [
+      1,
+      0
+    ],
+    "state|5|3|False|10|2": [
+      1,
+      0
+    ],
+    "exact|de_dust2|tick|5|3|False|none|10|2": [
+      1,
+      0
+    ],
+    "exact|de_dust2|tick|5|5|False|none|4|0": [
+      0,
+      7
+    ],
+    "exact|de_dust2|tick|5|3|False|none|8|2": [
+      3,
+      0
+    ],
+    "state|4|2|False|9|4": [
+      3,
+      0
+    ],
+    "exact|de_dust2|tick|4|2|False|none|9|4": [
+      3,
+      0
+    ],
+    "exact|de_dust2|tick|5|4|False|none|3|1": [
+      16,
+      0
+    ],
+    "exact|de_dust2|tick|5|5|False|none|6|0": [
+      6,
+      2
+    ],
+    "exact|de_dust2|tick|5|5|False|none|7|0": [
+      7,
+      5
+    ],
+    "exact|de_dust2|tick|5|4|False|none|7|1": [
+      3,
+      0
+    ],
+    "exact|de_dust2|tick|5|3|False|none|6|2": [
+      3,
+      0
+    ],
+    "exact|de_dust2|tick|5|5|False|none|2|0": [
+      10,
+      5
+    ],
+    "state|5|5|False|13|0": [
+      2,
+      0
+    ],
+    "exact|de_dust2|tick|5|5|False|none|13|0": [
+      2,
+      0
+    ],
+    "exact|de_dust2|tick|4|5|False|none|3|1": [
+      2,
+      7
+    ],
+    "exact|de_dust2|tick|4|5|False|none|8|1": [
+      0,
+      3
+    ],
+    "state|4|2|False|3|4": [
+      1,
+      0
+    ],
+    "exact|de_mirage|tick|4|2|False|none|3|4": [
+      1,
+      0
+    ],
+    "state|3|2|False|4|5": [
+      1,
+      0
+    ],
+    "exact|de_mirage|tick|3|2|False|none|4|5": [
+      1,
+      0
+    ],
+    "exact|de_mirage|tick|4|3|False|none|3|3": [
+      1,
+      0
+    ],
+    "exact|de_mirage|tick|5|4|False|none|9|1": [
+      2,
+      0
+    ],
+    "exact|de_mirage|tick|5|5|False|none|2|0": [
+      1,
+      0
+    ],
+    "exact|de_mirage|tick|4|5|False|none|3|1": [
+      0,
+      1
+    ],
+    "exact|de_mirage|tick|5|4|False|none|5|1": [
+      1,
+      0
+    ],
+    "exact|de_mirage|tick|5|3|False|none|8|2": [
+      1,
+      0
+    ],
+    "state|3|3|False|8|4": [
+      2,
+      0
+    ],
+    "exact|de_mirage|tick|3|3|False|none|8|4": [
+      2,
+      0
+    ],
+    "exact|de_mirage|tick|4|4|False|none|7|2": [
+      0,
+      2
+    ],
+    "coarse|-3|False|2": [
+      0,
+      1
+    ],
+    "state|2|5|False|6|3": [
+      0,
+      1
+    ],
+    "exact|de_mirage|tick|2|5|False|none|6|3": [
+      0,
+      1
+    ],
+    "exact|de_dust2|tick|5|5|False|none|5|0": [
+      1,
+      1
+    ],
+    "exact|de_dust2|tick|5|4|False|none|5|1": [
+      3,
+      0
+    ],
+    "state|3|4|False|3|3": [
+      0,
+      1
+    ],
+    "exact|de_dust2|tick|3|4|False|none|3|3": [
+      0,
+      1
+    ],
+    "state|4|4|False|9|2": [
+      2,
+      3
+    ],
+    "exact|de_dust2|tick|4|4|False|none|9|2": [
+      2,
+      3
+    ],
+    "exact|de_dust2|tick|5|5|False|none|9|0": [
+      2,
+      1
+    ],
+    "exact|de_dust2|tick|4|5|False|none|9|1": [
+      1,
+      1
+    ],
+    "coarse|1|False|0": [
+      1,
+      0
+    ],
+    "state|5|4|False|2|1": [
+      1,
+      0
+    ],
+    "exact|de_dust2|tick|5|4|False|none|2|1": [
+      1,
+      0
+    ],
+    "exact|de_dust2|tick|5|3|False|none|3|2": [
+      3,
+      0
+    ],
+    "exact|de_dust2|tick|5|3|False|none|5|2": [
+      2,
+      0
+    ],
+    "state|5|3|False|4|2": [
+      2,
+      0
+    ],
+    "exact|de_dust2|tick|5|3|False|none|4|2": [
+      2,
+      0
+    ],
+    "state|5|4|False|10|1": [
+      1,
+      0
+    ],
+    "exact|de_dust2|tick|5|4|False|none|10|1": [
+      1,
+      0
+    ],
+    "state|4|4|False|10|2": [
+      1,
+      0
+    ],
+    "exact|de_dust2|tick|4|4|False|none|10|2": [
+      1,
+      0
+    ],
+    "exact|de_dust2|tick|5|4|False|none|4|1": [
+      3,
+      4
+    ],
+    "exact|de_dust2|tick|4|3|False|none|8|3": [
+      1,
+      0
+    ],
+    "exact|de_dust2|tick|5|2|False|none|6|3": [
+      1,
+      0
+    ],
+    "exact|de_dust2|tick|3|5|False|none|5|2": [
+      0,
+      1
+    ],
+    "state|3|4|False|6|3": [
+      0,
+      1
+    ],
+    "exact|de_dust2|tick|3|4|False|none|6|3": [
+      0,
+      1
+    ],
+    "exact|de_dust2|tick|4|5|False|none|5|1": [
+      0,
+      2
+    ],
+    "exact|de_dust2|tick|4|4|False|none|6|2": [
+      2,
+      1
+    ],
+    "exact|de_dust2|tick|5|4|False|none|6|1": [
+      2,
+      0
+    ],
+    "exact|de_dust2|tick|4|4|False|none|7|2": [
+      1,
+      0
+    ],
+    "exact|de_dust2|tick|4|5|False|none|6|1": [
+      2,
+      0
+    ],
+    "exact|de_ancient|tick|5|4|False|none|4|1": [
+      2,
+      0
+    ],
+    "exact|de_ancient|tick|3|5|False|none|4|2": [
+      0,
+      1
+    ],
+    "exact|de_ancient|tick|5|4|False|none|6|1": [
+      1,
+      0
+    ],
+    "exact|de_ancient|tick|4|5|False|none|5|1": [
+      0,
+      3
+    ],
+    "exact|de_ancient|tick|5|5|False|none|9|0": [
+      0,
+      2
+    ],
+    "exact|de_ancient|tick|5|5|False|none|10|0": [
+      0,
+      1
+    ]
+  }
+}

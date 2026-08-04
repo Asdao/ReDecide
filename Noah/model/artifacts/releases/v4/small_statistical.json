@@ -1,0 +1,376 @@
+{
+  "version": 1,
+  "alpha": 1.0,
+  "beta": 1.0,
+  "action_alpha": 1.0,
+  "action_counts": {
+    "ct|A_SITE|0|0|planted": {
+      "hold": 135,
+      "peek": 135,
+      "save": 135,
+      "use_utility": 96,
+      "move_to_adjacent_zone:A_MAIN": 135,
+      "move_to_adjacent_zone:MID": 135,
+      "move_to_adjacent_zone:CT_SPAWN": 135,
+      "defuse": 135
+    },
+    "t|A_SITE|0|0|carried": {
+      "hold": 134,
+      "peek": 134,
+      "save": 134,
+      "move_to_adjacent_zone:A_MAIN": 134,
+      "move_to_adjacent_zone:MID": 134,
+      "move_to_adjacent_zone:CT_SPAWN": 134,
+      "plant": 134,
+      "use_utility": 83
+    },
+    "t|B_MAIN|0|0|none": {
+      "hold": 18,
+      "peek": 18,
+      "save": 18,
+      "move_to_adjacent_zone:T_SPAWN": 18,
+      "move_to_adjacent_zone:B_SITE": 18,
+      "move_to_adjacent_zone:MID": 18,
+      "use_utility": 14
+    },
+    "t|T_SPAWN|0|0|none": {
+      "hold": 22,
+      "peek": 22,
+      "save": 22,
+      "move_to_adjacent_zone:A_MAIN": 22,
+      "move_to_adjacent_zone:B_MAIN": 22,
+      "move_to_adjacent_zone:MID": 22,
+      "use_utility": 16
+    },
+    "t|MID|0|0|none": {
+      "hold": 23,
+      "peek": 23,
+      "save": 23,
+      "move_to_adjacent_zone:T_SPAWN": 23,
+      "move_to_adjacent_zone:A_MAIN": 23,
+      "move_to_adjacent_zone:B_MAIN": 23,
+      "move_to_adjacent_zone:A_SITE": 23,
+      "move_to_adjacent_zone:B_SITE": 23,
+      "use_utility": 18
+    },
+    "t|A_SITE|0|0|none": {
+      "hold": 17,
+      "peek": 17,
+      "save": 17,
+      "move_to_adjacent_zone:A_MAIN": 17,
+      "move_to_adjacent_zone:MID": 17,
+      "move_to_adjacent_zone:CT_SPAWN": 17,
+      "use_utility": 9
+    },
+    "t|A_MAIN|0|0|none": {
+      "hold": 23,
+      "peek": 23,
+      "save": 23,
+      "use_utility": 14,
+      "move_to_adjacent_zone:T_SPAWN": 23,
+      "move_to_adjacent_zone:A_SITE": 23,
+      "move_to_adjacent_zone:MID": 23
+    },
+    "t|B_SITE|0|0|none": {
+      "hold": 14,
+      "peek": 14,
+      "save": 14,
+      "move_to_adjacent_zone:B_MAIN": 14,
+      "move_to_adjacent_zone:MID": 14,
+      "move_to_adjacent_zone:CT_SPAWN": 14,
+      "use_utility": 6
+    },
+    "t|CT_SPAWN|0|0|none": {
+      "hold": 14,
+      "peek": 14,
+      "save": 14,
+      "use_utility": 9,
+      "move_to_adjacent_zone:A_SITE": 14,
+      "move_to_adjacent_zone:B_SITE": 14
+    }
+  },
+  "outcomes": {
+    "ct|A_SITE|0|0|planted": {
+      "hold": [
+        116,
+        19
+      ],
+      "peek": [
+        116,
+        19
+      ],
+      "save": [
+        78,
+        57
+      ],
+      "use_utility": [
+        82,
+        14
+      ],
+      "move_to_adjacent_zone:A_MAIN": [
+        40,
+        95
+      ],
+      "move_to_adjacent_zone:MID": [
+        40,
+        95
+      ],
+      "move_to_adjacent_zone:CT_SPAWN": [
+        40,
+        95
+      ],
+      "defuse": [
+        135,
+        0
+      ]
+    },
+    "t|A_SITE|0|0|carried": {
+      "hold": [
+        85,
+        49
+      ],
+      "peek": [
+        85,
+        49
+      ],
+      "save": [
+        85,
+        49
+      ],
+      "move_to_adjacent_zone:A_MAIN": [
+        83,
+        51
+      ],
+      "move_to_adjacent_zone:MID": [
+        78,
+        56
+      ],
+      "move_to_adjacent_zone:CT_SPAWN": [
+        78,
+        56
+      ],
+      "plant": [
+        93,
+        41
+      ],
+      "use_utility": [
+        57,
+        26
+      ]
+    },
+    "t|B_MAIN|0|0|none": {
+      "hold": [
+        0,
+        18
+      ],
+      "peek": [
+        0,
+        18
+      ],
+      "save": [
+        0,
+        18
+      ],
+      "move_to_adjacent_zone:T_SPAWN": [
+        0,
+        18
+      ],
+      "move_to_adjacent_zone:B_SITE": [
+        0,
+        18
+      ],
+      "move_to_adjacent_zone:MID": [
+        0,
+        18
+      ],
+      "use_utility": [
+        0,
+        14
+      ]
+    },
+    "t|T_SPAWN|0|0|none": {
+      "hold": [
+        0,
+        22
+      ],
+      "peek": [
+        0,
+        22
+      ],
+      "save": [
+        0,
+        22
+      ],
+      "move_to_adjacent_zone:A_MAIN": [
+        0,
+        22
+      ],
+      "move_to_adjacent_zone:B_MAIN": [
+        0,
+        22
+      ],
+      "move_to_adjacent_zone:MID": [
+        0,
+        22
+      ],
+      "use_utility": [
+        0,
+        16
+      ]
+    },
+    "t|MID|0|0|none": {
+      "hold": [
+        0,
+        23
+      ],
+      "peek": [
+        0,
+        23
+      ],
+      "save": [
+        0,
+        23
+      ],
+      "move_to_adjacent_zone:T_SPAWN": [
+        0,
+        23
+      ],
+      "move_to_adjacent_zone:A_MAIN": [
+        0,
+        23
+      ],
+      "move_to_adjacent_zone:B_MAIN": [
+        0,
+        23
+      ],
+      "move_to_adjacent_zone:A_SITE": [
+        0,
+        23
+      ],
+      "move_to_adjacent_zone:B_SITE": [
+        0,
+        23
+      ],
+      "use_utility": [
+        0,
+        18
+      ]
+    },
+    "t|A_SITE|0|0|none": {
+      "hold": [
+        0,
+        17
+      ],
+      "peek": [
+        0,
+        17
+      ],
+      "save": [
+        0,
+        17
+      ],
+      "move_to_adjacent_zone:A_MAIN": [
+        0,
+        17
+      ],
+      "move_to_adjacent_zone:MID": [
+        0,
+        17
+      ],
+      "move_to_adjacent_zone:CT_SPAWN": [
+        0,
+        17
+      ],
+      "use_utility": [
+        0,
+        9
+      ]
+    },
+    "t|A_MAIN|0|0|none": {
+      "hold": [
+        0,
+        23
+      ],
+      "peek": [
+        0,
+        23
+      ],
+      "save": [
+        0,
+        23
+      ],
+      "use_utility": [
+        0,
+        14
+      ],
+      "move_to_adjacent_zone:T_SPAWN": [
+        0,
+        23
+      ],
+      "move_to_adjacent_zone:A_SITE": [
+        0,
+        23
+      ],
+      "move_to_adjacent_zone:MID": [
+        0,
+        23
+      ]
+    },
+    "t|B_SITE|0|0|none": {
+      "hold": [
+        0,
+        14
+      ],
+      "peek": [
+        0,
+        14
+      ],
+      "save": [
+        0,
+        14
+      ],
+      "move_to_adjacent_zone:B_MAIN": [
+        0,
+        14
+      ],
+      "move_to_adjacent_zone:MID": [
+        0,
+        14
+      ],
+      "move_to_adjacent_zone:CT_SPAWN": [
+        0,
+        14
+      ],
+      "use_utility": [
+        0,
+        6
+      ]
+    },
+    "t|CT_SPAWN|0|0|none": {
+      "hold": [
+        0,
+        14
+      ],
+      "peek": [
+        0,
+        14
+      ],
+      "save": [
+        0,
+        14
+      ],
+      "use_utility": [
+        0,
+        9
+      ],
+      "move_to_adjacent_zone:A_SITE": [
+        0,
+        14
+      ],
+      "move_to_adjacent_zone:B_SITE": [
+        0,
+        14
+      ]
+    }
+  }
+}

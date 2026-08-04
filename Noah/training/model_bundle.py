@@ -21,9 +21,16 @@ from cs2_sim.core.model import (
     SUPPORTED_FEATURE_SCHEMA_VERSIONS,
 )
 
+from .contracts import ModelReleaseManifest
+
 _HASH_CHUNK_SIZE = 1024 * 1024
-_MANIFEST_NAMES = ("manifest.json", "full_replay_value.manifest.json")
+_MANIFEST_NAMES = (
+    "release_manifest.json",
+    "full_replay_value.manifest.json",
+    "manifest.json",
+)
 _VERSION_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]*$")
+_RELEASE_REQUIRED_COMPONENTS = frozenset({"feature_schema", "full_replay_manifest"})
 
 
 class BundleError(RuntimeError):
@@ -76,6 +83,68 @@ def _load_manifest(path: Path) -> dict[str, Any]:
     return payload
 
 
+def _validate_release_manifest(
+    manifest_path: Path,
+    *,
+    expected_version: str | None = None,
+    require_checksums: bool = False,
+) -> dict[str, Any]:
+    """Validate the complete release manifest and return its JSON payload.
+
+    ``ModelReleaseManifest`` owns the component/path/checksum and feature-schema
+    checks.  This wrapper adds release-store invariants that are intentionally
+    stricter than the standalone contract: a published release must identify
+    its directory version, include the feature contract and replay manifest,
+    and point optional dataset/metrics metadata at files inside the release.
+    """
+
+    try:
+        release = ModelReleaseManifest.load(manifest_path)
+    except (OSError, TypeError, ValueError, json.JSONDecodeError) as exc:
+        raise BundleError(f"could not read release manifest {manifest_path}: {exc}") from exc
+
+    bundle_root = manifest_path.parent.resolve()
+    version = expected_version or bundle_root.name
+    if release.version != version:
+        raise BundleError(
+            f"release manifest version {release.version!r} does not match "
+            f"expected release {version!r}"
+        )
+
+    missing = sorted(_RELEASE_REQUIRED_COMPONENTS.difference(release.components))
+    if missing:
+        raise BundleError(
+            "release manifest is incomplete; missing required components: "
+            + ", ".join(missing)
+        )
+
+    # ModelReleaseManifest.validate checks every declared component.  Keep the
+    # exception type at the bundle boundary stable for callers of this module.
+    try:
+        release.validate(bundle_root, require_checksums=require_checksums)
+    except (OSError, TypeError, ValueError) as exc:
+        raise BundleError(f"invalid release manifest {manifest_path}: {exc}") from exc
+
+    # These fields are paths in the contract, but are not component entries.
+    # Validate them here so a release cannot advertise metadata that is absent
+    # or escapes the bundle root.
+    for name in ("dataset_manifest", "metrics"):
+        value = getattr(release, name)
+        if value is None:
+            continue
+        if not isinstance(value, str) or not value:
+            raise BundleError(f"release manifest {name} path must be a non-empty string")
+        candidate = (bundle_root / value).resolve() if not Path(value).is_absolute() else Path(value).resolve()
+        try:
+            candidate.relative_to(bundle_root)
+        except ValueError as exc:
+            raise BundleError(f"release manifest {name} escapes bundle directory: {candidate}") from exc
+        if not candidate.is_file():
+            raise BundleError(f"release manifest {name} is missing: {candidate}")
+
+    return release.to_dict()
+
+
 def _component_metadata(payload: dict[str, Any], name: str) -> dict[str, Any] | None:
     components = payload.get("components")
     if isinstance(components, dict) and isinstance(components.get(name), dict):
@@ -102,10 +171,15 @@ def validate_bundle(
     """Validate manifest, component containment, sizes, and SHA-256 hashes."""
 
     manifest = find_manifest(root)
+    if manifest.name == "release_manifest.json":
+        return _validate_release_manifest(
+            manifest,
+            require_checksums=require_checksums,
+        )
     payload = _load_manifest(manifest)
     bundle_root = manifest.parent.resolve()
     found_component = False
-    for name in ("booster", "bayesian", "calibrator"):
+    for name in ("booster", "bayesian", "calibrator", "engagement_model", "engagement"):
         metadata = _component_metadata(payload, name)
         if metadata is None or metadata.get("path") is None:
             continue
@@ -154,15 +228,28 @@ class ModelBundleStore:
             raise BundleError(f"bundle source directory does not exist: {source_root}")
         validate_bundle(source_root, require_checksums=require_checksums)
         destination = self.root / version
-        if destination.exists():
+        if os.path.lexists(destination):
             raise BundleError(f"bundle version already exists: {destination}")
         staging_root = self.root / ".staging"
         staging_root.mkdir(parents=True, exist_ok=True)
         staging = staging_root / f"{version}-{uuid.uuid4().hex}"
         try:
             shutil.copytree(source_root, staging)
-            validate_bundle(staging, require_checksums=require_checksums)
-            os.replace(staging, destination)
+            staged_manifest = find_manifest(staging)
+            if staged_manifest.name == "release_manifest.json":
+                _validate_release_manifest(
+                    staged_manifest,
+                    expected_version=version,
+                    require_checksums=require_checksums,
+                )
+            else:
+                validate_bundle(staging, require_checksums=require_checksums)
+            # os.replace would silently replace an existing release in a race.
+            # os.rename is atomic on one filesystem and fails if the target was
+            # created after the initial existence check.
+            os.rename(staging, destination)
+        except FileExistsError as exc:
+            raise BundleError(f"bundle version already exists: {destination}") from exc
         except Exception:
             if staging.exists():
                 shutil.rmtree(staging)

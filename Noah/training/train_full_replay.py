@@ -4,11 +4,18 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
+from collections import Counter
 from pathlib import Path
 from typing import Any
 
 from cs2_sim.core.model import ReplayValueEnsemble, SnapshotValueModel
+
+from Noah.training.calibration import PlattCalibrator
+from Noah.training.data_paths import DATA_PATHS
+from Noah.training.dataset_split import evaluation_metadata, group_id, grouped_split
 from Noah.training.full_features import (
+    FEATURE_SCHEMA_VERSION,
     FULL_FEATURE_NAMES,
     record_to_event_rows,
     record_to_rows,
@@ -16,10 +23,8 @@ from Noah.training.full_features import (
 )
 from Noah.training.metrics import binary_probability_metrics
 from Noah.training.replay_repository import ReplayRepository
-from Noah.training.calibration import PlattCalibrator
-from Noah.training.dataset_split import evaluation_metadata, group_id, grouped_split
-from Noah.training.full_features import FEATURE_SCHEMA_VERSION
-from Noah.training.data_paths import DATA_PATHS
+
+DEFAULT_TICK_RATE = 64.0
 
 
 def _read_records(path: Path) -> list[dict[str, Any]]:
@@ -39,6 +44,115 @@ def _first_round_indices(rows: list[dict[str, Any]]) -> list[int]:
     return list(first.values())
 
 
+def _snapshot_for_model(row: dict[str, Any]) -> dict[str, Any]:
+    """Return a labelled snapshot suitable for ``SnapshotValueModel``."""
+
+    snapshot = dict(row["snapshot"])
+    snapshot["label_round_winner"] = "ct" if row["label_ct_win"] else "t"
+    return snapshot
+
+
+def _fit_snapshot_model(rows: list[dict[str, Any]]) -> SnapshotValueModel:
+    """Fit a Bayesian snapshot model without writing an artifact."""
+
+    model = SnapshotValueModel()
+    for row in rows:
+        model.observe(_snapshot_for_model(row))
+    return model
+
+
+def _load_or_fit_snapshot_model(
+    rows: list[dict[str, Any]],
+    *,
+    small_model_path: Path | None,
+    small_model_output: Path | None,
+) -> tuple[SnapshotValueModel, Path | None, str]:
+    """Resolve the deployable Bayesian model and its artifact path.
+
+    ``small_model_path`` is intentionally an input to the trainer.  When it
+    already exists, it is loaded and never overwritten; this is what allows
+    the streamed workflow to train the Bayesian artifact once and then reuse
+    it while fitting LightGBM.  If no existing artifact is available, the
+    model is fitted from ``rows`` and written only when
+    ``small_model_output`` is supplied.
+    """
+
+    source_path = Path(small_model_path) if small_model_path is not None else None
+    if source_path is not None and source_path.is_file():
+        return SnapshotValueModel.load(source_path), source_path, "loaded"
+
+    model = _fit_snapshot_model(rows)
+    output_path = Path(small_model_output) if small_model_output is not None else None
+    if output_path is not None:
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        model.save(output_path)
+    return model, output_path, "trained"
+
+
+def _positive_float(value: Any, *, name: str) -> float | None:
+    if value in (None, ""):
+        return None
+    try:
+        converted = float(value)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"{name} must be a positive number") from exc
+    if not math.isfinite(converted) or converted <= 0:
+        raise ValueError(f"{name} must be a positive number")
+    return converted
+
+
+def _resolve_tick_rate(
+    configured: float | None,
+    candidates: list[Any],
+    rows: list[dict[str, Any]],
+) -> float:
+    """Resolve tick metadata from an explicit value or the input dataset."""
+
+    explicit = _positive_float(configured, name="tick_rate")
+    if explicit is not None:
+        return explicit
+    values: list[float] = []
+    for value in candidates:
+        try:
+            converted = _positive_float(value, name="tick_rate")
+        except ValueError:
+            converted = None
+        if converted is not None:
+            values.append(converted)
+    for row in rows:
+        snapshot = row.get("snapshot")
+        if isinstance(snapshot, dict):
+            try:
+                converted = _positive_float(snapshot.get("tick_rate"), name="tick_rate")
+            except ValueError:
+                converted = None
+            if converted is not None:
+                values.append(converted)
+    if not values:
+        return DEFAULT_TICK_RATE
+    # Mixed-rate datasets are possible.  Report the dominant rate rather than
+    # silently retaining the historical hard-coded 64 Hz value.
+    rounded = [round(value, 6) for value in values]
+    return float(Counter(rounded).most_common(1)[0][0])
+
+
+def _resolve_release_version(
+    configured: str | None,
+    *,
+    output_path: Path,
+    manifest_path: Path | None,
+) -> str:
+    """Resolve one release identity for every generated artifact."""
+
+    if configured is not None:
+        value = str(configured).strip()
+        if not value:
+            raise ValueError("release_version must not be empty")
+        return value
+    parent = (manifest_path or output_path).parent.name
+    return parent or "unversioned"
+
+
 def train(
     input_path: Path | None,
     output_path: Path,
@@ -56,17 +170,23 @@ def train(
     validation_fraction: float = 0.2,
     small_model_output: Path | None = None,
     verbose: bool = True,
+    release_version: str | None = None,
+    tick_rate: float | None = None,
 ) -> None:
     rows: list[dict[str, Any]] = []
     event_only_rows = 0
+    tick_rate_candidates: list[Any] = []
     if database_path is not None and snapshot_input is not None:
         raise ValueError("database_path and snapshot_input are mutually exclusive")
     source_path = database_path or snapshot_input or input_path
     if database_path is not None:
         with ReplayRepository(database_path) as repository:
+            dataset_metadata = repository.metadata()
+            tick_rate_candidates.append(dataset_metadata.get("default_tick_rate"))
             rows = list(repository.iter_snapshot_rows(include_terminal=False))
     elif snapshot_input is not None:
         snapshots = _read_records(snapshot_input)
+        tick_rate_candidates.extend(snapshot.get("tick_rate") for snapshot in snapshots)
         rows = [
             snapshot_to_event_row(snapshot)
             for snapshot in snapshots
@@ -78,6 +198,10 @@ def train(
             raise ValueError("input_path is required when database_path is not provided")
         records = _read_records(input_path)
         for record in records:
+            header = record.get("header")
+            if isinstance(header, dict):
+                tick_rate_candidates.append(header.get("tick_rate"))
+            tick_rate_candidates.append(record.get("tick_rate"))
             parsed_rows = record_to_rows(
                 record,
                 sample_every=sample_every,
@@ -97,6 +221,12 @@ def train(
             "no positional tick rows found; run parse_demos on a machine where "
             "Awpy/PyArrow native parsing works, or pass --allow-event-only"
         )
+    resolved_tick_rate = _resolve_tick_rate(tick_rate, tick_rate_candidates, rows)
+    resolved_release_version = _resolve_release_version(
+        release_version,
+        output_path=output_path,
+        manifest_path=manifest_path,
+    )
     development_rows, test_rows, outer_split = grouped_split(
         rows,
         validation_fraction=validation_fraction,
@@ -177,11 +307,10 @@ def train(
         callbacks=[lgb.early_stopping(30, verbose=False)],
     )
     # Fit the calibration input only on rows not used by this initial booster.
-    small_train = SnapshotValueModel()
-    for row in train_rows:
-        snapshot = dict(row["snapshot"])
-        snapshot["label_round_winner"] = "ct" if row["label_ct_win"] else "t"
-        small_train.observe(snapshot)
+    # Keep calibration leakage-safe by fitting this prior only on the inner
+    # training split.  The deployable Bayesian artifact is resolved below and
+    # may have been produced by the streamed snapshot workflow.
+    small_train = _fit_snapshot_model(train_rows)
     calibration_booster = booster.predict(
         np.asarray(
             [[row["features"][name] for name in FULL_FEATURE_NAMES] for row in calibration_rows],
@@ -224,21 +353,26 @@ def train(
     )
     best_iteration = booster.best_iteration or 200
     final_booster = lgb.train(parameters, final_set, num_boost_round=best_iteration)
-    small = SnapshotValueModel()
-    for row in dev_rows:
-        snapshot = dict(row["snapshot"])
-        snapshot["label_round_winner"] = "ct" if row["label_ct_win"] else "t"
-        small.observe(snapshot)
-    if small_model_output is not None:
-        small_model_output.parent.mkdir(parents=True, exist_ok=True)
-        small.save(small_model_output)
+    small, small_artifact_path, small_artifact_source = _load_or_fit_snapshot_model(
+        dev_rows,
+        small_model_path=small_model_path,
+        small_model_output=small_model_output,
+    )
+    # If a pre-trained deployment artifact was supplied, do not use its
+    # all-row counts for held-out metrics.  Build an in-memory evaluation prior
+    # from development groups while retaining the loaded model for deployment.
+    evaluation_small = (
+        _fit_snapshot_model(dev_rows)
+        if small_artifact_source == "loaded"
+        else small
+    )
 
     test_matrix = np.asarray(
         [[row["features"][name] for name in FULL_FEATURE_NAMES] for row in test_rows],
         dtype=float,
     )
     raw_test_probabilities = final_booster.predict(test_matrix).tolist()
-    test_prior = [small.predict_ct_win(row["snapshot"]) for row in test_rows]
+    test_prior = [evaluation_small.predict_ct_win(row["snapshot"]) for row in test_rows]
     probabilities = [
         0.8 * full + 0.2 * prior
         for full, prior in zip(raw_test_probabilities, test_prior, strict=True)
@@ -269,18 +403,22 @@ def train(
     final_booster.save_model(str(output_path))
     artifact_metadata = {
         "version": 2,
+        "release_version": resolved_release_version,
         "feature_schema_version": FEATURE_SCHEMA_VERSION,
         "feature_names": list(FULL_FEATURE_NAMES),
         "small_model_blend": 0.2 if small is not None else 0.0,
         "training_mode": "sqlite" if database_path is not None else ("event_only" if event_only_rows else "positional_ticks"),
         "event_only_rows": event_only_rows,
         "decision_window_seconds": decision_window_seconds,
-        "tick_rate": 64.0,
+        "tick_rate": resolved_tick_rate,
         "training_rows": len(dev_rows),
         "test_rows": len(test_rows),
         "boosting_rounds": best_iteration,
         "weighting": "equal_total_weight_per_replay_round",
         "calibrator": str(calibrator_path) if calibrator is not None else None,
+        "small_model_path": str(small_artifact_path) if small_artifact_path is not None else None,
+        "small_model_source": small_artifact_source,
+        "evaluation_small_model_source": "development_split",
     }
     output_path.with_suffix(output_path.suffix + ".json").write_text(
         json.dumps(
@@ -309,7 +447,8 @@ def train(
         "database": str(database_path) if database_path is not None else None,
         "event_only_rows": event_only_rows,
         "decision_window_seconds": decision_window_seconds,
-        "tick_rate": 64.0,
+        "tick_rate": resolved_tick_rate,
+        "release_version": resolved_release_version,
         "artifact_training_rows": len(dev_rows),
         "boosting_rounds": best_iteration,
         "weighting": "equal_total_weight_per_replay_round",
@@ -317,6 +456,9 @@ def train(
         "snapshot_metrics": validation_metrics,
         "round_metrics": round_metrics,
         "calibrated_snapshot_metrics": calibrated_metrics,
+        "small_model_path": str(small_artifact_path) if small_artifact_path is not None else None,
+        "small_model_source": small_artifact_source,
+        "evaluation_small_model_source": "development_split",
         "metadata": metadata,
     }
     metrics_path.write_text(json.dumps(metrics_report, indent=2), encoding="utf-8")
@@ -324,22 +466,25 @@ def train(
         calibrator_path.parent.mkdir(parents=True, exist_ok=True)
         calibrator_path.write_text(json.dumps(calibrator.to_dict(), indent=2), encoding="utf-8")
     if manifest_path is not None:
-        if small_model_output is None:
-            raise ValueError("deployment manifest requires --small-model-output so calibration matches the Bayesian artifact")
+        if small_artifact_path is None:
+            raise ValueError(
+                "deployment manifest requires an existing --small-model path or "
+                "--small-model-output so calibration matches the Bayesian artifact"
+            )
         ReplayValueEnsemble(booster_weight=0.8 if small is not None else 1.0).save_manifest(
             manifest_path,
             booster_path=output_path,
-            bayesian_path=small_model_output,
+            bayesian_path=small_artifact_path,
             calibrator_path=calibrator_path if calibrator is not None else None,
         )
         manifest_payload = json.loads(manifest_path.read_text(encoding="utf-8"))
         manifest_payload.update(
             {
-                "release_version": "v2",
+                "release_version": resolved_release_version,
                 "deployed_model": "lightgbm+bayesian",
                 "baseline_role": "advisory_only",
                 "feature_schema_version": FEATURE_SCHEMA_VERSION,
-                "tick_rate": 64.0,
+                "tick_rate": resolved_tick_rate,
                 "training_prior": baseline_probability,
                 "dataset_fingerprint": metadata["dataset_fingerprint"],
                 "split_fingerprint": metadata["split_fingerprint"],
@@ -373,8 +518,24 @@ def main() -> int:
     parser.add_argument("--manifest", type=Path, default=None)
     parser.add_argument("--sample-every", type=int, default=4)
     parser.add_argument("--decision-window-seconds", type=float, default=5.0)
-    parser.add_argument("--small-model", type=Path, default=Path("model/artifacts/small_snapshot_value.json"))
+    parser.add_argument(
+        "--small-model",
+        type=Path,
+        default=Path("model/artifacts/small_snapshot_value.json"),
+        help="reuse an existing Bayesian artifact when present",
+    )
     parser.add_argument("--small-model-output", type=Path, default=None)
+    parser.add_argument(
+        "--release-version",
+        default=None,
+        help="release identity recorded in artifact, metrics, and replay manifest",
+    )
+    parser.add_argument(
+        "--tick-rate",
+        type=float,
+        default=None,
+        help="override tick-rate metadata (otherwise infer it from the input)",
+    )
     parser.add_argument("--validation-fraction", type=float, default=0.2)
     parser.add_argument("--seed", type=int, default=7)
     parser.add_argument(
@@ -402,6 +563,8 @@ def main() -> int:
         seed=args.seed,
         validation_fraction=args.validation_fraction,
         small_model_output=args.small_model_output,
+        release_version=args.release_version,
+        tick_rate=args.tick_rate,
     )
     return 0
 

@@ -1,0 +1,73 @@
+{
+  "schema_version": 1,
+  "parser": "fixture",
+  "demo_file": "coach-fixture.dem",
+  "header": {
+    "map_name": "de_mirage",
+    "tick_rate": 64
+  },
+  "rounds": [
+    {
+      "round_num": 1,
+      "start": 0,
+      "end": 256,
+      "winner": "ct"
+    }
+  ],
+  "kills": [
+    {
+      "round_num": 1,
+      "tick": 128,
+      "attacker_steamid": "ct1",
+      "victim_steamid": "t1",
+      "attacker_side": "ct",
+      "victim_side": "t",
+      "weapon": "m4a1"
+    }
+  ],
+  "damages": [],
+  "bomb": [],
+  "ticks": [
+    {
+      "round_num": 1,
+      "tick": 0,
+      "steamid": "ct1",
+      "side": "ct",
+      "health": 100,
+      "place": "A_SITE",
+      "X": 0,
+      "Y": 0
+    },
+    {
+      "round_num": 1,
+      "tick": 0,
+      "steamid": "t1",
+      "side": "t",
+      "health": 100,
+      "place": "A_MAIN",
+      "X": 100,
+      "Y": 0
+    },
+    {
+      "round_num": 1,
+      "tick": 128,
+      "steamid": "ct1",
+      "side": "ct",
+      "health": 100,
+      "place": "A_SITE",
+      "X": 0,
+      "Y": 0
+    },
+    {
+      "round_num": 1,
+      "tick": 128,
+      "steamid": "t1",
+      "side": "t",
+      "health": 0,
+      "alive": false,
+      "place": "A_MAIN",
+      "X": 100,
+      "Y": 0
+    }
+  ]
+}

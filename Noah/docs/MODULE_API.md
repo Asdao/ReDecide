@@ -67,9 +67,11 @@ from Noah.training import TrainingConfig, TrainingPipeline
 
 pipeline = TrainingPipeline(
    TrainingConfig(
-      artifact_dir="model/artifacts/releases/v3",
+      artifact_dir="Noah/model/artifacts/releases/v4",
       seed=7,
       clean_records=True,
+      release_version="v4",
+      tick_rate=64.0,
    )
 )
 
@@ -111,8 +113,89 @@ action_scores = model.action_probabilities(
     legal_actions=["hold", "move"],
 )
 next_zone = model.predict_next_zone("A_SITE", map_name="de_mirage", side="ct")
+match_report = model.analyse_match(replay)
+replay_analysis = model.analyse_replay(
+    replay,
+    max_moments=25,
+    min_support=5,
+    probability_of_improvement_threshold=0.80,
+    expected_regret_threshold=0.05,
+    credible_level=0.90,
+    posterior_samples=5000,
+    posterior_seed=7,
+)
+engagement_report = model.analyse_engagement(replay, tick=1234, player_id="steam-id")
+one_window_score = model.score_engagement(leakage_safe_engagement_window)
+ranked = model.rank_candidate_actions([
+    {"action": "hold", "death_probability": 0.31, "round_value_delta": 0.03, "sample_count": 20, "entropy": 0.4},
+])
 print(prediction.probability, action_scores, next_zone)
 ```
+
+`analyse_replay` combines a deterministic key-moment report with support-aware
+candidate ranking. For kills, release v4 coaches the victim from a decision
+cutoff one second before contact using three seconds of prior history. The
+shared learned vocabulary includes `hold`, `peek`, `move_to_adjacent_zone`,
+`use_utility`, `plant`, `defuse`, and `unknown`; target zones and utility types
+are parameters. Existing releases may score candidates with simulator-value
+heads; candidate releases trained from `candidate_label_v1` instead expose a
+pre-event suitability score. The harness preserves that estimate type and
+does not project it into a death-risk or round-win claim. It labels `good`/`bad`
+only when the selected target has the required evidence; otherwise it abstains.
+Detailed simulator actions still record their default-topology legality scope.
+`analyse_engagement`, `score_engagement`, and `rank_candidate_actions` remain
+observational: a ranked alternative is not proof that a player should have
+made that move.
+
+Application code accesses the complete harness through one package-root
+function. It accepts either an input path or an already loaded replay mapping:
+
+```python
+from Noah import analyze_replay
+
+analysis = analyze_replay(replay_record, max_moments=None)
+analysis_from_demo = analyze_replay("match.dem", max_moments=None)
+print(analysis["kill_analysis"])
+```
+
+Both calls return the same combined report shape. The `kill_analysis` array
+contains one enriched row per kill, including `decision_tick`, coached player,
+the selected action's probability heads, and coaching utility; `moments` contains the detailed candidate
+state and `full_match` retains the deterministic timeline. No database rebuild
+or retraining occurs during either analysis call.
+
+The small statistical candidate model uses hierarchical support: it first
+looks for an exact state, then backs off to zone/bomb, side/bomb, side, and
+global priors. Candidate rows expose `support_level` and `raw_support`; the
+effective `sample_count` is discounted for broader backoff levels.
+
+Pass `max_moments=None` when auditing a complete replay and every detected
+kill/death/bomb moment should receive a candidate-analysis entry. The default
+cap of 25 is intended for bounded coaching responses. The nested
+`full_match.events` list and `event_counts` retain all deduplicated event
+evidence in either mode.
+
+The response also contains additive probability-based fields under each
+moment. `probability_of_improvement` estimates the probability that the best
+supported candidate exceeds the observed action, and `expected_regret` is the
+posterior expected positive probability gap. `posterior_comparison` contains a
+seeded Beta-posterior Monte Carlo comparison, including the probability that
+the candidate beats the observed action by the configured margin. Each action
+has a `credible_interval` and each moment has `credible_intervals`; these are
+support-proxy, normal-approximation intervals unless posterior success/failure
+counts are supplied. They are uncertainty indicators, not guarantees.
+
+`probability_decision_class` is the thresholded label (`good`, `bad`,
+`neutral`, or `insufficient_evidence`). The legacy `decision_class` remains
+unchanged for compatibility. `probability_abstention` records whether the
+probability label abstained, the reason, and the exact thresholds used. The
+default thresholds are minimum support 5, probability of improvement 0.80,
+expected regret 0.05, 90% intervals, and maximum interval width 0.80. Clients
+must display abstention and uncertainty rather than converting them into a
+binary good/bad verdict.
+
+The Monte Carlo comparison defaults to 5,000 seeded posterior draws; callers
+can override `posterior_samples` and `posterior_seed` on `analyze_replay`.
 
 Callers provide structured fields and never construct internal action-state keys
 or load component files independently. `model.status` reports which optional

@@ -8,9 +8,9 @@ from __future__ import annotations
 
 import json
 import math
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterable, Sequence
 
 from ...actions import Action
 from ...policy import ActionPolicy
@@ -35,11 +35,13 @@ class FullLightGBMModel(ActionPolicy):
         *,
         small_model: SmallStatisticalModel | None = None,
         lightgbm_weight: float = 0.8,
+        calibrator: object | None = None,
     ) -> None:
         if not 0.0 <= lightgbm_weight <= 1.0:
             raise ValueError("lightgbm_weight must be between 0 and 1")
         self.small_model = small_model or SmallStatisticalModel()
         self.lightgbm_weight = lightgbm_weight
+        self.calibrator = calibrator
         self._booster = None
 
     @property
@@ -64,7 +66,7 @@ class FullLightGBMModel(ActionPolicy):
         validation_examples: Sequence[TrainingExample] | None = None,
         num_boost_round: int = 250,
         update_small_model: bool = False,
-    ) -> "FullLightGBMModel":
+    ) -> FullLightGBMModel:
         """Train on candidate-action rows with binary success labels."""
 
         if len(examples) < 2:
@@ -160,7 +162,10 @@ class FullLightGBMModel(ActionPolicy):
 
         if not self.is_fitted:
             return self.small_model.score_actions(state, player_id, (action,))[action]
-        return self._lightgbm_score(state, player_id, action)
+        probability = self._lightgbm_score(state, player_id, action)
+        if self.calibrator is not None:
+            probability = float(self.calibrator.predict([probability])[0])
+        return probability
 
     def score_actions(
         self,
@@ -177,7 +182,7 @@ class FullLightGBMModel(ActionPolicy):
         small_scores = self.small_model.score_actions(state, player_id, legal_actions)
         return {
             action: (
-                self.lightgbm_weight * self._lightgbm_score(state, player_id, action)
+                self.lightgbm_weight * self.predict_probability(state, player_id, action)
                 + (1.0 - self.lightgbm_weight) * small_scores[action]
             )
             for action in legal_actions
@@ -216,13 +221,14 @@ class FullLightGBMModel(ActionPolicy):
             "feature_names": list(FEATURE_NAMES),
             "lightgbm_weight": self.lightgbm_weight,
             "small_model": self.small_model.to_dict(),
+            "calibrator": self.calibrator.to_dict() if self.calibrator is not None else None,
         }
         model_path.with_suffix(model_path.suffix + ".json").write_text(
             json.dumps(metadata, indent=2), encoding="utf-8"
         )
 
     @classmethod
-    def load(cls, path: str | Path) -> "FullLightGBMModel":
+    def load(cls, path: str | Path) -> FullLightGBMModel:
         model_path = Path(path)
         metadata_path = model_path.with_suffix(model_path.suffix + ".json")
         metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
@@ -238,5 +244,18 @@ class FullLightGBMModel(ActionPolicy):
             small_model=small_model,
             lightgbm_weight=float(metadata["lightgbm_weight"]),
         )
+        # Candidate releases may declare whether their scores represent
+        # simulator value or a boundary-safe suitability rubric.  Older
+        # artifacts omit this optional field and retain simulator semantics.
+        model.training_target = metadata.get("training_target")
+        model.training_label_source = metadata.get("training_label_source")
+        calibrator_payload = metadata.get("calibrator")
+        if isinstance(calibrator_payload, dict):
+            try:
+                from Noah.training.calibration import PlattCalibrator
+
+                model.calibrator = PlattCalibrator.from_dict(calibrator_payload)
+            except (ImportError, KeyError, TypeError, ValueError):
+                model.calibrator = None
         model._booster = model._load_lightgbm().Booster(model_file=str(model_path))
         return model

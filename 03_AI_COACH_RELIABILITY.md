@@ -164,6 +164,18 @@ Do not claim 95% accuracy unless the data supports it. Report sample size and co
 - Zero known post-window fields in model input.
 - Unsupported/outcome claims are blocked or converted to limitations.
 - Low-quality packets abstain.
+
+Probability-based decision labels must preserve that abstention boundary. The
+API should expose `probability_of_improvement`, `expected_regret`, credible
+intervals, the thresholds used, and an explicit abstention reason. A `good` or
+`bad` label is allowed only when the support threshold, expected-regret
+threshold, and probability-of-improvement threshold all pass; otherwise return
+`neutral` or `insufficient_evidence` as appropriate. These are calibrated
+observational/simulator estimates, not proof that an unplayed counterfactual
+would have happened. The implementation uses seeded Beta-posterior Monte Carlo
+comparisons; when only model probabilities and action counts are available,
+those counts are explicitly treated as effective support rather than raw
+outcome labels.
 - Prompt, rubric, model, parameters, examples, and third-party API are documented.
 - Evaluation results include denominators and examples of failure, not just a headline score.
 

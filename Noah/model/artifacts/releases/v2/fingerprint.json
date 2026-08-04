@@ -5,12 +5,12 @@
   "platform": "Windows-11-10.0.26200-SP0",
   "files": [
     {
-      "path": "data/full/processed/full_replays.jsonl",
+      "path": "data/private/processed/full_replays.jsonl",
       "bytes": 381136742,
       "sha256": "ebdfd1946b06a2aaf30dcff78f745fa5c4ccbf7252e886662fe8fa49697816a5"
     },
     {
-      "path": "data/full/processed/cs2_replays_v2.sqlite",
+      "path": "data/private/databases/cs2_replays_v2.sqlite",
       "bytes": 1155141632,
       "sha256": "a250aefc1b7336ad10e05f66eccee11314cdd6c9c2ad5c28fb7cdb682eceb8dd"
     },

@@ -2,12 +2,16 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Mapping
+from typing import Any
 
 from Noah.training.build_replay_db import build_database
 from Noah.training.train_action_models import train_action_models
+from Noah.training.train_candidate_value import (
+    train_candidate_models as train_candidate_value_models,
+)
 from Noah.training.train_full_replay import train as train_replay_value
 
 
@@ -19,7 +23,7 @@ class TrainingError(RuntimeError):
 class TrainingConfig:
     """Configuration shared by database preparation and model training."""
 
-    artifact_dir: Path = Path("model/artifacts")
+    artifact_dir: Path = Path("Noah/model/artifacts")
     sample_every: int = 4
     decision_window_seconds: float = 5.0
     action_window_seconds: float = 2.0
@@ -27,6 +31,8 @@ class TrainingConfig:
     seed: int = 7
     clean_records: bool = False
     allow_event_only: bool = False
+    release_version: str | None = None
+    tick_rate: float | None = None
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "artifact_dir", Path(self.artifact_dir))
@@ -38,6 +44,10 @@ class TrainingConfig:
             raise ValueError("action_window_seconds must be positive")
         if not 0.0 < self.validation_fraction < 1.0:
             raise ValueError("validation_fraction must be between zero and one")
+        if self.release_version is not None and not str(self.release_version).strip():
+            raise ValueError("release_version must not be empty")
+        if self.tick_rate is not None and self.tick_rate <= 0:
+            raise ValueError("tick_rate must be positive")
 
 
 @dataclass(frozen=True, slots=True)
@@ -60,6 +70,14 @@ class ReplayTrainingArtifacts:
 class ActionTrainingArtifacts:
     action_model: Path
     transition_model: Path
+    metrics: Path
+    summary: Mapping[str, Any]
+
+
+@dataclass(frozen=True, slots=True)
+class CandidateTrainingArtifacts:
+    small_model: Path
+    full_model: Path | None
     metrics: Path
     summary: Mapping[str, Any]
 
@@ -129,12 +147,17 @@ class TrainingPipeline:
                 snapshot_input=None,
                 sample_every=self.config.sample_every,
                 decision_window_seconds=self.config.decision_window_seconds,
-                small_model_path=bayesian,
+                # Train a fresh, split-consistent Bayesian artifact for this
+                # database run.  An existing artifact is an explicit input
+                # only for the streamed workflow.
+                small_model_path=None,
                 allow_event_only=self.config.allow_event_only,
                 seed=self.config.seed,
                 validation_fraction=self.config.validation_fraction,
                 small_model_output=bayesian,
                 verbose=False,
+                release_version=self.config.release_version,
+                tick_rate=self.config.tick_rate,
             )
             return ReplayTrainingArtifacts(
                 booster,
@@ -171,6 +194,42 @@ class TrainingPipeline:
             return ActionTrainingArtifacts(action_model, transition_model, metrics, summary)
         except Exception as exc:
             raise TrainingError(f"could not train action models from {database}: {exc}") from exc
+
+    def train_candidate_value_models(
+        self,
+        candidate_states_path: str | Path,
+        rollout_path: str | Path | None = None,
+        *,
+        labels_path: str | Path | None = None,
+        artifact_dir: str | Path | None = None,
+        train_full: bool = True,
+        max_examples: int | None = None,
+    ) -> CandidateTrainingArtifacts:
+        """Train support-aware strategic candidate-action models."""
+
+        states = Path(candidate_states_path)
+        rollouts = Path(rollout_path) if rollout_path is not None else None
+        labels = Path(labels_path) if labels_path is not None else None
+        output = Path(artifact_dir) if artifact_dir is not None else self.config.artifact_dir / "candidate"
+        try:
+            summary = train_candidate_value_models(
+                states,
+                rollouts,
+                output,
+                labels_path=labels,
+                train_full=train_full,
+                max_examples=max_examples,
+                seed=self.config.seed,
+            )
+            full_model = output / "candidate_action_value.txt"
+            return CandidateTrainingArtifacts(
+                output / "small_statistical.json",
+                full_model if full_model.is_file() else None,
+                output / "candidate_training_metrics.json",
+                summary,
+            )
+        except Exception as exc:
+            raise TrainingError(f"could not train candidate-action models from {states}: {exc}") from exc
 
     def run(
         self,
