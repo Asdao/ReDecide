@@ -54,8 +54,15 @@ requires one.
 1. `run_demo` creates a deterministic replay from `{seed, scenario, policy}` and stores or returns a `replay_id`.
 2. `build_timeline` converts simulator events into chronological, user-facing events with state snapshots or references to snapshots.
 3. `analyze_replay` indexes the first damage contact for each `(round, player)` pair. Each candidate carries a stable `decision_id`, the pre-contact decision window, opponent/team identity, observed action, and evidence. This avoids selecting only deaths and therefore preserves successful reset decisions.
-4. The UI filters candidates by `player_id` (or shows all players), then can request the same report with `decision_id` to select one window.
-5. The shared release-backed model produces bounded team win-estimator points. Pi uses the outcome-blind report and the analysis skill to write a full-sentence explanation; the webapp keeps the complete replay and event markers for replay rendering.
+4. The UI filters candidates by the original `player_id` (or shows all players), then can request the same report with `decision_id` to select one window.
+5. At the Pi boundary, the bridge replaces player IDs/names with replay-local aliases and turns decision IDs into opaque references. A follow-up Pi tool call is translated back locally; original identifiers remain in the backend/UI only.
+6. The shared release-backed model produces bounded team win-estimator points. Pi uses the outcome-blind report and the analysis skill to write a full-sentence explanation; the webapp keeps the complete replay and event markers for replay rendering.
+
+The server-side handoff merges Pi's response back into the authoritative UI
+result with `merge_pi_output`. It resolves the model-facing opaque decision
+reference, restores the original `player_id` and `display_name` from the
+backend candidate, and adds the result under `coach_analysis`. The source
+replay JSON is read-only and is never rewritten.
 
 For a webapp, pass a replay ID between stages rather than sending the entire event log through the model. Recompute from the seed or load the replay from server-side storage when a later stage needs more context.
 
@@ -88,51 +95,120 @@ Returns a `replay_id`, winner, duration, and bounded metadata. The full replay r
 }
 ```
 
-Returns a report like:
+The pipeline emits progress envelopes while it runs. The final envelope has
+`stage: "complete"`, `progress: 100`, `done: true`, and places the complete
+authoritative result under `result`:
+
+```json
+{
+  "schema_version": "pipeline_progress_v1",
+  "stage": "complete",
+  "progress": 100,
+  "message": "Replay preparation is complete.",
+  "done": true,
+  "result": {}
+}
+```
+
+The authoritative result sent to the UI has this shape. The IDs and names in
+this object are the backend's original values; this is the object the player
+selector and replay renderer consume:
 
 ```json
 {
   "report_type": "replay_pipeline_analysis",
   "schema_version": "replay_pipeline_v1",
-  "players": [{"player_id": "7656119", "side_by_round": {"1": "t"}}],
-  "decision_candidates": [{
-    "decision_id": "r1:p7656119:t1200",
+  "replay_id": "match-42",
+  "players": [{
+    "player_id": "steam:7656119",
+    "display_name": "Player A",
+    "side_by_round": {"1": "t"},
+    "event_ids": ["evt:1:r1:t1200"],
+    "key_event_ids": ["evt:1:r1:t1200"],
+    "decision_ids": ["r1:psteam:7656119:t1200"]
+  }],
+  "key_events": [{
+    "event_id": "evt:1:r1:t1200",
     "round_number": 1,
-    "player_id": "7656119",
+    "tick": 1200,
+    "event_type": "damage",
+    "participant_ids": ["steam:7656119"],
+    "is_key_event": true,
+    "key_event_type": "first_damage_contact",
+    "is_coaching_anchor": true
+  }],
+  "decision_candidates": [{
+    "decision_id": "r1:psteam:7656119:t1200",
+    "round_number": 1,
+    "player_id": "steam:7656119",
+    "display_name": "Player A",
     "event_category": "damage",
     "decision_open_tick": 1200,
-    "contact_tick": 1264
+    "contact_tick": 1200,
+    "action_close_tick": 1360,
+    "observed_action": "peek"
   }],
-  "selected_decision": null,
+  "selected_decision": {
+    "decision_id": "r1:psteam:7656119:t1200",
+    "player_id": "steam:7656119",
+    "player_name": "Player A"
+  },
   "win_estimator": {
+    "scope": "global_team_probability",
+    "filtered_by_player": false,
     "model_available": true,
     "timeline": [{"round_number": 1, "tick": 1200, "ct_probability": 0.52, "t_probability": 0.48, "uncertainty": 0.1}]
   },
-  "summary": {"anchor": "first_damage_contact", "outcome_blind": true}
+  "summary": {"anchor": "first_damage_contact", "outcome_blind": true},
+  "coach_analysis": {
+    "source": "pi",
+    "decision_id": "r1:psteam:7656119:t1200",
+    "player_id": "steam:7656119",
+    "player_name": "Player A",
+    "observed_action": "peek",
+    "evidence": ["displacement_above_threshold"],
+    "what_could_be_done_better": "Hold the angle until support is available."
+  }
 }
 ```
+
+`coach_analysis` is added only after the server receives Pi's response and
+calls `merge_pi_output`. Before that merge, `selected_decision` may be `null`.
+`merge_pi_output` accepts either a parsed JSON object or Pi text containing a
+JSON object, resolves `decision_001` back to the candidate's original
+`decision_id`, and restores `player_name` from the authoritative player list.
+The source replay JSON is never rewritten.
 
 The pipeline intentionally does not include `round_won`, `outcome`, or future kill/death labels in the selected window. The UI can retain the original replay and use its kill events as replay markers. The current release-backed estimator can report `model_available: false` when optional model dependencies are absent without blocking decision indexing.
 
 ## Frontend preparation functions
 
 The transport-neutral backend surface lives in
-`backend/app/replay/pipeline.py` and has two public functions:
+`backend/app/replay/pipeline.py` and has three public functions:
 
 ```python
 from backend.app.replay.pipeline import (
     extract_players_for_selector,
+    merge_pi_output,
     stream_replay_pipeline,
 )
 
 selector = extract_players_for_selector("match.dem")
+ui_result = None
 for update in stream_replay_pipeline("match.dem"):
-    send_to_frontend(update)  # FastAPI/SSE adapter comes later
+    send_to_frontend(update)
+    if update.get("done"):
+        ui_result = update["result"]
+
+# pi_response is the parsed JSON returned by the redacted Pi adapter.
+final_ui_result = merge_pi_output(ui_result, pi_response)
 ```
 
-Both functions require only the replay input. The stream emits monotonic
-stage percentages from `0` through `100`; its final `complete` update contains
-the entire prepared result. `players[].event_ids`, `key_event_ids`, and
+`extract_players_for_selector` and `stream_replay_pipeline` require only the
+replay input. `merge_pi_output` requires the authoritative result plus the
+Pi response. The stream emits monotonic stage percentages from `0` through
+`100`; its final `complete` update contains the entire prepared result.
+`players[].event_ids`, `key_event_ids`, and
 `decision_ids` are the direct selector indexes. The frontend filters event
 markers through `participant_ids`, while `win_estimator` remains a global CT/T
 team probability and is never filtered by player.
@@ -141,6 +217,31 @@ Every event exposes `is_key_event`, `key_event_type`, and
 `is_coaching_anchor`. First damage contacts are coaching anchors; kills and
 bomb events remain easy-to-pull replay markers without becoming the coaching
 selection rule.
+
+### Model-facing JSON versus UI JSON
+
+The model-facing projection deliberately has a different identity layer:
+
+```json
+{
+  "privacy": {
+    "player_identifiers_redacted": true,
+    "player_names_redacted": true,
+    "decision_references_opaque": true
+  },
+  "players": [{"player_id": "player_02", "display_name": "Player 02"}],
+  "decision_candidates": [{
+    "decision_id": "decision_001",
+    "player_id": "player_02",
+    "observed_action": "peek"
+  }]
+}
+```
+
+Pi never receives the original Steam ID, player name, or filesystem path. The
+bridge maps the opaque decision reference back locally for a follow-up call,
+then redacts the returned payload again. Only `merge_pi_output` restores the
+authoritative identity for the final UI JSON.
 
 ## Tool versus skill responsibilities
 

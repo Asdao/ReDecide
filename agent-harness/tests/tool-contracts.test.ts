@@ -34,6 +34,15 @@ describe("domain tool contracts", () => {
       sample_every: 8,
       decision_id: "r1:p1:t100",
     })).toMatchObject({ replay_path: "C:/replays/match.dem", max_decisions: 10 });
+    expect(validateAnalyzeReplay(
+      { max_decisions: 10 },
+      "C:/replays/approved.dem",
+    )).toMatchObject({ replay_path: "C:/replays/approved.dem", max_decisions: 10 });
+    expect(validateAnalyzeReplay(
+      { replay_path: "C:/replays/model-guess.dem" },
+      "C:/replays/approved.dem",
+    )).toMatchObject({ replay_path: "C:/replays/approved.dem" });
+    expect(() => validateAnalyzeReplay({})).toThrow(/replay_path/);
     expect(() => validateAnalyzeReplay({ replay_path: "C:/replays/match.txt" })).toThrow(/\.dem/);
     expect(() => validateAnalyzeReplay({ replay_path: "C:/replays/match.dem", max_decisions: 501 })).toThrow(/between 1 and 500/);
     expect(() => validateAnalyzeReplay({ replay_path: "C:/replays/match.dem", extra: true })).toThrow(/Unknown argument/);

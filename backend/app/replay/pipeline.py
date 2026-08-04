@@ -9,6 +9,7 @@ replay or model logic into the HTTP layer.
 from __future__ import annotations
 
 from collections.abc import Iterator, Mapping
+import json
 from pathlib import Path
 from typing import Any
 
@@ -125,6 +126,90 @@ def stream_replay_pipeline(
         done=True,
         result=result,
     )
+
+
+def merge_pi_output(
+    pipeline_result: Mapping[str, Any],
+    pi_output: str | Mapping[str, Any],
+) -> dict[str, Any]:
+    """Attach one redacted Pi response to the authoritative UI result.
+
+    Pi receives replay-local aliases (for example ``decision_001`` and
+    ``player_02``). The backend owns the original candidate list and therefore
+    resolves the decision alias locally before exposing the coaching text to
+    the UI. The source replay and the original pipeline mapping are never
+    modified.
+    """
+
+    result = dict(pipeline_result)
+    coach = _decode_pi_output(pi_output)
+    decision_id = str(coach.get("decision_id") or "").strip()
+    if not decision_id:
+        raise ValueError("Pi output must include decision_id")
+
+    candidates = [
+        candidate
+        for candidate in result.get("decision_candidates", [])
+        if isinstance(candidate, Mapping)
+    ]
+    decision_aliases = {
+        f"decision_{index:03d}": str(candidate["decision_id"])
+        for index, candidate in enumerate(candidates, start=1)
+        if candidate.get("decision_id") not in (None, "")
+    }
+    resolved_decision_id = decision_aliases.get(decision_id, decision_id)
+    candidate = next(
+        (
+            candidate
+            for candidate in candidates
+            if str(candidate.get("decision_id")) == resolved_decision_id
+        ),
+        None,
+    )
+    if candidate is None:
+        raise ValueError("Pi output decision_id is not present in the pipeline result")
+
+    player_id = str(candidate.get("player_id") or "")
+    player = next(
+        (
+            item
+            for item in result.get("players", [])
+            if isinstance(item, Mapping) and str(item.get("player_id")) == player_id
+        ),
+        {},
+    )
+    player_name = candidate.get("display_name") or player.get("display_name") or player_id
+    coaching = dict(coach)
+    coaching.update(
+        {
+            "decision_id": resolved_decision_id,
+            "player_id": player_id,
+            "player_name": str(player_name),
+            "source": "pi",
+        }
+    )
+    result["coach_analysis"] = coaching
+    result["selected_decision"] = dict(candidate)
+    result["selected_decision"]["player_name"] = str(player_name)
+    return result
+
+
+def _decode_pi_output(value: str | Mapping[str, Any]) -> dict[str, Any]:
+    if isinstance(value, Mapping):
+        return dict(value)
+    if not isinstance(value, str) or not value.strip():
+        raise ValueError("Pi output must be a JSON object or non-empty text")
+    decoder = json.JSONDecoder()
+    for index, character in enumerate(value):
+        if character != "{":
+            continue
+        try:
+            parsed, _ = decoder.raw_decode(value[index:])
+        except json.JSONDecodeError:
+            continue
+        if isinstance(parsed, Mapping):
+            return dict(parsed)
+    raise ValueError("Pi output did not contain a JSON object")
 
 
 def _load_record(replay: str | Path | Mapping[str, Any]) -> dict[str, Any]:
@@ -617,4 +702,4 @@ def _number(value: Any, default: float) -> float:
         return default
 
 
-__all__ = ["extract_players_for_selector", "stream_replay_pipeline"]
+__all__ = ["extract_players_for_selector", "merge_pi_output", "stream_replay_pipeline"]

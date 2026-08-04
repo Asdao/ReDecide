@@ -14,7 +14,10 @@ export interface AnalyzeReplayArgs {
 }
 
 /** Validate the path and output bounds before crossing into the Python process. */
-export function validateAnalyzeReplay(value: unknown): AnalyzeReplayArgs {
+export function validateAnalyzeReplay(
+  value: unknown,
+  approvedReplayPath?: string,
+): AnalyzeReplayArgs {
   const object = strictObject(value, [
     "replay_path",
     "max_decisions",
@@ -23,7 +26,10 @@ export function validateAnalyzeReplay(value: unknown): AnalyzeReplayArgs {
     "version",
     "decision_id",
   ]);
-  const replayPath = boundedString(object.replay_path, "replay_path", 2_048);
+  const pinnedReplayPath = approvedReplayPath?.trim();
+  const replayPath = pinnedReplayPath
+    ? boundedString(pinnedReplayPath, "approved replay path", 2_048)
+    : boundedString(object.replay_path, "replay_path", 2_048);
   const suffix = replayPath.toLowerCase().slice(replayPath.lastIndexOf("."));
   if (!REPLAY_SUFFIXES.has(suffix)) {
     throw new ToolInputError("INVALID_REPLAY_PATH", "replay_path must end in .dem, .json, or .jsonl");
@@ -43,19 +49,22 @@ export function validateAnalyzeReplay(value: unknown): AnalyzeReplayArgs {
   };
 }
 
-export function makeAnalyzeReplayTool(bridge: PythonBridge): RegisteredTool<AnalyzeReplayArgs> {
+export function makeAnalyzeReplayTool(
+  bridge: PythonBridge,
+  approvedReplayPath: string | undefined = process.env.HARNESS_REPLAY_FILE,
+): RegisteredTool<AnalyzeReplayArgs> {
   return {
     metadata: {
       name: "analyze_replay",
       label: "Index replay decisions",
-      description: "Load one server-side CS2 replay, index selector-ready players and explicit key events, build first-damage decision windows, and return a global CT/T win-estimator timeline. Outcome labels are withheld from the model.",
+      description: "Analyze the replay approved for this session. Omit replay_path when a session replay is already approved. The tool indexes selector-ready players and first-damage decisions; outcome labels and private player identifiers are withheld from the model.",
       effect: "read",
       approval: "never",
       timeoutMs: 120_000,
       maxResultBytes: 220_000,
       maxCallsPerTurn: 2,
     },
-    validate: validateAnalyzeReplay,
+    validate: (value: unknown) => validateAnalyzeReplay(value, approvedReplayPath),
     execute: (args: AnalyzeReplayArgs, context: ToolExecutionContext) =>
       bridge.call("analyze_replay", args as unknown as Record<string, unknown>, context),
   };

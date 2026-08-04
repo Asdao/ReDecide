@@ -1,11 +1,26 @@
 import json
 import unittest
+from pathlib import Path
 from typing import Any
 
 from backend.app.replay.pipeline import (
     extract_players_for_selector,
+    merge_pi_output,
     stream_replay_pipeline,
 )
+from Noah.harness import load_replay_record
+
+
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+PROCESSED_REPLAY = (
+    PROJECT_ROOT / "data" / "private" / "processed" / "full_replays_native_test.jsonl"
+)
+
+
+def _processed_replay(test_case: unittest.TestCase) -> Path:
+    if not PROCESSED_REPLAY.is_file():
+        test_case.skipTest(f"processed replay JSONL is unavailable: {PROCESSED_REPLAY}")
+    return PROCESSED_REPLAY
 
 
 class ReplayPipelineTests(unittest.TestCase):
@@ -93,6 +108,79 @@ class ReplayPipelineTests(unittest.TestCase):
             {event["key_event_type"] for event in result["key_events"]},
             {"kill_marker"},
         )
+
+    def test_processed_json_player_selection_analysis_and_output(self) -> None:
+        replay = load_replay_record(_processed_replay(self))
+
+        selector = extract_players_for_selector(replay)
+        selected_player = next(
+            player for player in selector["players"] if player["decision_ids"]
+        )
+        selected_player_id = selected_player["player_id"]
+        selected_decision_id = selected_player["decision_ids"][0]
+        player_events = [
+            event
+            for event in selector["events"]
+            if event["event_id"] in selected_player["event_ids"]
+        ]
+
+        updates = list(
+            stream_replay_pipeline(
+                replay,
+                decision_id=selected_decision_id,
+                sample_every=64,
+                max_timeline_points=12,
+            )
+        )
+        output = updates[-1]["result"]
+
+        self.assertEqual(selector["schema_version"], "player_selector_v1")
+        self.assertTrue(player_events)
+        self.assertTrue(
+            all(selected_player_id in event["participant_ids"] for event in player_events)
+        )
+        progress = [update["progress"] for update in updates]
+        self.assertEqual(progress, sorted(progress))
+        self.assertEqual(updates[-1]["stage"], "complete")
+        self.assertTrue(updates[-1]["done"])
+        self.assertEqual(output["selected_decision"]["decision_id"], selected_decision_id)
+        self.assertEqual(output["selected_decision"]["player_id"], selected_player_id)
+        self.assertIn(
+            selected_decision_id,
+            {
+                candidate["decision_id"]
+                for candidate in output["decision_candidates"]
+                if candidate["player_id"] == selected_player_id
+            },
+        )
+        self.assertEqual(output["win_estimator"]["scope"], "global_team_probability")
+        self.assertFalse(output["win_estimator"]["filtered_by_player"])
+        self.assertEqual(output["summary"]["anchor"], "first_damage_contact")
+        serialized_decision = json.dumps(output["selected_decision"])
+        for forbidden in ("round_won", "round_winner", '"winner"', '"outcome"'):
+            self.assertNotIn(forbidden, serialized_decision)
+
+    def test_pi_output_is_merged_with_authoritative_player_identity(self) -> None:
+        replay = load_replay_record(_processed_replay(self))
+        result = list(stream_replay_pipeline(replay, max_timeline_points=4))[-1]["result"]
+        candidate = result["decision_candidates"][0]
+
+        merged = merge_pi_output(
+            result,
+            """Pi summary:\n```json\n{
+              \"decision_id\": \"decision_001\",
+              \"observed_action\": \"peek\",
+              \"what_could_be_done_better\": \"Hold the angle until support is available.\"
+            }\n```""",
+        )
+
+        self.assertEqual(merged["coach_analysis"]["decision_id"], candidate["decision_id"])
+        self.assertEqual(merged["coach_analysis"]["player_id"], candidate["player_id"])
+        self.assertEqual(merged["coach_analysis"]["player_name"], candidate["display_name"])
+        self.assertEqual(merged["coach_analysis"]["source"], "pi")
+        self.assertEqual(merged["selected_decision"]["decision_id"], candidate["decision_id"])
+        self.assertEqual(merged["selected_decision"]["player_name"], candidate["display_name"])
+        self.assertNotIn("coach_analysis", result)
 
 
 if __name__ == "__main__":

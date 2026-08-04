@@ -1,6 +1,7 @@
 import json
 import importlib.util
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -142,9 +143,19 @@ class AgentBridgeTests(unittest.TestCase):
         self.assertTrue(response["ok"], response)
         data = response["data"]
         self.assertEqual(data["summary"]["anchor"], "first_damage_contact")
-        self.assertTrue({player["player_id"] for player in data["players"]} >= {"t1", "ct1"})
-        self.assertEqual({candidate["player_id"] for candidate in data["decision_candidates"]}, {"t1", "ct1"})
-        self.assertEqual({candidate["display_name"] for candidate in data["decision_candidates"]}, {"T One", "CT One"})
+        self.assertEqual(
+            {player["player_id"] for player in data["players"]},
+            {"player_01", "player_02"},
+        )
+        self.assertEqual(
+            {candidate["player_id"] for candidate in data["decision_candidates"]},
+            {"player_01", "player_02"},
+        )
+        self.assertEqual(
+            {candidate["display_name"] for candidate in data["decision_candidates"]},
+            {"Player 01", "Player 02"},
+        )
+        self.assertTrue(decision_id.startswith("decision_"))
         self.assertTrue(all(candidate["decision_open_tick"] == candidate["contact_tick"] for candidate in data["decision_candidates"]))
         self.assertTrue(all(candidate["action_close_tick"] > candidate["contact_tick"] for candidate in data["decision_candidates"]))
         self.assertNotIn("round_won", json.dumps(data["decision_candidates"]))
@@ -154,7 +165,13 @@ class AgentBridgeTests(unittest.TestCase):
         self.assertTrue(data["ui_handoff"]["events_omitted_from_model"])
         self.assertNotIn("timeline", data["win_estimator"])
         self.assertTrue(data["win_estimator"]["timeline_omitted_from_model"])
+        self.assertTrue(data["privacy"]["player_identifiers_redacted"])
+        serialized = json.dumps(data)
+        for private_identifier in ("t1", "ct1", "T One", "CT One"):
+            pattern = rf"(?<![A-Za-z0-9]){re.escape(private_identifier)}(?![A-Za-z0-9])"
+            self.assertIsNone(re.search(pattern, serialized))
         self.assertTrue(selected_response["ok"], selected_response)
+        self.assertEqual(selected_response["data"]["selected_decision"]["decision_id"], decision_id)
         self.assertNotIn("round_won", json.dumps(selected_response["data"]["selected_decision"]))
         self.assertNotIn("outcome", json.dumps(selected_response["data"]["selected_decision"]))
 

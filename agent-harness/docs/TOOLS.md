@@ -36,6 +36,19 @@ bridge process and are never echoed as absolute paths. In a CLI session
 started with `--replay`, the bridge also requires `replay_path` to match that
 exact approved file.
 
+When the CLI starts with `--replay`, Pi may omit `replay_path` entirely. The
+TypeScript connector injects the pinned path only after model argument
+validation, and the Python bridge independently verifies the same path. This
+keeps local filesystem paths out of the model prompt and prevents path guesses
+from selecting a different replay.
+
+Before the response reaches Pi, the bridge replaces player IDs and display
+names with replay-local aliases such as `player_01` and `Player 01`. Decision
+IDs become opaque references such as `decision_001`; a follow-up tool call may
+send that reference back, and the bridge resolves it to the original decision
+only inside the local process. The backend/UI pipeline retains the original
+identifiers and never relies on the model-facing aliases.
+
 ## `simulate_round`
 
 The model-facing tool accepts a strict JSON object:

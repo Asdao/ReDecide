@@ -159,7 +159,7 @@ function parametersFor(name: string): unknown {
       }, { additionalProperties: false });
     case "analyze_replay":
       return Type.Object({
-        replay_path: Type.String({ minLength: 1, maxLength: 2_048 }),
+        replay_path: Type.Optional(Type.String({ minLength: 1, maxLength: 2_048 })),
         max_decisions: Type.Optional(Type.Integer({ minimum: 1, maximum: 500 })),
         max_timeline_points: Type.Optional(Type.Integer({ minimum: 1, maximum: 500 })),
         sample_every: Type.Optional(Type.Integer({ minimum: 1, maximum: 256 })),

@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import sys
 from collections.abc import Mapping
 from pathlib import Path
@@ -306,24 +307,140 @@ def _ensure_noah_importable() -> None:
             sys.path.insert(0, str(source))
 
 
-def _run_replay_analysis(arguments: Mapping[str, Any]) -> dict[str, Any]:
-    _ensure_noah_importable()
+def _pipeline_result(
+    replay: Mapping[str, Any],
+    arguments: Mapping[str, Any],
+    *,
+    decision_id: str | None,
+) -> dict[str, Any]:
     from backend.app.replay.pipeline import stream_replay_pipeline
 
-    updates = stream_replay_pipeline(
-        str(arguments["replay_path"]),
+    final = None
+    for update in stream_replay_pipeline(
+        replay,
         version=arguments.get("version"),
         sample_every=int(arguments["sample_every"]),
         max_decisions=int(arguments["max_decisions"]),
         max_timeline_points=int(arguments["max_timeline_points"]),
-        decision_id=arguments.get("decision_id"),
-    )
-    final = None
-    for update in updates:
+        decision_id=decision_id,
+    ):
         if update.get("done") is True:
             final = update.get("result")
     if not isinstance(final, Mapping):
         raise RuntimeError("replay pipeline did not produce a final result")
+    return dict(final)
+
+
+def _model_identity_replacements(
+    result: Mapping[str, Any],
+) -> tuple[dict[str, str], dict[str, str]]:
+    """Build deterministic aliases and opaque decision references for Pi."""
+
+    player_ids: set[str] = set()
+    display_names: dict[str, str] = {}
+
+    def add_player(player_id: Any, display_name: Any = None) -> None:
+        if player_id in (None, ""):
+            return
+        original = str(player_id)
+        player_ids.add(original)
+        if display_name not in (None, ""):
+            display_names.setdefault(original, str(display_name))
+
+    for player in result.get("players", []):
+        if isinstance(player, Mapping):
+            add_player(player.get("player_id"), player.get("display_name"))
+    for candidate in result.get("decision_candidates", []):
+        if isinstance(candidate, Mapping):
+            add_player(candidate.get("player_id"), candidate.get("display_name"))
+            add_player(candidate.get("opponent_id"))
+    selected = result.get("selected_decision")
+    if isinstance(selected, Mapping):
+        add_player(selected.get("player_id"), selected.get("display_name"))
+        add_player(selected.get("opponent_id"))
+    for event in result.get("key_events", []):
+        if not isinstance(event, Mapping):
+            continue
+        for player_id in event.get("participant_ids", []):
+            add_player(player_id)
+
+    replacements: dict[str, str] = {}
+    player_aliases: dict[str, str] = {}
+    for index, player_id in enumerate(sorted(player_ids), start=1):
+        alias = f"player_{index:02d}"
+        player_aliases[player_id] = alias
+        replacements[player_id] = alias
+        display_name = display_names.get(player_id)
+        if display_name:
+            replacements[display_name] = f"Player {index:02d}"
+
+    decision_aliases: dict[str, str] = {}
+    candidates = [
+        candidate
+        for candidate in result.get("decision_candidates", [])
+        if isinstance(candidate, Mapping) and candidate.get("decision_id") not in (None, "")
+    ]
+    for index, candidate in enumerate(candidates, start=1):
+        original = str(candidate["decision_id"])
+        alias = f"decision_{index:03d}"
+        decision_aliases[alias] = original
+        replacements[original] = alias
+    return replacements, decision_aliases
+
+
+def _replace_model_identifiers(value: Any, replacements: Mapping[str, str]) -> Any:
+    if isinstance(value, Mapping):
+        return {
+            key: _replace_model_identifiers(item, replacements)
+            for key, item in value.items()
+        }
+    if isinstance(value, list):
+        return [_replace_model_identifiers(item, replacements) for item in value]
+    if isinstance(value, tuple):
+        return [_replace_model_identifiers(item, replacements) for item in value]
+    if not isinstance(value, str):
+        return value
+    exact = replacements.get(value)
+    if exact is not None:
+        return exact
+    redacted = value
+    for original in sorted(replacements, key=len, reverse=True):
+        pattern = rf"(?<![A-Za-z0-9]){re.escape(original)}(?![A-Za-z0-9])"
+        redacted = re.sub(pattern, replacements[original], redacted)
+    return redacted
+
+
+def _redact_model_identifiers(result: Mapping[str, Any]) -> dict[str, Any]:
+    replacements, _ = _model_identity_replacements(result)
+    redacted = _replace_model_identifiers(dict(result), replacements)
+    assert isinstance(redacted, dict)
+    redacted["privacy"] = {
+        "player_identifiers_redacted": True,
+        "player_names_redacted": True,
+        "decision_references_opaque": True,
+        "alias_scope": "replay_session",
+    }
+    return redacted
+
+
+def _run_replay_analysis(arguments: Mapping[str, Any]) -> dict[str, Any]:
+    _ensure_noah_importable()
+    from Noah.harness import load_replay_record
+
+    replay = load_replay_record(str(arguments["replay_path"]))
+    requested_decision = arguments.get("decision_id")
+    final = _pipeline_result(replay, arguments, decision_id=None)
+    if isinstance(requested_decision, str):
+        _, decision_aliases = _model_identity_replacements(final)
+        original_decisions = {
+            str(candidate["decision_id"])
+            for candidate in final.get("decision_candidates", [])
+            if isinstance(candidate, Mapping) and candidate.get("decision_id") not in (None, "")
+        }
+        resolved_decision = decision_aliases.get(requested_decision, requested_decision)
+        if resolved_decision not in original_decisions:
+            raise ValueError("decision_id is not present in this replay")
+        final = _pipeline_result(replay, arguments, decision_id=resolved_decision)
     # The reusable backend pipeline retains the full event index for the UI.
     # Pi receives only the bounded evidence/key-event projection so a normal
     # replay cannot overflow the process boundary or expose irrelevant data.
@@ -365,7 +482,7 @@ def _run_replay_analysis(arguments: Mapping[str, Any]) -> dict[str, Any]:
         "selector_function": "extract_players_for_selector",
         "progress_function": "stream_replay_pipeline",
     }
-    return model_result
+    return _redact_model_identifiers(model_result)
 
 
 def handle_request(raw: str | bytes | Mapping[str, Any]) -> dict[str, Any]:
