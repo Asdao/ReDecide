@@ -31,6 +31,17 @@ returns evidence-linked coaching rather than judging the later round outcome.
   behind a backend error boundary.
 - `backend/app/coach/noah_connector.py` adapts Noah analysis output for the
   backend pipeline; the adapter is injectable for deterministic tests.
+- `backend/app/coach/pi_connector.py` is the default server-side Pi adapter for
+  the FastAPI job. It sends only the selected anonymized decision payload,
+  validates the structured response, and passes the result to
+  `merge_pi_output`; each process receives the repository-root `.env` through
+  `HARNESS_ENV_FILE` unless deployment configuration already sets one. It also
+  normalizes the provider's narrow unquoted-object rendering to strict JSON and
+  launches the installed TypeScript entrypoint with Node instead of running
+  pnpm dependency checks inside the request.
+- `Noah/backend demo/cli.py` exercises only public FastAPI routes. It polls job
+  metadata until player selection is ready, has no fixed ten-second preparation
+  deadline, and stops immediately when FastAPI reports a failed job.
 - `frontend/src/domain/contracts.ts` mirrors the executable version `1.0`
   contracts with strict Zod schemas, including cutoff and cross-reference
   validation.

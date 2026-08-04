@@ -38,4 +38,19 @@ describe("Pi session factory", () => {
       harness.dispose();
     }
   });
+
+  it("can create a Pi session with no custom tools for server-side coaching", async () => {
+    const cwd = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+    const harness = await createHarnessSession({
+      cwd,
+      bridgeScript: resolve(cwd, "src/cs2_sim/agent_bridge.py"),
+      skillDirs: [resolve(cwd, "skills")],
+      allowedTools: [],
+    }, new MemoryAuditSink());
+    try {
+      expect(harness.session.agent.state.tools).toEqual([]);
+    } finally {
+      harness.dispose();
+    }
+  });
 });

@@ -6,8 +6,8 @@ Owner: Person 3 - AI Coach, Rubric, and Reliability
 
 ## Status
 
-**Noah analysis connector implemented; RE:DECIDE provider/card layer remains
-separate.**
+**Noah analysis connector and FastAPI Pi adapter implemented; the frozen
+RE:DECIDE `DecisionCard` layer remains separate.**
 
 `backend/app/coach/noah_connector.py` accepts one normalized replay mapping and
 forwards it to Noah's package-root `analyze_replay` function. With no explicit
@@ -15,19 +15,30 @@ model configuration, that function follows
 `Noah/model/artifacts/releases/current.json` and loads the active release.
 Native `.dem` parsing belongs to `Noah/training/test_harness.py` and the
 replacement-extractor adapter; the backend connector intentionally receives
-normalized JSON only. The folder still contains no provider adapter, versioned
-rubric, prompt assembly, structured-output parser, deterministic validators, or
-fixture coach.
+normalized JSON only.
+
+`backend/app/coach/pi_connector.py` is the default coach adapter constructed by
+`backend.app.main.create_app()`. It receives one already-selected replay-job
+decision, removes post-cutoff events, anonymizes player identifiers, disables
+Pi tools, and launches `agent-harness`. Every Pi process inherits deployment
+variables and uses the repository-root `.env` through `HARNESS_ENV_FILE` when
+no explicit dotenv path is configured. Strict JSON and the provider's narrow
+unquoted two-field object are normalized before `merge_pi_output` restores the
+authoritative decision and player identity. Runtime requests execute the
+installed `tsx` entrypoint directly with Node; pnpm is confined to setup and
+development, avoiding install/build-policy checks inside FastAPI. This is an executable provider
+adapter, but it is not yet the versioned rubric, validator, or frozen
+`DecisionCard` implementation described below.
 
 The harness default follows the active release pointer in
 `Noah/model/artifacts/releases/current.json`; pin `version` or pass an explicit
 `model_config` when reproducible release selection is required.
 
-The connector is an internal backend boundary. The browser must not import
-Noah, load model artifacts, or call this class directly. A future HTTP route
-should call the connector from backend orchestration, then return a validated
-RE:DECIDE response (`DecisionPacket` plus `DecisionCard`) rather than Noah's
-combined report.
+Both connectors are internal backend boundaries. The browser must not import
+Noah, load model artifacts, run Pi, or receive provider credentials. The
+current FastAPI replay-job routes call `PiCoachAdapter` after player selection
+and return player-scoped UI JSON. Converting that result into the frozen
+`DecisionPacket` plus `DecisionCard` product response remains separate work.
 
 ## Required input and output
 
@@ -214,9 +225,10 @@ for internal evaluation reports that intentionally retain terminal context.
 
 ## Existing work to review
 
-Root `agent-harness/` contains useful process, configuration, timeout, audit,
-and validation patterns. Its synthetic simulation and winner/final-state output
-must not be connected directly to the RE:DECIDE coach.
+Root `agent-harness/` is now the active Pi process boundary for FastAPI. The
+adapter starts it with `--no-tools` and supplies only the selected anonymized
+decision payload, so its synthetic simulator and replay tools are not exposed
+to this coaching call.
 
 `Noah/` contains the canonical existing replay-analysis implementation,
 including both the model/runtime (`Noah/model/`) and the analysis harness and
@@ -347,6 +359,7 @@ must display `probability_abstention` when its `abstained` flag is true.
 ```text
 backend/app/coach/**
 backend/tests/test_coach_*.py
+backend/tests/test_pi_connector.py
 data/eval/model/**
 ```
 
@@ -357,7 +370,11 @@ cover forwarding, JSON input, invalid input, stable configuration errors, and
 the real checked-in fixture flowing through the deployed runtime. The default
 path is verified to call `Noah.analyze_replay`; injected runtimes remain
 available for deterministic unit tests.
-The RE:DECIDE coach contract itself still has no fixture tests in the new path.
+`backend/tests/test_pi_connector.py` covers anonymization, cutoff enforcement,
+tool disabling, repository dotenv propagation, strict response validation, and
+normalization of the relaxed DeepSeek object form. API and demo tests use
+injected provider-free adapters. The frozen `DecisionCard` coach contract still
+does not run through this replay-job path.
 
 Latest focused validation:
 
@@ -366,6 +383,16 @@ uv run pytest backend/tests/test_coach_noah_connector.py Noah/training/tests/tes
 ```
 
 Result: 16 passed on 2026-08-04.
+
+Latest FastAPI/Pi/demo regression:
+
+```powershell
+uv run pytest backend/tests/test_pi_connector.py backend/tests/test_analysis_api.py "Noah/backend demo/test_cli.py" -q
+```
+
+Result: 18 passed on 2026-08-04. A separate synthetic, replay-free provider
+request also confirmed that the configured DeepSeek endpoint and key can
+respond; no secret value was printed or recorded.
 
 The user-facing Noah smoke runner is:
 
@@ -440,9 +467,11 @@ contradictory evidence, confidence caps, and safe abstention.
 
 ## Known limitations and blockers
 
-- No executable shared contracts or fixture packets are available yet.
-- No provider/model/API key and spend limit are confirmed in this path.
-- No versioned coaching rubric or reviewed evaluation labels are present.
+- The Pi replay-job response is a two-field coaching fragment, not the frozen
+  version `1.0` `DecisionCard`.
+- Production provider availability, account policy, and spend limits still
+  require deployment-level configuration and monitoring.
+- No versioned coaching rubric or reviewed human evaluation labels are present.
 
 ## Contract/API impact
 
@@ -453,5 +482,6 @@ implemented.
 
 ## Next handoff
 
-Once a frozen fixture packet is available, return one validated fixture card,
-then prove one genuine structured-output provider call without exposing a key.
+Map the selected replay-job decision into the frozen packet/card contract, add
+the versioned rubric and deterministic validators, then verify the complete
+provider-backed response against reviewed fixtures without exposing a key.

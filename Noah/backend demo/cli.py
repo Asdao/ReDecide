@@ -1,9 +1,8 @@
 """One-command RE:DECIDE backend demo.
 
-The runner deliberately has no interactive choices. It tries a native ``.dem``
-first, falls back to normalized JSON when extraction is unavailable, runs the
-replay pipeline and Noah's outcome-blind model, then prints only event rows,
-team probabilities, and modeled alternatives for major events.
+The runner tries a native ``.dem`` first, falls back to normalized JSON when
+extraction is unavailable, runs the FastAPI replay pipeline, then sends the
+selected decision to the server-side Pi coach adapter.
 """
 
 from __future__ import annotations
@@ -39,9 +38,8 @@ def _parser() -> argparse.ArgumentParser:
         "--json",
         dest="json_fallback",
         type=Path,
-        help="normalized JSON fallback (defaults to the checked-in fixture)",
+        help="normalized JSON fallback (defaults to the local replay JSONL)",
     )
-    parser.add_argument("--version", help="optional Noah model release version")
     parser.add_argument("--player-id", help="select a player without prompting")
     return parser
 
@@ -54,23 +52,24 @@ def _find_demo(explicit: Path | None) -> Path | None:
     candidates.extend(sorted((root / "data" / "samples").glob("*.demo")))
     candidates.extend(sorted((root / "Noah" / "backend demo").glob("*.dem")))
     candidates.extend(sorted((root / "Noah" / "backend demo").glob("*.demo")))
+    candidates.extend(sorted((root / "data" / "private" / "raw_demos").rglob("*.dem")))
     return candidates[0] if candidates else None
 
 
 def _fallback_path(explicit: Path | None) -> Path:
-    return explicit or (_repo_root() / "Noah" / "backend demo" / "demo_replay.json")
+    return explicit or (_repo_root() / "data" / "private" / "processed" / "full_replays.jsonl")
 
 
-def _load_input(demo: Path | None, fallback: Path) -> tuple[dict[str, Any], str]:
+def _load_input(demo: Path | None, fallback: Path) -> tuple[dict[str, Any], str, Path]:
     from Noah.harness import load_replay_record
 
     if demo is not None:
         try:
-            return load_replay_record(demo), f"DEM: {demo}"
+            return load_replay_record(demo), f"DEM: {demo}", demo
         except Exception as exc:  # noqa: BLE001 - fallback boundary is intentional
             print(f"DEM failed; JSON fallback: {exc}", file=sys.stderr)
     try:
-        return load_replay_record(fallback), f"JSON: {fallback}"
+        return load_replay_record(fallback), f"JSON: {fallback}", fallback
     except Exception as exc:  # noqa: BLE001 - CLI converts to a stable exit code
         raise RuntimeError(f"could not load DEM or JSON fallback: {exc}") from exc
 
@@ -98,36 +97,21 @@ def _format_probability(value: float | None) -> str:
     return "n/a" if value is None else f"{value * 100:.1f}%"
 
 
-def _best_alternative(report: Mapping[str, Any], event: Mapping[str, Any]) -> str | None:
-    event_id = str(event.get("event_id") or "")
-    event_tick = _number(event.get("tick"))
-    event_round = _number(event.get("round_number"))
-    moments = report.get("moments")
-    if not isinstance(moments, list):
-        moments = []
-    ranked: list[tuple[float, Mapping[str, Any]]] = []
-    for moment in moments:
-        if not isinstance(moment, Mapping):
-            continue
-        nested = moment.get("events")
-        matches = [item for item in nested if isinstance(item, Mapping) and str(item.get("event_id")) == event_id] if isinstance(nested, list) else []
-        distance = 0.0
-        if not matches and event_tick is not None:
-            moment_tick = _number(moment.get("tick"))
-            if moment_tick is None or _number(moment.get("round_num")) != event_round:
-                continue
-            distance = abs(moment_tick - event_tick)
-        best = moment.get("best_estimated_alternative")
-        if not isinstance(best, Mapping):
-            best = moment.get("least_death_risk_action")
-        if isinstance(best, Mapping) and best.get("action"):
-            ranked.append((distance, best))
-    if ranked:
-        return str(min(ranked, key=lambda item: item[0])[1]["action"])
-    return None
+def _raise_for_status(response: Any) -> None:
+    """Raise an actionable API error while preserving FastAPI's safe detail."""
+
+    if int(response.status_code) < 400:
+        return
+    try:
+        detail = response.json().get("detail")
+    except (AttributeError, TypeError, ValueError):
+        detail = None
+    if isinstance(detail, str) and detail.strip():
+        raise RuntimeError(f"{detail.strip()} (HTTP {response.status_code})")
+    response.raise_for_status()
 
 
-def _display(result: Mapping[str, Any], coach_report: Mapping[str, Any], *, source: str) -> None:
+def _display(result: Mapping[str, Any], *, source: str) -> None:
     header = result.get("map_name") or "unknown map"
     timeline = result.get("win_estimator", {}).get("timeline", [])
     if not isinstance(timeline, list):
@@ -138,6 +122,10 @@ def _display(result: Mapping[str, Any], coach_report: Mapping[str, Any], *, sour
         if isinstance(player, Mapping)
     }
     tick_rate = _number(result.get("tick_rate")) or 64.0
+    selected_decision = result.get("selected_decision")
+    selected_tick = _number(selected_decision.get("contact_tick")) if isinstance(selected_decision, Mapping) else None
+    coach = result.get("coach_analysis")
+    coach_text = coach.get("what_could_be_done_better") if isinstance(coach, Mapping) else None
     print(f"backend demo input: {header} | {source}", file=sys.stderr)
     for event in result.get("key_events", []):
         if not isinstance(event, Mapping):
@@ -150,10 +138,8 @@ def _display(result: Mapping[str, Any], coach_report: Mapping[str, Any], *, sour
         subject = " -> ".join(participants)
         suffix = f"  {subject}" if subject else ""
         print(f"{time_seconds:07.2f}  {label:<20}{suffix:<30}CT {_format_probability(ct_probability)} | T {_format_probability(t_probability)}")
-        if event.get("is_key_event"):
-            alternative = _best_alternative(coach_report, event)
-            if alternative:
-                print(f"           Better: {alternative}")
+        if event.get("is_key_event") and coach_text and (selected_tick is None or tick == selected_tick):
+            print(f"           Better: {coach_text}")
 
 
 def _choose_player(players: list[Mapping[str, Any]], requested_id: str | None) -> Mapping[str, Any]:
@@ -177,34 +163,13 @@ def _choose_player(players: list[Mapping[str, Any]], requested_id: str | None) -
 
 
 async def _run_api(
-    replay: Mapping[str, Any], *, version: str | None, source: str, player_id: str | None
+    replay: Mapping[str, Any], *, source: str, player_id: str | None
 ) -> None:
     """Run the complete flow through FastAPI's public routes."""
 
     from backend.app.main import create_app
-    from backend.app.orchestration import AnalysisService
 
-    coach_reports: dict[str, Mapping[str, Any]] = {}
-
-    def coach_adapter(filtered: Mapping[str, Any]) -> Mapping[str, Any]:
-        selected = filtered.get("selected_decision")
-        decision_id = str(selected.get("decision_id") or "") if isinstance(selected, Mapping) else ""
-        try:
-            from Noah import analyze_replay
-
-            report = analyze_replay(replay, version=version, outcome_blind=True, max_moments=100)
-        except Exception as exc:  # noqa: BLE001 - deterministic demo fallback
-            print(f"coach model unavailable; using demo recommendation: {exc}", file=sys.stderr)
-            report = {}
-        coach_reports[decision_id] = report
-        return {
-            "decision_id": decision_id,
-            "what_could_be_done_better": _best_alternative(report, selected or {})
-            or "Reset behind cover before re-engaging.",
-        }
-
-    service = AnalysisService(coach_adapter=coach_adapter)
-    app = create_app(service=service)
+    app = create_app()
     try:
         import httpx
     except ImportError as exc:
@@ -215,34 +180,42 @@ async def _run_api(
         base_url="http://re-decide.local",
     ) as client:
         health = await client.get("/api/health")
-        health.raise_for_status()
+        _raise_for_status(health)
         prepared = await client.post("/api/analysis/prepare", json={"replay": dict(replay)})
-        prepared.raise_for_status()
+        _raise_for_status(prepared)
         analysis_id = prepared.json()["analysis_id"]
-        deadline = asyncio.get_running_loop().time() + 10
+        print("Preparing replay through FastAPI; press Ctrl+C to stop.", file=sys.stderr)
         while True:
-            players_response = await client.get(f"/api/analysis/{analysis_id}/players")
-            if players_response.status_code == 200:
+            metadata_response = await client.get(f"/api/analysis/{analysis_id}")
+            _raise_for_status(metadata_response)
+            metadata = metadata_response.json()
+            if metadata.get("status") == "failed":
+                raise RuntimeError("backend replay preparation failed")
+            if metadata.get("players_available"):
                 break
-            if players_response.status_code != 202:
-                players_response.raise_for_status()
-            if asyncio.get_running_loop().time() >= deadline:
-                raise RuntimeError("backend preparation timed out")
-            await asyncio.sleep(0.02)
+            await asyncio.sleep(0.1)
+        players_response = await client.get(f"/api/analysis/{analysis_id}/players")
+        _raise_for_status(players_response)
         players = players_response.json().get("players", [])
         selected = _choose_player(players, player_id)
         run = await client.post(
             f"/api/analysis/{analysis_id}/run",
             json={"player_id": selected["player_id"]},
         )
-        run.raise_for_status()
+        _raise_for_status(run)
         events = await client.get(f"/api/analysis/{analysis_id}/events")
-        events.raise_for_status()
+        _raise_for_status(events)
         result_response = await client.get(f"/api/analysis/{analysis_id}/result")
-        result_response.raise_for_status()
+        _raise_for_status(result_response)
         result = result_response.json()
-        decision_id = str(result.get("selected_decision", {}).get("decision_id") or "")
-        _display(result, coach_reports.get(decision_id, {}), source=source)
+        outcome = result.get("replay_outcome")
+        if isinstance(outcome, Mapping) and outcome.get("eventual_winner"):
+            score = outcome.get("round_score")
+            score_text = ""
+            if isinstance(score, Mapping):
+                score_text = f" ({score.get('CT', 0)}-{score.get('T', 0)})"
+            print(f"Eventual winner: {outcome['eventual_winner']}{score_text}")
+        _display(result, source=source)
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -251,8 +224,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     demo = _find_demo(args.demo)
     fallback = _fallback_path(args.json_fallback)
     try:
-        replay, source = _load_input(demo, fallback)
-        asyncio.run(_run_api(replay, version=args.version, source=source, player_id=args.player_id))
+        replay, source, _ = _load_input(demo, fallback)
+        asyncio.run(_run_api(replay, source=source, player_id=args.player_id))
         return 0
     except Exception as exc:  # noqa: BLE001 - command-line boundary
         print(f"backend demo failed: {exc}", file=sys.stderr)

@@ -39,14 +39,27 @@ integration, use [`../../docs/MODULE_API.md`](../../Noah/docs/MODULE_API.md) and
 | `--bridge <path>` | Python bridge script; defaults to `src/cs2_sim/agent_bridge.py`. |
 | `--python <path>` | Python executable; defaults to `python`. |
 | `--tool <name>` | Explicitly enabled comma-separated tools; defaults to `simulate_round`. `--replay` adds `analyze_replay` unless this flag is supplied. |
+| `--no-tools` | Disable all custom tools. FastAPI uses this after supplying the already-selected decision so Pi cannot reopen the replay. |
 | `--replay <path>` | Server-side `.dem`, `.json`, or `.jsonl` replay to analyze. |
 | `--skill-dir <path>` | Directory containing reviewed `SKILL.md` files; may be repeated. |
 
 The same values can be supplied through `HARNESS_CWD`, `HARNESS_BRIDGE`, and `HARNESS_PYTHON` when integrating the CLI into a wrapper. Command-line values take precedence.
 
+`pnpm install`, `pnpm build`, and `pnpm test` are development/setup commands.
+The FastAPI adapter does not invoke pnpm during a request; it executes the
+already-installed `tsx` entrypoint directly with Node and uses `--no-tools`.
+This prevents package-manager dependency checks or build-script approval policy
+from turning a valid coaching call into an HTTP 503.
+
 ## Model and API configuration
 
-The CLI loads `.env` from the package/current working directory for local development. Existing deployment environment variables are never overwritten. Copy [`.env.example`](../.env.example) and set a provider key:
+The standalone CLI loads `.env` from the package/current working directory for
+local development. When the CLI is launched by the backend FastAPI adapter,
+the adapter passes the repository-root `.env` through `HARNESS_ENV_FILE` for
+each Pi process, so the same provider configuration is used regardless of the
+child process working directory. Existing deployment environment variables
+and an explicitly configured `HARNESS_ENV_FILE` are never overwritten. Copy
+[`.env.example`](../.env.example) and set a provider key:
 
 ```dotenv
 DEEPSEEK_API_KEY=replace-with-a-secret

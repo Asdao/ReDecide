@@ -17,9 +17,12 @@ backend replay pipeline: index players and first-contact candidates
 FastAPI analysis job: prepare -> select player -> coach adapter
         |                                  |
         |                                  v
-        |                           Noah analysis / injected adapter
+         |                           PiCoachAdapter / injected test adapter
         v
 player-scoped UI result + progress/events/logs
+        |
+        v
+post-match replay outcome (website/CLI only; never sent to Pi)
 
 Separate product-contract path:
 DecisionPacket + IntentInput -> validated DecisionCard -> frontend contract schemas
@@ -37,7 +40,9 @@ a single fully integrated end-to-end transport.
 job metadata, player discovery, player selection, result retrieval, JSONL logs,
 and server-sent progress events. HTTP exceptions translate the orchestration
 layer's not-found, not-ready, selection, and runtime failures into stable
-responses.
+responses. The runnable reference client is
+`Noah/backend demo/cli.py`; it calls these same public routes and is documented
+in `backend/app/API.md`.
 
 ### Orchestration: `backend/app/orchestration.py`
 
@@ -45,8 +50,9 @@ responses.
 Preparation runs in a thread pool over the replay pipeline. Once preparation is
 complete, the caller selects a player. The service filters the cached replay,
 invokes an injected `CoachAdapter`, merges the response, and marks the job
-complete. The adapter is intentionally outside the HTTP layer so fixtures and
-future providers can be tested independently.
+complete. `create_app()` uses `PiCoachAdapter` by default; tests can inject a
+deterministic adapter. The adapter remains outside the HTTP layer so provider
+calls, fixtures, and error handling can be tested independently.
 
 ### Contracts: `backend/app/contracts.py`
 
@@ -74,6 +80,11 @@ and merges coaching output without mutating the source replay.
 `noah_connector.py` is an internal adapter for Noah analysis reports. It is not
 the same object as a version `1.0` `DecisionCard`; conversion requires the
 integration owner and coach owner to map the output to the frozen contract.
+`pi_connector.py` is the server-side Pi bridge used by the default FastAPI
+service. It receives only the selected, anonymized, outcome-blind decision
+payload, validates the structured Pi response, and passes it to
+`merge_pi_output`. Tests inject a deterministic adapter instead of making
+provider calls.
 
 ## Frontend layers
 
@@ -122,8 +133,9 @@ future-information/leakage review before being used by the RE:DECIDE coach.
 - The in-memory job store is process-local; durable logs do not make job state
   horizontally shared.
 - Native demo parsing depends on optional environment setup.
-- The live coaching provider boundary and spend/key configuration are not
-  confirmed.
+- The live provider endpoint and spend limits still require deployment-level
+  verification. Local FastAPI calls inherit deployment variables; otherwise
+  the Pi adapter passes the repository-root `.env` as `HARNESS_ENV_FILE`.
 - The backend replay-job result and the frozen packet/card contract are not yet
   one response schema.
 - There is no representative human evaluation set or end-to-end production

@@ -30,6 +30,6 @@ packages = [
 package-dir = {"Noah" = "Noah", "replay_extractor" = "Noah/extractor/src/replay_extractor", "cs2_sim" = "Noah/model/src/cs2_sim"}
 
 [tool.pytest.ini_options]
-testpaths = ["backend/tests", "Noah/tests", "Noah/model/tests", "Noah/training/tests", "Noah/extractor/tests", "agent-harness/tests"]
+testpaths = ["backend/tests", "Noah/tests", "Noah/model/tests", "Noah/training/tests", "Noah/extractor/tests", "Noah/backend demo", "agent-harness/tests"]
 addopts = ["--import-mode=importlib"]
 pythonpath = ["Noah/model/src", "Noah/extractor/src", "."]

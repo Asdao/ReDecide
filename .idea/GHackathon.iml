@@ -8,7 +8,7 @@
       <excludeFolder url="file://$MODULE_DIR$/data" />
       <excludeFolder url="file://$MODULE_DIR$/ghackathon.egg-info" />
     </content>
-    <orderEntry type="jdk" jdkName="uv (GHackathon)" jdkType="Python SDK" />
+    <orderEntry type="jdk" jdkName="WSL (Ubuntu): (/usr/bin/python3)" jdkType="Python SDK" />
     <orderEntry type="sourceFolder" forTests="false" />
   </component>
 </module>

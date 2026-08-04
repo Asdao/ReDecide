@@ -39,7 +39,7 @@ src/analysis/      timeline, pivotal-event detection, state diff, win score
 src/pipeline/      demo -> replay -> report orchestration
 src/tools/         policy-checked Pi adapters around bounded use cases
 skills/            reviewed instructions for explaining reports
-web/ or server/    future HTTP/SSE wrapper; no simulator logic
+web/ or server/    HTTP/SSE transport; no simulator logic
 ```
 
 Application code should call `ReplayModel`, `ReplayExtractor`, and
@@ -285,7 +285,12 @@ selected player. The `win_estimator` remains global to preserve the distinct
 CT/T team context. The FastAPI adapter is in `backend/app/main.py`; its
 transport-neutral job state and JSONL logging are in
 `backend/app/orchestration.py`. Keep API keys, replay storage, and model calls
-on the server.
+on the server. The default service constructs
+`backend.app.coach.PiCoachAdapter`. For each Pi process it preserves
+deployment environment variables and, when no explicit `HARNESS_ENV_FILE` is
+configured, points the harness at the repository-root `.env`. The adapter
+receives the selected anonymized decision packet; it does not give Pi a replay
+path or a replay-analysis tool.
 
 ## Implementation order
 
@@ -295,6 +300,7 @@ on the server.
 4. Add the replay store and bounded `run_demo` bridge operation if the webapp needs opaque replay IDs instead of local paths.
 5. Extend the current composite `analyze_replay` tool with persisted replay IDs and richer state diffs after the UI contract is fixed.
 6. Add `skills/analyze-cs2-round/` instructions for the structured report format.
-7. Add the HTTP/SSE wrapper without moving domain logic into the web layer.
+7. Extend the existing HTTP/SSE transport without moving domain logic into the
+   web layer.
 
 Keep the first release narrow: one replay, one pivotal event, one team perspective, and a bounded evidence window. Expand to multiple events or counterfactual simulations only after the basic report is deterministic and reviewable.

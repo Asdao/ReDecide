@@ -30,6 +30,12 @@ Model selection and credentials can be supplied through environment variables
 or a local `.env` file. See [Getting started](docs/GETTING_STARTED.md) and
 [`.env.example`](.env.example). The CLI never prints API keys.
 
+When the harness is launched by the repository's FastAPI service, the server
+passes its configured dotenv path through `HARNESS_ENV_FILE` for each Pi
+request. Deployment environment variables and an explicit `HARNESS_ENV_FILE`
+take precedence over the repository-root fallback. The browser never receives
+provider credentials or the raw replay path.
+
 The Pi SDK dependency is loaded by `session.ts`; offline tests cover policy,
 validation, result bounds, and the bridge protocol without model credentials.
 No credentials, sessions, or audit logs belong in this directory's source.

@@ -8,6 +8,7 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
+from backend.app.coach import PiCoachAdapter
 from backend.app.orchestration import (
     AnalysisNotFound,
     AnalysisNotReady,
@@ -33,7 +34,7 @@ class PlayerSelectionRequest(BaseModel):
 
 def create_app(*, service: AnalysisService | None = None) -> FastAPI:
     app = FastAPI(title="RE:DECIDE API", version="1.0")
-    analysis = service or AnalysisService()
+    analysis = service or AnalysisService(coach_adapter=PiCoachAdapter())
 
     @app.get("/api/health")
     def health() -> dict[str, str]:

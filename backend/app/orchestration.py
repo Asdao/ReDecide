@@ -18,6 +18,7 @@ from concurrent.futures import ThreadPoolExecutor
 from typing import Any
 from uuid import uuid4
 
+from backend.app.coach.pi_connector import PiCoachError
 from backend.app.replay.pipeline import merge_pi_output, stream_replay_pipeline
 
 
@@ -43,6 +44,7 @@ class AnalysisJob:
     log_path: Path
     status: str = "processing"
     selector: dict[str, Any] | None = None
+    prepared_result: dict[str, Any] | None = None
     result: dict[str, Any] | None = None
     selected_player_id: str | None = None
     error: str | None = None
@@ -111,20 +113,20 @@ class AnalysisService:
     def select_player(self, analysis_id: str, *, player_id: str | None = None, player_name: str | None = None) -> dict[str, Any]:
         job = self.get_job(analysis_id)
         with job.lock:
-            if job.result is None:
+            if job.prepared_result is None:
                 if job.status == "failed":
                     raise RuntimeError(job.error or "replay preparation failed")
                 raise AnalysisNotReady("replay preparation is not complete")
-            players = [item for item in job.result.get("players", []) if isinstance(item, Mapping)]
+            players = [item for item in job.prepared_result.get("players", []) if isinstance(item, Mapping)]
             selected = self._resolve_player(players, player_id=player_id, player_name=player_name)
             candidates = [
-                item for item in job.result.get("decision_candidates", [])
+                item for item in job.prepared_result.get("decision_candidates", [])
                 if isinstance(item, Mapping) and str(item.get("player_id")) == str(selected["player_id"])
             ]
             if not candidates:
                 raise PlayerSelectionError("selected player has no first-contact decision candidate")
             candidate = dict(candidates[0])
-            filtered = self._filter_for_player(job.result, str(selected["player_id"]))
+            filtered = self._filter_for_player(job.prepared_result, str(selected["player_id"]))
             filtered["selected_decision"] = candidate
             job.selected_player_id = str(selected["player_id"])
             self._write_log(job, {
@@ -140,11 +142,20 @@ class AnalysisService:
                 pi_output = self.coach_adapter(filtered)
                 merged = merge_pi_output(filtered, pi_output)
             except Exception as exc:  # noqa: BLE001 - stable API-facing failure
+                # A prepared replay result is not a completed coaching result.
+                # Clear it so /result cannot expose a partial success after Pi
+                # fails and callers receive the stable failure response.
+                job.result = None
                 job.status = "failed"
-                job.error = "coaching analysis failed"
+                job.error = (
+                    f"coaching analysis failed: {exc}"
+                    if isinstance(exc, PiCoachError)
+                    else "coaching analysis failed"
+                )
                 self._write_log(job, {"stage": "error", "progress": 100, "message": job.error})
                 raise RuntimeError(job.error) from exc
             job.result = merged
+            merged["replay_outcome"] = _replay_outcome(job.replay)
             job.status = "complete"
             self._write_log(job, {"stage": "complete", "progress": 100, "message": "Analysis complete.", "result_available": True})
             return dict(merged)
@@ -191,10 +202,10 @@ class AnalysisService:
                 self._write_log(job, safe_update)
                 if update.get("done") is True and isinstance(update.get("result"), Mapping):
                     with job.lock:
-                        job.result = dict(update["result"])
+                        job.prepared_result = dict(update["result"])
                         job.selector = {
                             "schema_version": "player_selector_v1",
-                            "players": job.result.get("players", []),
+                            "players": job.prepared_result.get("players", []),
                         }
                         job.status = "ready"
         except Exception as exc:  # noqa: BLE001 - converted to stable job state
@@ -230,7 +241,6 @@ class AnalysisService:
         # This remains deliberately global for the team win estimator.
         filtered["win_estimator"] = result.get("win_estimator")
         return filtered
-
     @staticmethod
     def _write_log(job: AnalysisJob, update: Mapping[str, Any]) -> None:
         payload = {"analysis_id": job.analysis_id, **dict(update)}
@@ -238,6 +248,40 @@ class AnalysisService:
             job.updates.append(payload)
             with job.log_path.open("a", encoding="utf-8") as handle:
                 handle.write(json.dumps(payload, ensure_ascii=False, separators=(",", ":")) + "\n")
+
+
+def _replay_outcome(replay: Mapping[str, Any]) -> dict[str, Any]:
+    """Summarize the eventual replay outcome after outcome-blind coaching."""
+
+    scores = {"CT": 0, "T": 0}
+    for round_info in replay.get("rounds", []):
+        if not isinstance(round_info, Mapping):
+            continue
+        winner = _normalize_side(round_info.get("winner"))
+        if winner is not None:
+            scores[winner] += 1
+
+    declared = replay.get("winner") or replay.get("match_winner")
+    match = replay.get("match")
+    if declared is None and isinstance(match, Mapping):
+        declared = match.get("winner")
+    eventual = _normalize_side(declared)
+    if eventual is None and scores["CT"] != scores["T"]:
+        eventual = max(scores, key=scores.get)
+    return {
+        "eventual_winner": eventual,
+        "round_score": scores,
+        "source": "declared_match_winner" if declared is not None else "round_score",
+    }
+
+
+def _normalize_side(value: Any) -> str | None:
+    normalized = str(value or "").strip().lower()
+    if normalized in {"ct", "counter-terrorist", "counterterrorist"}:
+        return "CT"
+    if normalized in {"t", "terrorist"}:
+        return "T"
+    return None
 
 
 __all__ = [
