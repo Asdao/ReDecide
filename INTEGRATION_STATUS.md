@@ -94,7 +94,7 @@ transport is being implemented.
 - [Replay pipeline](backend/app/replay/STATUS.md)
 - [AI coach and reliability](backend/app/coach/STATUS.md)
 - [Frontend](frontend/STATUS.md)
-- [Evidence, QA, pitch, and demo](docs/STATUS.md)
+- [Evidence, QA, pitch, and demo](STATUS.md)
 
 ## Latest verification
 
