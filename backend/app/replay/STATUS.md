@@ -1,19 +1,20 @@
 # Replay Pipeline Status
 
-Last verified: 2026-08-03 (Asia/Singapore)
+Last verified: 2026-08-04 (Asia/Singapore)
 
 Owner: Person 2 - CS2 Replay Data and Decision Detection
 
 ## Status
 
-**Extractor connector implemented; RE:DECIDE packet export is not yet
-implemented.**
+**Replay selector/progress pipeline and UI coaching merge are implemented.**
 
 `backend/app/replay/noah_extractor.py` now wraps Noah's public
 `ReplayExtractor` facade. It parses or normalizes a replay, segments it, and
 returns Noah's canonical `ReplayRecord` plus `SegmentedReplay` through a stable
-backend error boundary. It does not yet select a player/decision window or
-export a `DecisionPacket`.
+backend error boundary. `pipeline.py` now indexes first-damage decisions for
+all players, streams progress, keeps the global win estimator unfiltered, and
+provides `merge_pi_output` for attaching redacted Pi coaching to the original
+UI result without mutating the replay file.
 
 ## Required input and output
 
@@ -64,27 +65,42 @@ verify canonical normalization/segmentation, stable errors for missing files,
 and wrapping of extractor failures. No native `.dem` sample is checked in, so
 native parsing and sidecar fallback are not yet verified at this boundary.
 
+The current selector/merge tests are run with:
+
+```powershell
+uv run --with pytest python -m pytest backend/tests/test_replay_pipeline.py -q
+```
+
+Result: 5 tests passed on 2026-08-04. This covers processed replay JSONL input,
+player selection, player-scoped event references, monotonic progress, the
+global win estimator, and merging an opaque Pi decision reference back to the
+authoritative player name.
+
 Required coverage includes deterministic output, unique evidence IDs, cutoff
 ticks, forbidden outcome keys, stable player/round selection, missing-field
 warnings, and typed invalid-demo errors.
 
 ## Known limitations and blockers
 
-- No executable `DecisionPacket` contract is available to import yet.
-- The connector does not apply `decision_open_tick` or `action_close_tick`
-  filtering; it returns the complete canonical replay for the next detector
-  layer.
-- No selected-player/round decision detector or evidence-ID exporter exists in
-  this path yet.
-- No legal bundled sample is present under `data/samples/`.
+- The native `.dem` parser still depends on the workstation's optional parser
+  environment; processed JSONL is the deterministic local integration input.
+- `backend/app/main.py` now exposes the two-stage FastAPI job transport:
+  `/api/analysis/prepare` creates a replay job and selector, `/run` accepts the
+  selected player, `/events` streams progress, and `/logs` persists JSONL
+  records. The coach adapter is injected at this boundary; the live Pi adapter
+  still needs to be wired into the production service.
+- The frozen `DecisionPacket`/`DecisionCard` API contracts remain a separate
+  integration surface owned by Person 1 and Person 3.
 
 ## Contract/API impact
 
-None implemented. Import the contract owned by Person 1; do not redefine it.
+The existing pipeline result is unchanged. When a Pi response is merged, the
+returned UI mapping gains `selected_decision.player_name` and a
+`coach_analysis` object containing the original decision/player identity and
+the model's full-sentence coaching fields. The source replay is read-only.
 
 ## Next handoff
 
-After Person 1 freezes the executable contract, add the decision-window
-detector and `DecisionPacket` exporter on top of this connector, then produce
-one hand-inspected JSON packet and the parser capability matrix so Persons 3
-and 4 can proceed.
+Person 1's API layer should expose the pipeline result and call
+`merge_pi_output` after the server-side Pi request, then return the single
+merged JSON document to the frontend.

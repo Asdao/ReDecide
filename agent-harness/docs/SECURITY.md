@@ -11,6 +11,7 @@ The harness is a policy boundary, not a general-purpose sandbox. Treat the Pi pr
 | Runaway simulator or hung child | Per-call timeout, abort propagation, process termination, and bounded stdout/stderr retention. |
 | Oversized model or bridge result | TypeBox bounds, `max_events` 1–100, 64 KiB tool result cap, and 256 KiB bridge output cap. |
 | Protocol confusion | Versioned JSON envelopes, fixed operation table, strict fields, and independent validation in TypeScript and Python. |
+| Model-requested replay path escaping the approved input | `--replay` pins `HARNESS_REPLAY_FILE` for the child bridge; direct embeddings can set the same deployment environment variable. |
 | Sensitive diagnostic leakage | Stderr is diagnostic only; bridge failures return stable, sanitized error codes and messages. |
 | Duplicate or unreviewed instructions | Skills come only from explicit directories and fail closed on malformed or duplicate `SKILL.md` files. |
 | Untracked activity | Audit events record request, allow/deny, finish, timeout, and cancellation decisions without storing secrets by default. |
@@ -22,7 +23,7 @@ Keep provider credentials in the host environment or secret manager, never in th
 ## Production checklist
 
 - Run the bridge under a dedicated low-privilege account or container for untrusted workloads.
-- Use an absolute Python executable and bridge path; do not accept model-supplied paths.
+- Use an absolute Python executable and bridge path; pin `HARNESS_REPLAY_FILE` (the CLI does this automatically) instead of accepting arbitrary model-supplied replay paths.
 - Keep the allowlist minimal and require explicit approval for any future write-effect tool.
 - Set deployment-specific timeouts, output limits, and resource quotas.
 - Rotate and protect provider credentials; redact correlation IDs or inputs if audit sinks become externally visible.

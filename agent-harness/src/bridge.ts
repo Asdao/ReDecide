@@ -25,7 +25,7 @@ export interface PythonBridgeOptions {
   readonly audit?: AuditSink;
 }
 
-const DEFAULT_OPERATIONS = ["simulate_round"] as const;
+const DEFAULT_OPERATIONS = ["simulate_round", "analyze_replay"] as const;
 
 /** Process-per-call JSON bridge. Never invokes a shell and kills children on timeout/abort. */
 export class PythonBridge {

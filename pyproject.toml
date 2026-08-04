@@ -12,6 +12,7 @@ dependencies = [
 [project.optional-dependencies]
 full = ["awpy>=2.0.2", "lightgbm>=4.0", "pyarrow>=15.0"]
 data = ["fastparquet>=2024.0", "pandas>=2.0"]
+test = ["pytest>=8,<9"]
 
 [build-system]
 requires = ["setuptools>=68"]
@@ -31,6 +32,6 @@ packages = [
 package-dir = {"Noah" = "Noah", "replay_extractor" = "Noah/extractor/src/replay_extractor", "cs2_sim" = "Noah/model/src/cs2_sim"}
 
 [tool.pytest.ini_options]
-testpaths = ["Noah/tests", "Noah/model/tests", "Noah/training/tests", "Noah/extractor/tests", "agent-harness/tests"]
+testpaths = ["backend/tests", "Noah/tests", "Noah/model/tests", "Noah/training/tests", "Noah/extractor/tests", "agent-harness/tests"]
 addopts = ["--import-mode=importlib"]
 pythonpath = ["Noah/model/src", "Noah/extractor/src", "."]
