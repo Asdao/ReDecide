@@ -78,8 +78,7 @@ function ReplaySummary({
 
 function ProgressPanel({ title, copy }: { title: string; copy: string }) {
   return (
-    <div className="replay-progress-card" aria-busy="true">
-      <span className="replay-progress-marker" aria-hidden="true" />
+    <div className="replay-progress-card loading-border" aria-busy="true">
       <div>
         <h2>{title}</h2>
         <p>{copy}</p>

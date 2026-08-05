@@ -174,11 +174,10 @@ export function ReplayAnalysisScreen({ initialPlayerId }: { initialPlayerId?: st
               </button>
             </>
           ) : (
-            <>
-              <span className="replay-progress-marker" aria-hidden="true" />
+            <div className="analysis-load-card loading-border" aria-busy="true">
               <h1>Loading Mirage analysis</h1>
               <p>Preparing the processed positions and timeline in your browser.</p>
-            </>
+            </div>
           )}
         </section>
       </main>

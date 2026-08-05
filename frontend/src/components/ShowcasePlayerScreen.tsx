@@ -40,8 +40,7 @@ export function ShowcasePlayerScreen(props: ShowcasePlayerScreenProps) {
         </div>
 
         {props.status === "loading" ? (
-          <div className="replay-progress-card" aria-busy="true">
-            <span className="replay-progress-marker" aria-hidden="true" />
+          <div className="replay-progress-card loading-border" aria-busy="true">
             <div>
               <h2>Loading the processed replay</h2>
               <p>
@@ -119,4 +118,3 @@ export function ShowcasePlayerScreen(props: ShowcasePlayerScreenProps) {
     </section>
   );
 }
-

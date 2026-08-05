@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import backendResult from "../../../backend/tests/fixtures/analysis_api_result.json";
 import { LandingScreen } from "@/components/LandingScreen";
 import { ProductHeader } from "@/components/ProductHeader";
+import { ReplayAnalysisScreen } from "@/components/ReplayAnalysisScreen";
 import { ReplayFlowScreen } from "@/components/ReplayFlowScreen";
 import { SampleSelectorScreen } from "@/components/SampleSelectorScreen";
 import { ShowcasePlayerScreen } from "@/components/ShowcasePlayerScreen";
@@ -83,6 +84,41 @@ describe("uploaded replay screens", () => {
     expect(html).not.toContain('id="demo-upload" type="file" accept=".dem" disabled');
     expect(html).toContain('<label class="primary" for="demo-upload"');
     expect(html).toContain("Upload once");
+  });
+
+  it("uses the animated border without square markers on every loading screen", () => {
+    const uploadHtml = renderReplayState({
+      status: "uploading",
+      file,
+      requestId: "upload-1",
+    });
+    const sampleHtml = renderToStaticMarkup(
+      createElement(SampleSelectorScreen, {
+        status: "loading",
+        samples: [],
+        onBack: () => undefined,
+        onRetry: () => undefined,
+        onSelect: () => undefined,
+      }),
+    );
+    const showcaseHtml = renderToStaticMarkup(
+      createElement(ShowcasePlayerScreen, {
+        status: "loading",
+        onBack: () => undefined,
+        onRetry: () => undefined,
+        onSelectPlayer: () => undefined,
+      }),
+    );
+    const analysisHtml = renderToStaticMarkup(
+      createElement(ReplayAnalysisScreen, {}),
+    );
+
+    for (const html of [uploadHtml, sampleHtml, showcaseHtml, analysisHtml]) {
+      expect(html).toContain("loading-border");
+      expect(html).not.toContain("loading-marker");
+      expect(html).not.toContain("progress-marker");
+    }
+    expect(sampleHtml).toContain('aria-busy="true"');
   });
 
   it("renders display names and disables players without a coaching decision", () => {
@@ -247,5 +283,6 @@ describe("sample replay screens", () => {
 
     expect(html).toContain('<span class="sample-map-name">Nuke</span>');
     expect(html).toContain('alt="Nuke map thumbnail"');
+    expect(html).toContain('Choose a <span class="accent-word">match</span>.');
   });
 });

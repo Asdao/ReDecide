@@ -125,7 +125,7 @@ export function SampleSelectorScreen({
         <div className="sample-title-row">
           <div>
             <h1 id="samples-title" tabIndex={-1}>
-              Choose a match.
+              Choose a <span className="accent-word">match</span>.
             </h1>
             <p className="sample-summary">
               Pick a sample replay to inspect one of its decisions.
@@ -137,8 +137,12 @@ export function SampleSelectorScreen({
         </div>
 
         {status === "loading" ? (
-          <div className="sample-list-state" role="status" aria-live="polite">
-            <span className="sample-loading-marker" aria-hidden="true" />
+          <div
+            className="sample-list-state loading-border"
+            role="status"
+            aria-live="polite"
+            aria-busy="true"
+          >
             Loading sample matches…
           </div>
         ) : null}

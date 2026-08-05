@@ -32,6 +32,13 @@ view links receive a local landing entry so their first Back remains inside the
 app. Unrelated query parameters are preserved. Returning from `/analysis` also
 restores the showcase player selector rather than losing its source context.
 
+Every loading surface now uses the same rotating orange perimeter around its
+content box, including sample retrieval, processed-showcase loading, browser
+replay preparation, and all uploaded-replay progress states. The former
+floating square markers and pulse animations were removed. The moving border is
+a solid, hard-edged orange segment without a translucent gradient ramp, and the
+global reduced-motion treatment still collapses it to a static border state.
+
 The new analysis route renders the reviewed local Mirage radar with the
 selected player in blue, same-side players in green, and opponents in red.
 Team shapes, a selected-player ring, eliminated-player treatment, an accessible
@@ -189,7 +196,7 @@ folder on `raw.githubusercontent.com` for non-bundled future maps.
 
 From `frontend/`, `pnpm run verify` passes:
 
-- Vitest: 7 files, 75 tests passed
+- Vitest: 7 files, 76 tests passed
 - TypeScript: passed
 - ESLint: passed with no warnings
 - Next.js production build: passed; `/` and `/_not-found` prerendered

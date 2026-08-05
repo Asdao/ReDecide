@@ -747,23 +747,51 @@ input[type="file"] {
   margin: 0;
 }
 
+@property --loading-border-angle {
+  syntax: "<angle>";
+  inherits: false;
+  initial-value: 0deg;
+}
+
+.loading-border {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+}
+
+.loading-border::after {
+  position: absolute;
+  z-index: 2;
+  inset: -1px;
+  padding: 2px;
+  background: conic-gradient(
+    from var(--loading-border-angle),
+    transparent 0 78%,
+    var(--accent) 78% 94%,
+    transparent 94% 100%
+  );
+  content: "";
+  pointer-events: none;
+  -webkit-mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  animation: loading-border-orbit 1.6s linear infinite;
+}
+
+@keyframes loading-border-orbit {
+  to {
+    --loading-border-angle: 360deg;
+  }
+}
+
 .sample-list-error {
   flex-direction: column;
   color: var(--text);
-}
-
-.sample-loading-marker {
-  width: 0.75rem;
-  height: 0.75rem;
-  background: var(--accent);
-  animation: sample-loading-pulse 900ms ease-in-out infinite alternate;
-}
-
-@keyframes sample-loading-pulse {
-  to {
-    opacity: 0.35;
-    transform: scale(0.72);
-  }
 }
 
 .sample-selection-note {
@@ -892,21 +920,6 @@ input[type="file"] {
   margin: 0.65rem 0 0;
   color: var(--muted);
   line-height: 1.6;
-}
-
-.replay-progress-marker {
-  width: 1.1rem;
-  height: 1.1rem;
-  flex: 0 0 auto;
-  background: var(--accent);
-  animation: replay-loading-pulse 900ms ease-in-out infinite alternate;
-}
-
-@keyframes replay-loading-pulse {
-  to {
-    opacity: 0.3;
-    transform: rotate(45deg) scale(0.7);
-  }
 }
 
 .replay-error-card {
@@ -1890,6 +1903,23 @@ input[type="file"] {
 .analysis-load-state > p:not(.eyebrow) {
   max-width: 34rem;
   margin: 0 0 1.25rem;
+  color: var(--muted);
+}
+
+.analysis-load-card {
+  min-width: min(34rem, calc(100vw - 4rem));
+  border: 1px solid var(--line);
+  background: var(--surface);
+  padding: clamp(2rem, 6vw, 4rem);
+}
+
+.analysis-load-card h1 {
+  margin-top: 0;
+}
+
+.analysis-load-card p {
+  max-width: 34rem;
+  margin: 0;
   color: var(--muted);
 }
 
