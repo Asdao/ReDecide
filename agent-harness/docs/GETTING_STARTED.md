@@ -12,9 +12,10 @@
 Install and verify the package from this directory:
 
 ```powershell
-pnpm install
+pnpm install --frozen-lockfile
 pnpm build
 pnpm test
+pnpm run security
 ```
 
 Run the CLI with an explicit prompt:

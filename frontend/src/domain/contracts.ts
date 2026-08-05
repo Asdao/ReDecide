@@ -197,7 +197,31 @@ export const analyzeJsonRequestSchema = z
     decision_packet: decisionPacketSchema,
     intent: intentInputSchema,
   })
-  .strict();
+  .strict()
+  .superRefine(({ intent }, context) => {
+    // The backend applies this transport-only limit after stripping text.
+    if (
+      intent.text !== null &&
+      intent.text !== undefined &&
+      Array.from(intent.text).length > 240
+    ) {
+      context.addIssue({
+        code: "custom",
+        message: "intent text cannot exceed 240 characters",
+        path: ["intent", "text"],
+      });
+    }
+  })
+  // AnalyzeJsonRequest normalizes a blank (or whitespace-only) intent to null
+  // after the nested IntentInput has been stripped, matching the backend
+  // transport contract.
+  .transform(({ decision_packet, intent }) => ({
+    decision_packet,
+    intent: {
+      ...intent,
+      text: intent.text === "" ? null : intent.text,
+    },
+  }));
 
 export const decisionBundleSchema = z
   .object({
@@ -205,12 +229,33 @@ export const decisionBundleSchema = z
     card: decisionCardSchema,
   })
   .strict()
-  .refine(({ packet, card }) => packet.decision_id === card.decision_id, {
-    message: "Decision packet and card decision_id values must match",
-    path: ["card", "decision_id"],
+  .superRefine(({ packet, card }, context) => {
+    if (packet.decision_id !== card.decision_id) {
+      context.addIssue({
+        code: "custom",
+        message: "Decision packet and card decision_id values must match",
+        path: ["card", "decision_id"],
+      });
+    }
+
+    const availableEvidenceIds = new Set([
+      ...packet.known_before_decision.map(({ evidence_id }) => evidence_id),
+      ...packet.observed_action.evidence_ids,
+    ]);
+    const unsupportedEvidenceIds = card.facts_used.filter(
+      (evidenceId) => !availableEvidenceIds.has(evidenceId),
+    );
+    if (unsupportedEvidenceIds.length > 0) {
+      context.addIssue({
+        code: "custom",
+        message: `DecisionCard contains unsupported evidence IDs: ${unsupportedEvidenceIds.join(", ")}`,
+        path: ["card", "facts_used"],
+      });
+    }
   });
 
 export type DecisionPacket = z.infer<typeof decisionPacketSchema>;
 export type IntentInput = z.infer<typeof intentInputSchema>;
+export type AnalyzeJsonRequest = z.infer<typeof analyzeJsonRequestSchema>;
 export type DecisionCard = z.infer<typeof decisionCardSchema>;
 export type DecisionBundle = z.infer<typeof decisionBundleSchema>;

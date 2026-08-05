@@ -2,6 +2,7 @@
   "name": "cs2-agent-harness",
   "version": "0.1.0",
   "private": true,
+  "packageManager": "pnpm@11.9.0",
   "description": "A policy-first Pi SDK harness for the CS2 simulator",
   "type": "module",
   "main": "dist/src/index.js",
@@ -15,7 +16,10 @@
     "dev": "tsx src/main.ts",
     "start": "node dist/src/main.js",
     "test": "vitest run",
-    "typecheck": "tsc --noEmit -p tsconfig.json"
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "security:check": "node ../security/check-lockfiles.mjs",
+    "security:audit": "pnpm audit --audit-level=high",
+    "security": "pnpm run security:check && pnpm run security:audit"
   },
   "dependencies": {
     "@earendil-works/pi-coding-agent": "^0.83.0",

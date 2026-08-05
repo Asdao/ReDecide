@@ -232,9 +232,9 @@ to this coaching call.
 
 `backend/replay_engine/` contains the canonical existing replay-analysis implementation,
 including both the model/runtime (`backend/replay_engine/model/`) and the analysis harness and
-training pipeline (`backend/replay_engine/training/`). It is the correct implementation to
-reuse for RE:DECIDE, but it has not yet been wired to the frozen
-`DecisionPacket`/`DecisionCard` coach contract.
+training pipeline (`backend/replay_engine/training/`). It is the implementation used by the
+replay-engine coach connector. The frozen `DecisionPacket`/`DecisionCard` coach contract is a
+separate adapter surface and is not yet emitted by the replay-job result.
 
 ### Current v4 model probability behavior
 

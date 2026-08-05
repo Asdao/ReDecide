@@ -1,5 +1,10 @@
 # Security model
 
+Dependency installation is covered by the repository policy in
+[`../../security/README.md`](../../security/README.md). Use the frozen
+lockfile install and run `pnpm run security` before development or release;
+the CI workflow repeats these checks without application credentials.
+
 The harness is a policy boundary, not a general-purpose sandbox. Treat the Pi project, simulator, model provider, and host process as trusted only to the degree required by the deployment.
 
 ## Threats and controls
