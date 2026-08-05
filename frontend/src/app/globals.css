@@ -168,7 +168,8 @@ a:focus-visible {
 }
 
 .brand span,
-.hero h1 span {
+.hero h1 span,
+.accent-word {
   color: var(--accent);
 }
 

@@ -110,7 +110,7 @@ function ErrorPanel({
           </button>
         ) : null}
         <button className="secondary" type="button" onClick={onBack}>
-          Choose another replay
+          Choose another <span className="accent-word">replay</span>
         </button>
       </div>
     </div>
@@ -130,10 +130,10 @@ export function ReplayFlowScreen({
   const progressMessage = replayProgressMessage(state);
   const heading =
     state.status === "choosing-player"
-      ? "Choose your player."
+      ? { prefix: "Choose your", accent: "player." }
       : state.status === "result"
-        ? "Replay the decision."
-        : "Preparing your replay.";
+        ? { prefix: "Replay the", accent: "decision." }
+        : { prefix: "Preparing your", accent: "replay." };
 
   return (
     <section className="replay-screen" id="main-content" aria-labelledby="replay-title">
@@ -147,7 +147,7 @@ export function ReplayFlowScreen({
           <div>
             <p className="kicker">Uploaded replay</p>
             <h1 id="replay-title" tabIndex={-1}>
-              {heading}
+              {heading.prefix} <span className="accent-word">{heading.accent}</span>
             </h1>
           </div>
           <button className="secondary" type="button" onClick={onBack}>

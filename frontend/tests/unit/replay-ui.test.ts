@@ -92,6 +92,7 @@ describe("uploaded replay screens", () => {
 
     expect(html).toContain("CT One");
     expect(html).toContain("T One");
+    expect(html).toContain('<span class="accent-word">player.</span>');
     expect(html).toContain("No coaching moment");
     expect(html).toMatch(/<button[^>]*disabled=""[^>]*>[\s\S]*?CT One/);
     expect(html).toContain('aria-label="Players available for coaching"');
@@ -112,6 +113,7 @@ describe("uploaded replay screens", () => {
     expect(html).toContain("will not be uploaded again");
     expect(html).toContain('aria-live="polite"');
     expect(html).toContain('aria-busy="true"');
+    expect(html).toContain('<span class="accent-word">replay.</span>');
   });
 
   it("renders validated coaching without exposing the later match outcome", () => {
@@ -126,6 +128,7 @@ describe("uploaded replay screens", () => {
     });
 
     expect(html).toContain("What could be done better");
+    expect(html).toContain('<span class="accent-word">decision.</span>');
     expect(html).toContain("Break line of sight after first contact and wait for support.");
     expect(html).toContain("T One");
     expect(html).not.toContain("eventual_winner");
@@ -146,6 +149,6 @@ describe("uploaded replay screens", () => {
     expect(html.match(/role="alert"/g)).toHaveLength(1);
     expect(html).toContain("Choose a valid .dem replay file.");
     expect(html).not.toContain("Retry upload");
-    expect(html).toContain("Choose another replay");
+    expect(html).toContain('Choose another <span class="accent-word">replay</span>');
   });
 });
