@@ -8,17 +8,20 @@ Branch: `05/evidence_I_think`
 
 ## Current status
 
-**Person 5 workspace setup and the initial secondary-research review are
-complete. Human review, QA, deck, demo, disclosures, and final submission
-verification have not yet been completed.**
+**Person 5 workspace setup, the initial secondary-research review, the masked
+human-review protocol, and the review-data schema are complete. Formal human
+review, QA, deck, demo, disclosures, and final submission verification have not
+yet been completed.**
 
 The research draft compares public CS2 analytics, demo-review, and training
 workflows; reviews outcome-bias research and explainable-AI guidance; and keeps
 unsupported product claims out of the proposed pitch. Formal user interviews
 were not conducted, so the findings are labelled as secondary research rather
-than user validation. The next document is the human-review protocol, while
-the team confirms the exact deadline, final product scope, and available
-decision cases.
+than user validation. The reviewer protocol separates independent judgement
+from system-output assessment, and the header-only CSV records one reviewer per
+decision without fabricating cases. The team must now confirm the exact
+deadline, final product scope, available decision cases, and potential
+knowledgeable reviewers.
 
 ## Completed
 
@@ -32,18 +35,23 @@ decision cases.
       outcome bias, explainable AI, and anecdotal community signals.
 - [x] Documented safe pitch wording, unsupported claims, and research
       limitations.
+- [x] Created `docs/HUMAN_REVIEW_PROTOCOL_(YJ).md` for masked two-phase review.
+- [x] Created the 45-column header schema in
+      `data/eval/human/review_cases_(YJ).csv`.
+- [x] Kept the evaluation dataset empty until genuine cases and reviewer
+      responses are available.
 
 ## In progress
 
 - [ ] Confirming the final product and submission details with the team.
-- [ ] Preparing the masked human-review protocol.
 - [ ] Requesting genuine decision cases and system outputs from Persons 2 and
       3.
+- [ ] Identifying possible knowledgeable reviewers and recording whether they
+      are external or internal to the project.
 
 ## Not started
 
-- [ ] Human-review protocol
-- [ ] Anonymized review cases
+- [ ] Populated anonymized review cases and formal human-review results
 - [ ] QA execution and issue reporting
 - [ ] Pitch deck content
 - [ ] Timed demo script and rehearsals
@@ -136,10 +144,11 @@ severity, and supporting evidence.
 
 1. Send the decision questions above to the relevant team members.
 2. Record the exact deadline and final demo scope.
-3. Create `docs/HUMAN_REVIEW_PROTOCOL_(YJ).md`.
-4. Ask Persons 2 and 3 how many genuine masked decision cases are available.
-5. Review the research claims with the team before using them in the deck.
-6. Update this file whenever a blocker or deliverable materially changes.
+3. Ask Persons 2 and 3 how many genuine masked decision cases are available.
+4. Identify knowledgeable reviewers or record that recruitment is not feasible.
+5. Create `docs/QA_MATRIX_(YJ).md` for the final demo candidate.
+6. Review the research claims with the team before using them in the deck.
+7. Update this file whenever a blocker or deliverable materially changes.
 
 ## Update log
 
@@ -147,3 +156,4 @@ severity, and supporting evidence.
 | --- | --- | --- |
 | 2026-08-05 | Created initial Person 5 status | Confirm deadline and product truth with team |
 | 2026-08-05 | Completed initial secondary-research draft with 13 registered sources | Review claims with team and prepare human-review protocol |
+| 2026-08-05 | Completed masked review protocol and empty 45-column evaluation schema | Obtain genuine cases and reviewers; do not fabricate rows |
