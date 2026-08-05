@@ -3,6 +3,14 @@
 Upload a Counter-Strike 2 `.dem` replay, choose a player, and receive coaching
 for their post-contact decisions.
 
+Maintenance documents:
+
+- [Current product state](CURRENT_STATE.md)
+- [Repository cleanup plan](CLEANUP_PLAN.md)
+- [JavaScript dependency setup](JAVASCRIPT_SETUP.md)
+- [Replay maps and demo data](REPLAY_DATA_SETUP.md)
+- [Vercel frontend deployment](VERCEL_DEPLOYMENT.md)
+
 ## First-time setup
 
 You need Python 3.12+, `uv`, Node.js 24, and `pnpm` 11.
@@ -13,15 +21,22 @@ Run these commands from the repository root:
 uv sync --extra full
 
 cd agent-harness
-pnpm install
+pnpm install --frozen-lockfile
 cd ..
 
 cd frontend
-pnpm install
+pnpm install --frozen-lockfile
 cd ..
 
 Copy-Item .env.example .env
 Set-Content frontend/.env.local 'NEXT_PUBLIC_API_BASE_URL=http://127.0.0.1:8000'
+```
+
+From WSL, the same JavaScript setup can be run with the lockfile-preserving
+helper:
+
+```bash
+bash scripts/install-js-deps.sh
 ```
 
 Open `.env` and add your coaching API key:

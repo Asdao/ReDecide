@@ -32,8 +32,9 @@ reusable replay-processing and feature-extraction work. Person 2 must review
 capability, licensing, evidence semantics, and future-information leakage
 before using either path to build a packet.
 
-Do not modify `backend/replay_engine/**` without coordinating with the replay
-engine owner.
+Changes under `backend/replay_engine/**` should preserve the public replay
+engine facade and its model-release contracts; coordinate ownership changes
+with the replay-engine maintainer.
 
 ## Important paths
 
@@ -48,7 +49,7 @@ data/samples/**
 Focused connector tests:
 
 ```powershell
-uv run pytest backend/tests/test_replay_replay_engine_connector.py
+uv run pytest backend/tests/test_replay_engine_extractor.py
 ```
 
 The source paths are configured directly in `pyproject.toml` for the renamed
@@ -56,7 +57,7 @@ The source paths are configured directly in `pyproject.toml` for the renamed
 
 ```powershell
 $env:PYTHONPATH = "backend/replay_engine/extractor/src;backend/replay_engine/model/src;."
-uv run pytest backend/tests/test_replay_replay_engine_connector.py -q
+uv run pytest backend/tests/test_replay_engine_extractor.py -q
 ```
 
 Result: 3 tests passed. The current tests
@@ -96,10 +97,12 @@ warnings, and typed invalid-demo errors.
 - `backend/app/main.py` now exposes the two-stage FastAPI job transport:
   `/api/analysis/prepare` creates a replay job and selector, `/run` accepts the
   selected player, `/events` streams progress, and `/logs` persists JSONL
-  records. The coach adapter is injected at this boundary; the live Pi adapter
-  still needs to be wired into the production service.
+  records. The default service is constructed with `PiCoachAdapter`; injected
+  adapters remain available for deterministic tests. The frozen
+  `DecisionPacket`/`DecisionCard` coach contract is still separate from this
+  replay-job result.
 - The frozen `DecisionPacket`/`DecisionCard` API contracts remain a separate
-  integration surface owned by Person 1 and Person 3.
+  integration surface and are not yet emitted by this replay-job result.
 
 ## Contract/API impact
 
@@ -108,8 +111,8 @@ returned UI mapping gains `selected_decision.player_name` and a
 `coach_analysis` object containing the original decision/player identity and
 the model's full-sentence coaching fields. The source replay is read-only.
 
-## Next handoff
+## Next work
 
-Person 1's API layer should expose the pipeline result and call
-`merge_pi_output` after the server-side Pi request, then return the single
-merged JSON document to the frontend.
+Align the replay-job result with the frozen product contract only after the
+contract boundary is explicitly agreed; keep the current replay result stable
+while that adapter is implemented.

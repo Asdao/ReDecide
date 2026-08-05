@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import cardFixture from "@/fixtures/decision-card.json";
 import packetFixture from "@/fixtures/decision-packet.json";
 import {
+  analyzeJsonRequestSchema,
   decisionBundleSchema,
   decisionCardSchema,
   decisionPacketSchema,
@@ -18,6 +19,24 @@ describe("version 1.0 frontend contracts", () => {
       tag: "TAKE_DUEL",
       text: "reset first",
     });
+  });
+
+  it("normalizes blank transport intent text to null", () => {
+    const request = analyzeJsonRequestSchema.parse({
+      decision_packet: packetFixture,
+      intent: { tag: "TAKE_DUEL", text: "   " },
+    });
+
+    expect(request.intent.text).toBeNull();
+  });
+
+  it("rejects transport intent text longer than 240 characters", () => {
+    expect(() =>
+      analyzeJsonRequestSchema.parse({
+        decision_packet: packetFixture,
+        intent: { tag: "TAKE_DUEL", text: "x".repeat(241) },
+      }),
+    ).toThrow();
   });
 
   it("rejects extra fields", () => {
@@ -45,6 +64,15 @@ describe("version 1.0 frontend contracts", () => {
         card: { ...cardFixture, decision_id: "another-decision" },
       }),
     ).toThrow("Decision packet and card decision_id values must match");
+  });
+
+  it("rejects card facts that are not present in the packet evidence", () => {
+    expect(() =>
+      decisionBundleSchema.parse({
+        packet: packetFixture,
+        card: { ...cardFixture, facts_used: [...cardFixture.facts_used, "E999"] },
+      }),
+    ).toThrow("unsupported evidence IDs");
   });
 });
 
