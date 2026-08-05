@@ -9,9 +9,10 @@ Branch: `05/evidence_I_think`
 ## Current status
 
 **Person 5 workspace setup, the initial secondary-research review, the masked
-human-review protocol, the review-data schema, and the QA test plan are
-complete. Formal human review, QA execution, deck, demo, disclosures, and final
-submission verification have not yet been completed.**
+human-review protocol, the review-data schema, the QA test plan, and the first
+third-party disclosure audit are complete. Formal human review, QA execution,
+deck, demo, disclosure approval, and final submission verification have not yet
+been completed.**
 
 The research draft compares public CS2 analytics, demo-review, and training
 workflows; reviews outcome-bias research and explainable-AI guidance; and keeps
@@ -46,6 +47,11 @@ and input.
       reliability, accessibility, and submission checks.
 - [x] Kept every QA result at `NOT_RUN`; no code inspection or verbal report
       has been counted as an executed test.
+- [x] Created `docs/THIRD_PARTY_DISCLOSURES_(YJ).md` from the repository's
+      manifests, service configuration, dataset references, trained artifacts,
+      fonts, and visual-asset sources.
+- [x] Recorded disclosure blockers without treating attribution or a package
+      licence as permission for separately owned data or game assets.
 
 ## In progress
 
@@ -54,6 +60,9 @@ and input.
       3.
 - [ ] Identifying possible knowledgeable reviewers and recording whether they
       are external or internal to the project.
+- [ ] Obtaining component-owner confirmations for the final AI model, replay
+      and training-data rights, model provenance, visual assets, deployment,
+      and repository-licence decision.
 
 ## Not started
 
@@ -61,7 +70,7 @@ and input.
 - [ ] QA execution and issue reporting
 - [ ] Pitch deck content
 - [ ] Timed demo script and rehearsals
-- [ ] Third-party disclosure inventory
+- [ ] Final third-party disclosure approval and final-commit re-audit
 - [ ] README evidence/disclosure handoff to Person 1
 - [ ] Final submission audit
 
@@ -134,12 +143,14 @@ severity, and supporting evidence.
 | `docs/HUMAN_REVIEW_PROTOCOL_(YJ).md` | YJ and knowledgeable reviewers | Defines masked Phase A independent judgement and Phase B system-output assessment | Makes any later coaching evaluation reproducible and honest; remains a proposed protocol if not executed |
 | `data/eval/human/review_cases_(YJ).csv` | YJ | Master anonymized result table with one row per reviewer-decision pair; populated only from genuine cases and responses | Supplies raw counts and denominators for evaluation metrics; remains header-only if review is not executed |
 | `docs/QA_MATRIX_(YJ).md` | YJ and component owners | Freezes scope, prioritizes tests, records actual results/evidence, assigns failures, and preserves retests | Supports build-quality claims, demo readiness, known limitations, and the final release decision |
+| `docs/THIRD_PARTY_DISCLOSURES_(YJ).md` | YJ, component owners, and Person 1 | Living inventory of software, services, models, data, fonts, and assets; assigns verification owners and records unresolved rights or provenance | Supplies approved README/submission disclosures and prevents the team from treating attribution as permission |
 
 These files have different purposes. The roadmap plans the work, this status
 file summarizes it, the research supports the problem narrative, the protocol
-defines human evaluation, the CSV stores responses, and the QA matrix verifies
-the application and submission. A prepared template is not evidence of a
-passed test or completed evaluation.
+defines human evaluation, the CSV stores responses, the QA matrix verifies the
+application and submission, and the disclosure inventory tracks third-party
+inputs and owner approvals. A prepared template is not evidence of a passed
+test, completed evaluation, cleared asset, or approved disclosure.
 
 ## Dependencies and handoffs
 
@@ -162,7 +173,10 @@ passed test or completed evaluation.
 - Final support for intent, the complete Decision Card, evidence expansion, and
   the practice quest is unknown.
 - No review cases or knowledgeable reviewers have been confirmed.
-- No final third-party inventory has been supplied by component owners.
+- The initial disclosure inventory has unresolved owner confirmations: exact
+  deployed model, replay/tournament rights, trained-artifact provenance,
+  Valve-derived imagery, hosting, final dependency versions, and the root
+  repository-licence decision.
 
 ## Next actions
 
@@ -174,7 +188,9 @@ passed test or completed evaluation.
 6. Create `docs/DECK_OUTLINE_(YJ).md` after the demonstrable feature scope is
    confirmed.
 7. Review the research claims with the team before using them in the deck.
-8. Update this file whenever a blocker or deliverable materially changes.
+8. Send the disclosure blockers to their named owners and record their evidence.
+9. Re-audit disclosures against the exact final submission commit.
+10. Update this file whenever a blocker or deliverable materially changes.
 
 ## Update log
 
@@ -184,3 +200,4 @@ passed test or completed evaluation.
 | 2026-08-05 | Completed initial secondary-research draft with 13 registered sources | Review claims with team and prepare human-review protocol |
 | 2026-08-05 | Completed masked review protocol and empty 45-column evaluation schema | Obtain genuine cases and reviewers; do not fabricate rows |
 | 2026-08-06 | Completed 60-check QA plan and documented how each YJ file is utilised | Freeze the final demo scope, obtain test inputs, and execute P0 checks |
+| 2026-08-06 | Completed the initial third-party disclosure audit and documented its update triggers | Obtain owner confirmations and re-audit the exact final submission commit |
