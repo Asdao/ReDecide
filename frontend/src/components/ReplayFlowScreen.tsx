@@ -179,7 +179,7 @@ export function ReplayFlowScreen({
         {state.status === "uploading" ? (
           <ProgressPanel
             title={`Uploading ${state.file.name}`}
-            copy="Keep this page open while the backend parses the demo. The file is uploaded once."
+            copy="Keep this page open while the backend parses the demo."
           />
         ) : null}
 
@@ -200,14 +200,14 @@ export function ReplayFlowScreen({
         {state.status === "running-coaching" ? (
           <ProgressPanel
             title={`Coaching ${playerName(state.selectedPlayer)}`}
-            copy="The coaching request can take around 30 seconds. The replay will not be uploaded again."
+            copy="The coaching request can take around 30 seconds."
           />
         ) : null}
 
         {state.status === "recovering-result" ? (
           <ProgressPanel
             title="Checking for completed coaching"
-            copy="The request ended before a response arrived. We are checking the saved result without starting another model call."
+            copy="The request ended before a response arrived. We are checking the saved result.."
           />
         ) : null}
 

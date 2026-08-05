@@ -367,7 +367,11 @@ export function ReplayAnalysisScreen({
             <div className="radar-heading">
               <div>
                 <p className="eyebrow">Live position</p>
-                <h2>Round {currentRound?.round_num ?? "—"}</h2>
+                <h2>
+                  {currentRound
+                    ? `Round ${currentRound.round_num}`
+                    : "Waiting for next round"}
+                </h2>
               </div>
               <div className="radar-status" aria-live="polite">
                 <span>{selectedSnapshot?.place ?? "Position unavailable"}</span>
@@ -498,10 +502,9 @@ export function ReplayAnalysisScreen({
             </div>
           </div>
           <div className="timeline-caption">
-            <span>Round {currentRound?.round_num ?? "—"}</span>
-            <span><i className="damage" />Damage received</span>
+            <span><i className="damage" />Damage</span>
             <span><i className="death" />Death</span>
-            {analysisEventId ? <span><i className="coaching" />Saved analysis</span> : null}
+            {analysisEventId ? <span><i className="coaching" />Analysis</span> : null}
             <span>Tick {Math.round(currentTick)}</span>
           </div>
         </section>

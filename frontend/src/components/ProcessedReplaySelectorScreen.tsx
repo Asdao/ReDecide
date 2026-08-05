@@ -76,7 +76,15 @@ export function ProcessedReplaySelectorScreen({
         </ul>
 
         <p className="sample-attribution">
-          Radar images from Valve&apos;s CS2 assets, distributed by MurkyYT/cs2-map-icons.
+          Radar images from Valve&apos;s CS2 assets, distributed by{" "}
+          <a
+            href="https://github.com/MurkyYT/cs2-map-icons/tree/main/images/radars"
+            target="_blank"
+            rel="noreferrer"
+          >
+            MurkyYT/cs2-map-icons
+          </a>
+          .
         </p>
       </div>
     </section>

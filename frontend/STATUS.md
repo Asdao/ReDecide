@@ -15,7 +15,8 @@ visualization. Selecting a save loads its player roster; selecting a stable
 player ID then opens `/analysis` with that perspective already active. Player
 perspective remains switchable inside the viewer. The Inferno save includes
 saved coaching for flameZ, while Mirage has no analysis artifact; the replay and
-player lists label those states explicitly. The native `.dem` action continues
+player lists label those states explicitly. The processed-replay radar credit
+links directly to the redistributed radar-image directory. The native `.dem` action continues
 to use the complete backend flow.
 
 The `.dem` upload is the primary orange landing action; backend samples and the
@@ -25,7 +26,9 @@ or keyboard-focused action, with tan help text for upload and steel-blue help
 text for the secondary actions. The secondary hover fill now uses a single
 diagonal wipe without the earlier arrow-like edge. The product logo is a normal
 link to `/`, so activating it performs a fresh page navigation and clears all
-in-memory sample, upload, or processed-replay state.
+in-memory sample, upload, or processed-replay state. The document title is
+always `RE:DECIDE`; nested screens do not replace the browser-tab title with
+route-specific text.
 
 Backend samples and the processed replay catalog use query-backed browser history
 entries (`?view=samples` and `?view=showcase`). Browser Back returns to the
@@ -80,6 +83,9 @@ and round selectors suppress the browser's native white focus ring while
 retaining the product-colored container state.
 Full-match round segments are labeled buttons: hovering or keyboard focus shows
 a round tooltip, and activation jumps to that round's start tick.
+Between recorded rounds, the live-position heading reads `Waiting for next
+round`. The bottom timeline caption contains only the event legend and current
+tick; it no longer repeats the active round number.
 The analysis shell, toolbar, and workspace are transparent over the shared page
 background, so the homepage's diagonal stripe treatment continues with its
 original opacity, colors, and 22-degree angle.
@@ -241,7 +247,7 @@ folder on `raw.githubusercontent.com` for non-bundled future maps.
 
 From `frontend/`, `pnpm run verify` passes:
 
-- Vitest: 7 files, 82 tests passed, including both full processed replay files,
+- Vitest: 7 files, 83 tests passed, including both full processed replay files,
   concurrent analysis/replay preparation, repeated player selection, and
   uploaded-viewer navigation
   and the matching Inferno analysis

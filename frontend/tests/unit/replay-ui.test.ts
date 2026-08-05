@@ -220,6 +220,26 @@ describe("uploaded replay screens", () => {
     expect(html).not.toContain("round_score");
   });
 
+  it("labels time between rounds without repeating the round in the timeline legend", () => {
+    const waitingReplay: ProcessedReplay = {
+      ...uploadedReplay,
+      rounds: [{ round_num: 1, start: 100, end: 300 }],
+      ticks: uploadedReplay.ticks.map((tick) => ({ ...tick, tick: 50 })),
+    };
+    const html = renderToStaticMarkup(createElement(ReplayAnalysisScreen, {
+      initialPlayerId: "t1",
+      initialReplay: waitingReplay,
+      initialAnalysis: result,
+      uploaded: true,
+      onChoosePlayer: () => undefined,
+    }));
+
+    expect(html).toContain("Waiting for next round");
+    const caption = html.match(/<div class="timeline-caption">[\s\S]*?<\/div>/)?.[0];
+    expect(caption).toContain('<span><i class="damage"></i>Damage</span>');
+    expect(caption).not.toContain("Round");
+  });
+
   it("uses one blocking alert and hides retry for a non-retryable upload rejection", () => {
     const html = renderReplayState({
       status: "upload-error",
@@ -284,6 +304,11 @@ describe("sample replay screens", () => {
     expect(html).toContain("Saved analysis included");
     expect(html.match(/Choose player/g)).toHaveLength(2);
     expect(html).not.toContain("Choose your");
+    expect(html).toContain(
+      'href="https://github.com/MurkyYT/cs2-map-icons/tree/main/images/radars"',
+    );
+    expect(html).toContain('target="_blank"');
+    expect(html).toContain("MurkyYT/cs2-map-icons</a>");
   });
 
   it("shows the selected replay's players before opening the renderer", () => {
