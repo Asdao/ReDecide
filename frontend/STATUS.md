@@ -42,6 +42,16 @@ All event markers use one consistent hit target and a six-pixel visual line,
 with no persistent focus or selected outline after clicking or automatic
 pausing. The wider right-side inspector uses an orange border on all four sides;
 its knowledge-boundary note uses background color without an edge border.
+The inspector's clear action keeps the homepage button's 22-degree diagonal
+edge, using a clipped sweep that extends beyond every corner and guarantees full
+coverage at the end of the transition. Player
+and round selectors suppress the browser's native white focus ring while
+retaining the product-colored container state.
+Full-match round segments are labeled buttons: hovering or keyboard focus shows
+a round tooltip, and activation jumps to that round's start tick.
+The analysis shell, toolbar, and workspace are transparent over the shared page
+background, so the homepage's diagonal stripe treatment continues with its
+original opacity, colors, and 22-degree angle.
 The moment inspector is absent during ordinary playback. Selecting an event
 slides a wider inspector in from the right and shifts the centered radar
 slightly left; clearing the event or resuming playback restores the centered

@@ -339,11 +339,24 @@ export function ReplayAnalysisScreen({ initialPlayerId }: { initialPlayerId?: st
             <output aria-label="Current replay time">{elapsed} / {total}</output>
           </div>
           <div className="timeline-track-wrap">
-            <div className="round-track" aria-hidden="true">
+            <div className="round-track" aria-label="Jump to a replay round">
               {replay.rounds.map((round) => {
                 const start = ((round.start - firstTick) / duration) * 100;
                 const width = (((round.official_end ?? round.end) - round.start) / duration) * 100;
-                return <span key={round.round_num} className={round.round_num === currentRound?.round_num ? "active" : ""} style={{ left: `${start}%`, width: `${width}%` }} />;
+                return (
+                  <button
+                    type="button"
+                    key={round.round_num}
+                    className={round.round_num === currentRound?.round_num ? "active" : ""}
+                    style={{ left: `${start}%`, width: `${width}%` }}
+                    data-label={`Round ${round.round_num}`}
+                    aria-label={`Jump to the start of round ${round.round_num}`}
+                    onClick={(event) => {
+                      event.currentTarget.blur();
+                      seek(round.start);
+                    }}
+                  />
+                );
               })}
             </div>
             <input

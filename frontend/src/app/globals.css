@@ -1213,22 +1213,20 @@ input[type="file"] {
 .analysis-shell {
   height: 100svh;
   overflow: hidden;
-  background: #090c10;
+  background: transparent;
 }
 
 .analysis-shell .topbar,
 .analysis-loading-shell .topbar {
   min-height: 4.5rem;
-  background: rgb(9 12 16 / 94%);
+  background: transparent;
 }
 
 .analysis-workspace {
   height: calc(100svh - 4.5rem);
   display: grid;
   grid-template-rows: auto minmax(0, 1fr) auto;
-  background:
-    linear-gradient(rgb(15 20 27 / 92%), rgb(8 11 15 / 98%)),
-    repeating-linear-gradient(90deg, transparent 0 63px, rgb(93 121 174 / 8%) 64px 65px);
+  background: transparent;
 }
 
 .analysis-toolbar {
@@ -1287,6 +1285,17 @@ input[type="file"] {
   color: var(--text);
   padding: 0.4rem 1.8rem 0.4rem 0.65rem;
   font-family: var(--font-interface);
+}
+
+.analysis-toolbar-controls label:focus-within,
+.analysis-toolbar select:focus,
+.analysis-toolbar select:focus-visible {
+  outline: none;
+  box-shadow: none;
+}
+
+.analysis-toolbar-controls label:focus-within {
+  border-color: var(--accent);
 }
 
 .analysis-stage {
@@ -1545,6 +1554,31 @@ input[type="file"] {
   margin-top: 1rem;
 }
 
+.secondary.inspector-clear::before {
+  --diagonal-run: 1.25rem;
+
+  inset: 0;
+  border: 0;
+  clip-path: polygon(
+    -5rem 0,
+    -1rem 0,
+    calc(-1rem - var(--diagonal-run)) 100%,
+    calc(-5rem - var(--diagonal-run)) 100%
+  );
+  transform: none;
+  transition: clip-path 0.3s cubic-bezier(0.22, 0.61, 0.36, 1);
+}
+
+.secondary.inspector-clear:not(:disabled):is(:hover, :focus-visible)::before {
+  clip-path: polygon(
+    -1rem 0,
+    calc(100% + 4rem) 0,
+    calc(100% + 4rem - var(--diagonal-run)) 100%,
+    calc(-1rem - var(--diagonal-run)) 100%
+  );
+  transform: none;
+}
+
 .inspector-note {
   margin-top: 1.25rem;
   background: rgb(247 148 29 / 6%);
@@ -1635,19 +1669,76 @@ input[type="file"] {
 }
 
 .round-track {
+  z-index: 4;
   top: 0.2rem;
   height: 0.55rem;
 }
 
-.round-track span {
+.round-track button {
   position: absolute;
+  top: 0;
   height: 100%;
+  min-height: 0;
+  border: 0;
   border-inline: 1px solid #090c10;
   background: #28364d;
+  padding: 0;
+  cursor: pointer;
+  transition: background-color 120ms ease;
 }
 
-.round-track span.active {
+.round-track button:is(:hover, :focus-visible) {
+  background: #8aa2cf;
+  outline: none;
+}
+
+.round-track button.active {
   background: var(--steel-blue-text);
+}
+
+.round-track button::after {
+  position: absolute;
+  bottom: calc(100% + 0.45rem);
+  left: 50%;
+  width: max-content;
+  border: 1px solid var(--line);
+  background: #080b0f;
+  color: var(--text);
+  padding: 0.3rem 0.45rem;
+  content: attr(data-label);
+  font-family: var(--font-interface);
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  opacity: 0;
+  pointer-events: none;
+  transform: translate(-50%, 0.2rem);
+  transition: opacity 120ms ease, transform 120ms ease;
+  white-space: nowrap;
+}
+
+.round-track button:is(:hover, :focus-visible)::after {
+  opacity: 1;
+  transform: translate(-50%, 0);
+}
+
+.round-track button:first-child::after {
+  left: 0;
+  transform: translate(0, 0.2rem);
+}
+
+.round-track button:first-child:is(:hover, :focus-visible)::after {
+  transform: translate(0, 0);
+}
+
+.round-track button:last-child::after {
+  right: 0;
+  left: auto;
+  transform: translate(0, 0.2rem);
+}
+
+.round-track button:last-child:is(:hover, :focus-visible)::after {
+  transform: translate(0, 0);
 }
 
 .timeline-range {
