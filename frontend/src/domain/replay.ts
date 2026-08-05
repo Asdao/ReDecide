@@ -78,6 +78,31 @@ export const replayManifestSchema = z
         });
       }
     });
+
+    if (manifest.visualization_status === "failed" && !manifest.visualization_error) {
+      context.addIssue({
+        code: "custom",
+        message: "failed visualization status requires a safe error message",
+        path: ["visualization_error"],
+      });
+    }
+    if (manifest.visualization_status !== "failed" && manifest.visualization_error) {
+      context.addIssue({
+        code: "custom",
+        message: "visualization error is only valid for a failed visualization",
+        path: ["visualization_error"],
+      });
+    }
+    if (
+      (manifest.coaching_status === "ready" && manifest.visualization_unlocked) ||
+      (manifest.coaching_status === "complete" && !manifest.visualization_unlocked)
+    ) {
+      context.addIssue({
+        code: "custom",
+        message: "visualization unlock must match coaching completion",
+        path: ["visualization_unlocked"],
+      });
+    }
   });
 
 export const analysisJobSchema = z
@@ -270,15 +295,13 @@ export const replayAnalysisResultSchema = z
     }
   });
 
-const replayVisualizationPlayerSchema = replayPlayerSchema;
-
 export const replayVisualizationSchema = z
   .object({
     schema_version: z.literal("replay_visualization_v1"),
     replay_id: requiredString,
     source: requiredString,
     map: replayMapSchema,
-    players: z.array(replayVisualizationPlayerSchema),
+    players: z.array(replayPlayerSchema),
     rounds: z.array(z.record(z.string(), jsonValueSchema)),
     events: z.array(z.record(z.string(), jsonValueSchema)),
     ticks: z.array(z.record(z.string(), jsonValueSchema)),

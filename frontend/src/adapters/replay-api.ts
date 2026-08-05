@@ -69,7 +69,11 @@ function isAbortError(error: unknown): boolean {
   return error instanceof DOMException && error.name === "AbortError";
 }
 
-async function request(url: string, init: RequestInit, operation: ReplayOperation): Promise<Response> {
+async function request(
+  url: string,
+  init: RequestInit,
+  operation: ReplayOperation,
+): Promise<Response> {
   try {
     return await fetch(`${apiBaseUrl}${url}`, init);
   } catch (error: unknown) {

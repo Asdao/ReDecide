@@ -3,6 +3,7 @@ import backendResult from "../../../backend/tests/fixtures/analysis_api_result.j
 import {
   analysisFlowReducer,
   initialAnalysisFlowState,
+  resultRecoveryDisposition,
   type AnalysisFlowState,
   type ReplayFlowError,
 } from "@/domain/analysis-flow";
@@ -102,6 +103,14 @@ function advanceToCoaching(): AnalysisFlowState {
 }
 
 describe("uploaded replay state machine", () => {
+  it("never treats a merely ready analysis as permission to rerun ambiguous coaching", () => {
+    expect(resultRecoveryDisposition("ready", false)).toBe("continue");
+    expect(resultRecoveryDisposition("processing", false)).toBe("continue");
+    expect(resultRecoveryDisposition("ready", true)).toBe("retry-result");
+    expect(resultRecoveryDisposition("complete", false)).toBe("retry-result");
+    expect(resultRecoveryDisposition("failed", false)).toBe("retry-coaching");
+  });
+
   it("preserves the file and distinct stable IDs through the successful flow", () => {
     const preparing = advanceToPreparing();
     expect(preparing).toMatchObject({
@@ -278,13 +287,6 @@ describe("uploaded replay state machine", () => {
         requestId: "duplicate-coach",
       }),
     ).toBe(recovering);
-    expect(
-      analysisFlowReducer(recovering, {
-        type: "RESULT_STILL_PROCESSING",
-        requestId: "recovery-1",
-      }),
-    ).toBe(recovering);
-
     const confirmedAbsent = analysisFlowReducer(recovering, {
       type: "RESULT_CONFIRMED_ABSENT",
       requestId: "recovery-1",
@@ -294,10 +296,7 @@ describe("uploaded replay state machine", () => {
         retryable: true,
       },
     });
-    expect(confirmedAbsent).toMatchObject({
-      status: "coaching-error",
-      mayHaveCompleted: false,
-    });
+    expect(confirmedAbsent).toMatchObject({ status: "coaching-error" });
     expect(
       analysisFlowReducer(confirmedAbsent, {
         type: "RETRY_COACHING",

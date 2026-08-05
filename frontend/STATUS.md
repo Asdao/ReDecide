@@ -52,7 +52,8 @@ model call. Structurally valid results are also checked against the active
 Replay contracts now enforce cross-field invariants in addition to field
 shapes, including unique stable player IDs, valid round boundaries, selected
 decision ownership, and agreement between the selected decision and coaching
-analysis.
+analysis. Manifest validation also keeps visualization failures, coaching
+completion, and visualization unlock state internally consistent.
 
 The replay state machine is now connected to the adapter and rendered screens.
 Choosing a `.dem` uploads it once, prepares analysis by `replay_id`, polls the
@@ -60,9 +61,10 @@ documented player endpoint until ready, displays player names while submitting
 stable `player_id` values, allows only players with a coaching decision, and
 runs the coach with a 45-second client allowance for the documented 30-second
 request. A lost or timed-out coaching response checks `GET /result` after a
-grace period before any new model call can be enabled. Reset aborts browser
-requests and stale request IDs prevent late completions from replacing the
-active flow.
+grace period. A merely `ready` analysis never authorizes another model call;
+only an explicit backend `failed` state can enable a coaching retry. Other
+ambiguous states can only re-check the result. Reset aborts browser requests
+and stale request IDs prevent late completions from replacing the active flow.
 
 Responsive replay screens cover upload, preparation, player discovery,
 selection, coaching, ambiguous-result recovery, scoped errors/retries, and the
@@ -117,7 +119,7 @@ folder on `raw.githubusercontent.com` for non-bundled future maps.
 
 From `frontend/`, `pnpm run verify` passes:
 
-- Vitest: 6 files, 36 tests passed
+- Vitest: 6 files, 41 tests passed
 - TypeScript: passed
 - ESLint: passed with no warnings
 - Next.js production build: passed; `/` and `/_not-found` prerendered
@@ -148,9 +150,9 @@ Browser verification of the uploaded-replay UI also confirmed:
   locally. Add reviewed local assets to `public/maps/` and the bundled allowlist
   as new backend samples are introduced; otherwise the remote/fallback path is
   used.
-- The next player-selection screen for the compatibility sample path is not implemented. It stops
-  after preserving the validated `analysis_id` and player list returned by
-  `/api/analyze`.
+- The next player-selection screen for the compatibility sample path is not
+  implemented. It stops after preserving the validated `analysis_id` and
+  player list returned by `/api/analyze`.
 - A real native `.dem` has not yet completed the full backend flow, matching the
   backend's documented current limitation. Browser QA used validated replay
   fixtures for post-upload states and did not send user replay data.

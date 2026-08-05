@@ -127,6 +127,28 @@ describe("uploaded replay contracts", () => {
     expect(() => replayManifestSchema.parse({ ...manifest, server_path: "private" })).toThrow();
   });
 
+  it("keeps visualization failure and coaching unlock states internally consistent", () => {
+    expect(() =>
+      replayManifestSchema.parse({
+        ...manifest,
+        visualization_status: "failed",
+      }),
+    ).toThrow("failed visualization status requires a safe error message");
+    expect(() =>
+      replayManifestSchema.parse({
+        ...manifest,
+        visualization_unlocked: true,
+      }),
+    ).toThrow("visualization unlock must match coaching completion");
+    expect(
+      replayManifestSchema.parse({
+        ...manifest,
+        visualization_status: "failed",
+        visualization_error: "visualization JSON generation failed",
+      }).visualization_status,
+    ).toBe("failed");
+  });
+
   it("requires unique stable IDs in the authoritative player selector", () => {
     expect(() =>
       analysisPlayersSchema.parse({

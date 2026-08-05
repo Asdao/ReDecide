@@ -131,4 +131,21 @@ describe("uploaded replay screens", () => {
     expect(html).not.toContain("eventual_winner");
     expect(html).not.toContain("round_score");
   });
+
+  it("uses one blocking alert and hides retry for a non-retryable upload rejection", () => {
+    const html = renderReplayState({
+      status: "upload-error",
+      file,
+      error: {
+        code: "invalid-file",
+        message: "Choose a valid .dem replay file.",
+        retryable: false,
+      },
+    });
+
+    expect(html.match(/role="alert"/g)).toHaveLength(1);
+    expect(html).toContain("Choose a valid .dem replay file.");
+    expect(html).not.toContain("Retry upload");
+    expect(html).toContain("Choose another replay");
+  });
 });

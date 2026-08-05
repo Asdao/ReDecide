@@ -14,6 +14,7 @@ import { getSamples, selectSample } from "@/adapters/samples-api";
 import {
   analysisFlowReducer,
   initialAnalysisFlowState,
+  resultRecoveryDisposition,
   type AnalysisFlowState,
   type ReplayFlowError,
   type ReplayFlowErrorCode,
@@ -330,28 +331,29 @@ export function DecisionFlow() {
         }
 
         const status = await getAnalysisStatus(analysisId, controller.signal);
-        if (status.status === "ready" || status.status === "failed") {
+        const disposition = resultRecoveryDisposition(status.status, Date.now() >= deadline);
+        if (disposition === "retry-coaching") {
           dispatch({
             type: "RESULT_CONFIRMED_ABSENT",
             requestId,
             error: {
               code: "coaching-failed",
-              message:
-                status.status === "failed"
-                  ? "The coaching request failed before producing a result."
-                  : "No completed coaching result was found. You can safely retry coaching.",
+              message: "The coaching request failed before producing a result.",
               retryable: true,
             },
           });
           return;
         }
-        if (status.status === "complete" || Date.now() >= deadline) {
+        if (disposition === "retry-result") {
           dispatch({
             type: "RESULT_RECOVERY_FAILED",
             requestId,
             error: {
               code: "result-recovery-failed",
-              message: "The completed coaching result could not be retrieved.",
+              message:
+                status.status === "complete"
+                  ? "The completed coaching result could not be retrieved."
+                  : "No completed result is available yet. Check again before retrying coaching.",
               retryable: true,
             },
           });

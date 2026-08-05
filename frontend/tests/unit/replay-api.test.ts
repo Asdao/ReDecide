@@ -252,6 +252,51 @@ describe("replay API adapter", () => {
     );
   });
 
+  it("rejects non-JSON and unreadable JSON responses without exposing their bodies", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response("<html>proxy failure</html>", {
+          status: 502,
+          headers: { "Content-Type": "text/html" },
+        }),
+      )
+      .mockResolvedValueOnce(
+        new Response("not-json", {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        }),
+      );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(prepareReplayAnalysis("replay-1")).rejects.toMatchObject({
+      kind: "non-json",
+      message: "The backend returned an unexpected response.",
+    });
+    await expect(prepareReplayAnalysis("replay-1")).rejects.toMatchObject({
+      kind: "malformed-json",
+      message: "The backend returned unreadable data.",
+    });
+  });
+
+  it("keeps unknown IDs and confirmed coaching failures distinct", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse({ detail: "private missing ID" }, 404))
+      .mockResolvedValueOnce(jsonResponse({ detail: "private provider error" }, 503));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(getAnalysisPlayers("missing")).rejects.toMatchObject({
+      kind: "not-found",
+      status: 404,
+    });
+    await expect(runReplayCoaching("analysis-1", "p1")).rejects.toMatchObject({
+      kind: "server",
+      status: 503,
+      message: "The backend could not complete this request.",
+    });
+  });
+
   it("preserves AbortError while normalizing other network failures", async () => {
     vi.stubGlobal(
       "fetch",

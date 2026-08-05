@@ -22,6 +22,21 @@ export type ReplayFlowError = {
   retryable: boolean;
 };
 
+type ResultRecoveryDisposition = "continue" | "retry-result" | "retry-coaching";
+
+export function resultRecoveryDisposition(
+  status: AnalysisJob["status"],
+  timedOut: boolean,
+): ResultRecoveryDisposition {
+  if (status === "failed") {
+    return "retry-coaching";
+  }
+  if (status === "complete" || timedOut) {
+    return "retry-result";
+  }
+  return "continue";
+}
+
 type UploadedReplayContext = {
   file: File;
   manifest: ReplayManifest;
@@ -62,11 +77,7 @@ export type AnalysisFlowState =
   | ({ status: "running-coaching"; requestId: string } & SelectedPlayerContext)
   | ({ status: "recovering-result"; requestId: string } & SelectedPlayerContext)
   | ({ status: "result-recovery-error"; error: ReplayFlowError } & SelectedPlayerContext)
-  | ({
-      status: "coaching-error";
-      error: ReplayFlowError;
-      mayHaveCompleted: false;
-    } & SelectedPlayerContext)
+  | ({ status: "coaching-error"; error: ReplayFlowError } & SelectedPlayerContext)
   | ({ status: "result"; result: ReplayAnalysisResult } & SelectedPlayerContext);
 
 export type SampleAnalysisFlowState = Extract<
@@ -111,7 +122,6 @@ export type AnalysisFlowAction =
     }
   | { type: "ANALYSIS_PREPARE_FAILED"; requestId: string; error: ReplayFlowError }
   | { type: "RETRY_ANALYSIS_PREPARE"; requestId: string }
-  | { type: "PLAYERS_STILL_PROCESSING"; requestId: string }
   | { type: "PLAYERS_LOADED"; requestId: string; analysisId: string; players: AnalysisPlayer[] }
   | { type: "PLAYERS_FAILED"; requestId: string; error: ReplayFlowError }
   | { type: "RETRY_PLAYERS"; requestId: string }
@@ -127,7 +137,6 @@ export type AnalysisFlowAction =
       recoveryRequestId: string;
     }
   | { type: "COACHING_FAILED"; requestId: string; error: ReplayFlowError }
-  | { type: "RESULT_STILL_PROCESSING"; requestId: string }
   | { type: "RESULT_RECOVERED"; requestId: string; result: ReplayAnalysisResult }
   | { type: "RESULT_CONFIRMED_ABSENT"; requestId: string; error: ReplayFlowError }
   | { type: "RESULT_RECOVERY_FAILED"; requestId: string; error: ReplayFlowError }
@@ -187,7 +196,6 @@ function finishCoaching(
         ...context,
         status: "coaching-error",
         error: mismatchedResultError,
-        mayHaveCompleted: false,
       };
 }
 
@@ -285,10 +293,6 @@ export function analysisFlowReducer(
             requestId: action.requestId,
           }
         : state;
-    case "PLAYERS_STILL_PROCESSING":
-      return state.status === "waiting-for-players" && state.requestId === action.requestId
-        ? state
-        : state;
     case "PLAYERS_LOADED":
       if (
         state.status !== "waiting-for-players" ||
@@ -364,13 +368,8 @@ export function analysisFlowReducer(
           ...context,
           status: "coaching-error",
           error: action.error,
-          mayHaveCompleted: false,
         };
       }
-    case "RESULT_STILL_PROCESSING":
-      return state.status === "recovering-result" && state.requestId === action.requestId
-        ? state
-        : state;
     case "RESULT_RECOVERED":
       return state.status === "recovering-result" && state.requestId === action.requestId
         ? finishCoaching(state, action.result)
@@ -383,7 +382,6 @@ export function analysisFlowReducer(
         ...selectedPlayerContext(state),
         status: "coaching-error",
         error: action.error,
-        mayHaveCompleted: false,
       };
     case "RESULT_RECOVERY_FAILED":
       if (state.status !== "recovering-result" || state.requestId !== action.requestId) {

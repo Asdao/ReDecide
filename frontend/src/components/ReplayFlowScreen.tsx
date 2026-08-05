@@ -48,7 +48,11 @@ function replayProgressMessage(state: ReplayAnalysisFlowState): string {
   }
 }
 
-function ReplaySummary({ state }: { state: Exclude<ReplayAnalysisFlowState, { status: "uploading" | "upload-error" }> }) {
+function ReplaySummary({
+  state,
+}: {
+  state: Exclude<ReplayAnalysisFlowState, { status: "uploading" | "upload-error" }>;
+}) {
   return (
     <dl className="replay-summary" aria-label="Uploaded replay summary">
       <div>
@@ -123,6 +127,7 @@ export function ReplayFlowScreen({
   onRetryCoaching,
   onRetryRecovery,
 }: ReplayFlowScreenProps) {
+  const progressMessage = replayProgressMessage(state);
   const heading =
     state.status === "choosing-player"
       ? "Choose your player."
@@ -132,9 +137,11 @@ export function ReplayFlowScreen({
 
   return (
     <section className="replay-screen" id="main-content" aria-labelledby="replay-title">
-      <p className="sr-only" aria-live="polite" aria-atomic="true">
-        {replayProgressMessage(state)}
-      </p>
+      {progressMessage ? (
+        <p className="sr-only" aria-live="polite" aria-atomic="true">
+          {progressMessage}
+        </p>
+      ) : null}
       <div className="replay-panel">
         <div className="replay-title-row">
           <div>
@@ -276,7 +283,8 @@ export function ReplayFlowScreen({
             <div className="coaching-result-heading">
               <p className="eyebrow">Coaching complete</p>
               <h2 id="coaching-result-title">
-                {playerName(state.selectedPlayer)} · Round {state.result.selected_decision.round_number}
+                {playerName(state.selectedPlayer)} · Round{" "}
+                {state.result.selected_decision.round_number}
               </h2>
               <p>
                 {state.result.selected_decision.event_category} decision at tick{" "}
