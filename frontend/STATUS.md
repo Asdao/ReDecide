@@ -4,15 +4,16 @@ Last verified: 2026-08-05 (Asia/Singapore)
 
 ## Status
 
-**Uploaded `.dem` coaching flow, processed-showcase player selection, and the first 2D replay workspace are implemented.**
+**Backend sample selection, uploaded `.dem` coaching, processed-showcase player selection, and the first 2D replay workspace are implemented.**
 
-The landing page's `Use a sample match` action now opens the bundled,
-already-processed `mirage-showcase.replay.json` rather than sending the sample
-through the backend. It preserves the uploaded-replay interaction order: the
-showcase loads, the user chooses one of the 10 stable player IDs, and the
-selection is carried into `/analysis`. Upload, demo parsing, analysis
-preparation, and coaching calls are skipped only for this explicit showcase
-path. The native `.dem` action continues to use the complete backend flow.
+The landing page's `Use a sample match` action calls `GET /api/samples` and
+renders the backend-returned list through the compatibility sample selector.
+Selecting an available entry submits its stable `sample_id` to
+`POST /api/analyze`. A separate `Open processed showcase` action loads the
+bundled, already-processed `mirage-showcase.replay.json`; the user chooses one
+of its 10 stable player IDs and continues to `/analysis` without upload, demo
+parsing, analysis preparation, or coaching calls. The native `.dem` action
+continues to use the complete backend flow.
 
 The new analysis route renders the reviewed local Mirage radar with the
 selected player in blue, same-side players in green, and opponents in red.
@@ -57,11 +58,9 @@ slides a wider inspector in from the right and shifts the centered radar
 slightly left; clearing the event or resuming playback restores the centered
 map.
 
-The earlier backend-driven compatibility sample selector, schemas, adapter,
-reducer states, and tests remain in the codebase, but the landing action no
-longer enters that path. They continue to cover `GET /api/samples` and
-`POST /api/analyze` without being confused with the processed visualization
-showcase.
+The backend-driven compatibility sample selector, schemas, adapter, reducer
+states, and tests power the sample-match landing action. The processed
+visualization showcase remains a distinct, explicitly labelled option.
 
 `AnalysisProgressScreen.tsx` and the old saved-fixture loading path are no
 longer part of the rendered flow. The landing page now exposes a labelled,
@@ -112,8 +111,9 @@ outcomes are not rendered in the coaching result.
 
 ## Important paths
 
-- `src/components/DecisionFlow.tsx` - showcase loading and routing plus uploaded
-  replay polling, timeouts, cancellation, and request ownership
+- `src/components/DecisionFlow.tsx` - backend sample-list entry, showcase loading
+  and routing, plus uploaded replay polling, timeouts, cancellation, and request
+  ownership
 - `src/components/ShowcasePlayerScreen.tsx` - processed-showcase loading,
   errors, replay summary, and stable player selection
 - `src/components/ReplayAnalysisScreen.tsx` - Mirage radar, playback clock,
@@ -201,10 +201,9 @@ Browser verification of the uploaded-replay UI also confirmed:
   locally. Add reviewed local assets to `public/maps/` and the bundled allowlist
   as new backend samples are introduced; otherwise the remote/fallback path is
   used.
-- The next player-selection screen for the compatibility sample path is not
-  used by the landing action now that the explicit processed showcase path is
-  available. The compatibility adapter and reducer remain for backend contract
-  coverage.
+- The compatibility sample flow currently stops after the backend preparation
+  response reports the available players; its next player-selection screen is
+  not yet implemented.
 - A real native `.dem` has not yet completed the full backend flow, matching the
   backend's documented current limitation. Browser QA used validated replay
   fixtures for post-upload states and did not send user replay data.

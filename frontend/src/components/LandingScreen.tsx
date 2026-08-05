@@ -1,9 +1,14 @@
 type LandingScreenProps = {
-  onOpenExample: () => void;
+  onOpenSamples: () => void;
+  onOpenShowcase: () => void;
   onSelectReplay: (file: File) => void;
 };
 
-export function LandingScreen({ onOpenExample, onSelectReplay }: LandingScreenProps) {
+export function LandingScreen({
+  onOpenSamples,
+  onOpenShowcase,
+  onSelectReplay,
+}: LandingScreenProps) {
   return (
     <section className="hero" id="main-content" aria-labelledby="page-title">
       <div className="hero-copy">
@@ -19,8 +24,21 @@ export function LandingScreen({ onOpenExample, onSelectReplay }: LandingScreenPr
         </p>
 
         <div className="actions" aria-label="Choose an analysis source">
-          <button className="primary" type="button" onClick={onOpenExample} aria-describedby="demo-note">
+          <button
+            className="primary"
+            type="button"
+            onClick={onOpenSamples}
+            aria-describedby="sample-note"
+          >
             Use a sample match
+          </button>
+          <button
+            className="secondary"
+            type="button"
+            onClick={onOpenShowcase}
+            aria-describedby="showcase-note"
+          >
+            Open processed showcase
           </button>
           <label className="secondary" htmlFor="demo-upload" aria-describedby="upload-help">
             Upload a *.dem
@@ -37,8 +55,11 @@ export function LandingScreen({ onOpenExample, onSelectReplay }: LandingScreenPr
             }}
           />
         </div>
-        <p className="source-note" id="demo-note">
-          Open the processed Mirage showcase, choose a player, and go straight to the replay view.
+        <p className="source-note" id="sample-note">
+          Choose from the sample matches currently available from the backend.
+        </p>
+        <p className="source-note" id="showcase-note">
+          Or explore the already-processed Mirage showcase and go straight to the replay view.
         </p>
         <p className="privacy" id="upload-help">
           Your replay is uploaded once, then the backend prepares player selection and coaching.

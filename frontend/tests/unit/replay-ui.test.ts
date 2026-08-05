@@ -70,7 +70,8 @@ describe("uploaded replay screens", () => {
   it("renders an enabled, labelled .dem picker on the landing screen", () => {
     const html = renderToStaticMarkup(
       createElement(LandingScreen, {
-        onOpenExample: () => undefined,
+        onOpenSamples: () => undefined,
+        onOpenShowcase: () => undefined,
         onSelectReplay: () => undefined,
       }),
     );
@@ -162,17 +163,20 @@ describe("uploaded replay screens", () => {
 });
 
 describe("sample replay screens", () => {
-  it("keeps the home sample action but identifies the direct processed-replay path", () => {
+  it("offers backend samples and the processed showcase as separate actions", () => {
     const html = renderToStaticMarkup(
       createElement(LandingScreen, {
-        onOpenExample: () => undefined,
+        onOpenSamples: () => undefined,
+        onOpenShowcase: () => undefined,
         onSelectReplay: () => undefined,
       }),
     );
 
     expect(html).toContain("Use a sample match");
+    expect(html).toContain("currently available from the backend");
+    expect(html).toContain("Open processed showcase");
     expect(html).toContain("processed Mirage showcase");
-    expect(html).toContain("choose a player");
+    expect(html).toContain("go straight to the replay view");
   });
 
   it("presents the processed replay players before entering analysis", () => {

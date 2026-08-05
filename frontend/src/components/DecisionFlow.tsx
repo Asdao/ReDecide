@@ -429,7 +429,8 @@ export function DecisionFlow() {
     document.getElementById(headingId)?.focus();
   }, [state]);
 
-  const openSamples = () =>
+  const openSamples = () => dispatch({ type: "OPEN_SAMPLES" });
+  const openShowcase = () =>
     setShowcase((current) => ({
       status: "loading",
       attempt: "attempt" in current ? current.attempt + 1 : 1,
@@ -449,7 +450,7 @@ export function DecisionFlow() {
             ? { status: "error" as const, message: showcase.message }
             : { status: "loading" as const })}
         onBack={reset}
-        onRetry={openSamples}
+        onRetry={openShowcase}
         onSelectPlayer={(player) =>
           router.push(`/analysis?player=${encodeURIComponent(player.player_id)}`)
         }
@@ -458,7 +459,8 @@ export function DecisionFlow() {
   } else if (state.status === "choose") {
     content = (
       <LandingScreen
-        onOpenExample={openSamples}
+        onOpenSamples={openSamples}
+        onOpenShowcase={openShowcase}
         onSelectReplay={(file) =>
           dispatch({ type: "SELECT_REPLAY_FILE", file, requestId: nextRequestId("upload") })
         }
