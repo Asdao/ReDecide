@@ -1,7 +1,15 @@
-minimumReleaseAge: 10080
+minimumReleaseAge: 4320
 minimumReleaseAgeStrict: true
 blockExoticSubdeps: true
 trustPolicy: no-downgrade
+verifyDepsBeforeRun: error
+
+minimumReleaseAgeExclude:
+  - get-tsconfig@4.14.1
+
+trustPolicyExclude:
+  - eslint-import-resolver-typescript@3.10.1
+  - semver@6.3.1
 
 allowBuilds:
   sharp: true

@@ -60,7 +60,7 @@ implementation evidence; Person 1 owns that integration-status correction.
 - Validation: strict TypeScript, ESLint, Vitest, and a production Next.js build.
 
 Dependency security hardening was added on 2026-08-05. The frontend now uses
-pnpm 11.9.0, a seven-day minimum release age, strict lockfile/source checks,
+pnpm 11.9.0, a three-day minimum release age, strict lockfile/source checks,
 explicit build approvals, and the repository CI security workflow. The
 dependency-free checker passes locally; registry audit and clean-install gates
 run in CI.

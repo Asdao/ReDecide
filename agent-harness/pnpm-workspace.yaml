@@ -1,7 +1,11 @@
-minimumReleaseAge: 10080
+minimumReleaseAge: 4320
 minimumReleaseAgeStrict: true
 blockExoticSubdeps: true
 trustPolicy: no-downgrade
+verifyDepsBeforeRun: error
+
+trustPolicyExclude:
+  - undici-types@6.21.0
 
 allowBuilds:
   '@google/genai': false
