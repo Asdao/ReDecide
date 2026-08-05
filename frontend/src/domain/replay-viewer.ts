@@ -121,9 +121,9 @@ export function buildReplayFrames(snapshots: ShowcaseSnapshot[]): ReplayFrame[] 
   return frames;
 }
 
-export function frameAtTick(frames: ReplayFrame[], tick: number): ReplayFrame | undefined {
+function frameIndexAtTick(frames: ReplayFrame[], tick: number): number {
   if (frames.length === 0 || tick < frames[0].tick) {
-    return undefined;
+    return -1;
   }
 
   let low = 0;
@@ -136,7 +136,45 @@ export function frameAtTick(frames: ReplayFrame[], tick: number): ReplayFrame | 
       high = middle - 1;
     }
   }
-  return frames[high];
+  return high;
+}
+
+export function frameAtTick(frames: ReplayFrame[], tick: number): ReplayFrame | undefined {
+  const index = frameIndexAtTick(frames, tick);
+  return index >= 0 ? frames[index] : undefined;
+}
+
+export function interpolatedSnapshotsAtTick(
+  frames: ReplayFrame[],
+  tick: number,
+): ShowcaseSnapshot[] {
+  const currentIndex = frameIndexAtTick(frames, tick);
+  if (currentIndex < 0) {
+    return [];
+  }
+
+  const current = frames[currentIndex];
+  const next = frames[currentIndex + 1];
+  if (!next || next.tick <= current.tick) {
+    return current.snapshots;
+  }
+
+  const progress = Math.min(1, Math.max(0, (tick - current.tick) / (next.tick - current.tick)));
+  const nextByPlayer = new Map(next.snapshots.map((snapshot) => [snapshot.player_id, snapshot]));
+
+  return current.snapshots.map((snapshot) => {
+    const nextSnapshot = nextByPlayer.get(snapshot.player_id);
+    if (!nextSnapshot || nextSnapshot.round_num !== snapshot.round_num) {
+      return snapshot;
+    }
+
+    return {
+      ...snapshot,
+      X: snapshot.X + (nextSnapshot.X - snapshot.X) * progress,
+      Y: snapshot.Y + (nextSnapshot.Y - snapshot.Y) * progress,
+      Z: snapshot.Z + (nextSnapshot.Z - snapshot.Z) * progress,
+    };
+  });
 }
 
 export function roundAtTick(rounds: ShowcaseRound[], tick: number): ShowcaseRound | undefined {

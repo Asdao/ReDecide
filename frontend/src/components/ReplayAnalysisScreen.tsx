@@ -7,7 +7,7 @@ import {
   buildReplayFrames,
   firstEventCrossed,
   formatReplayTime,
-  frameAtTick,
+  interpolatedSnapshotsAtTick,
   playerDisplayName,
   playerTimelineEvents,
   roundAtTick,
@@ -71,10 +71,13 @@ export function ReplayAnalysisScreen({ initialPlayerId }: { initialPlayerId?: st
   const frames = useMemo(() => (replay ? buildReplayFrames(replay.ticks) : []), [replay]);
   const firstTick = frames[0]?.tick ?? 0;
   const lastTick = frames.at(-1)?.tick ?? 0;
-  const currentFrame = frameAtTick(frames, currentTick);
+  const currentSnapshots = useMemo(
+    () => interpolatedSnapshotsAtTick(frames, currentTick),
+    [currentTick, frames],
+  );
   const currentRound = replay ? roundAtTick(replay.rounds, currentTick) : undefined;
   const selectedPlayer = replay?.players.find(({ player_id }) => player_id === selectedPlayerId);
-  const selectedSnapshot = currentFrame?.snapshots.find(
+  const selectedSnapshot = currentSnapshots.find(
     ({ player_id }) => player_id === selectedPlayerId,
   );
   const selectedEvent = replay?.events.find(({ event_id }) => event_id === selectedEventId);
@@ -115,6 +118,9 @@ export function ReplayAnalysisScreen({ initialPlayerId }: { initialPlayerId?: st
         setCurrentTick(reachedEvent.tick);
         setSelectedEventId(reachedEvent.event_id);
         setPlaying(false);
+        if (document.activeElement instanceof HTMLElement) {
+          document.activeElement.blur();
+        }
         return;
       }
 
@@ -282,7 +288,7 @@ export function ReplayAnalysisScreen({ initialPlayerId }: { initialPlayerId?: st
                 sizes="(max-width: 900px) 100vw, calc(100vh - 22rem)"
               />
               <div className="radar-overlay">
-                {currentFrame?.snapshots.map((snapshot) => {
+                {currentSnapshots.map((snapshot) => {
                   const position = worldToMirageRadar(snapshot.X, snapshot.Y);
                   const isSelected = snapshot.player_id === selectedPlayerId;
                   const relation = isSelected
@@ -363,7 +369,10 @@ export function ReplayAnalysisScreen({ initialPlayerId }: { initialPlayerId?: st
                   key={event.event_id}
                   title={`Round ${event.round_num}: ${eventLabel(event)}`}
                   aria-label={`Round ${event.round_num}, ${eventLabel(event)}, ${formatReplayTime(event.tick, firstTick, replay.map.tick_rate)}`}
-                  onClick={() => seek(event.tick, event.event_id)}
+                  onClick={(clickEvent) => {
+                    clickEvent.currentTarget.blur();
+                    seek(event.tick, event.event_id);
+                  }}
                 />
               ))}
             </div>

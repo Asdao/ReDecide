@@ -1469,7 +1469,7 @@ input[type="file"] {
   width: min(33rem, calc(100% - 2.5rem));
   min-height: 0;
   overflow-y: auto;
-  border-right: 3px solid var(--accent);
+  border: 2px solid var(--accent);
   background: rgb(14 18 25 / 94%);
   padding: 1.25rem;
   opacity: 0;
@@ -1547,7 +1547,6 @@ input[type="file"] {
 
 .inspector-note {
   margin-top: 1.25rem;
-  border-left: 3px solid var(--accent);
   background: rgb(247 148 29 / 6%);
   padding: 0.85rem 1rem;
 }
@@ -1604,6 +1603,13 @@ input[type="file"] {
   min-height: 2.1rem;
   border: 0;
   padding-block: 0.2rem;
+}
+
+.speed-control:focus-within,
+.speed-control select:focus,
+.speed-control select:focus-visible {
+  outline: none;
+  box-shadow: none;
 }
 
 .playback-controls output {
@@ -1663,30 +1669,51 @@ input[type="file"] {
 }
 
 .event-track button {
+  --event-marker-color: var(--tactical-tan);
+
   position: absolute;
-  top: 0;
-  width: 4px;
-  height: 0.7rem;
+  top: -0.2rem;
+  width: 1rem;
+  height: 1.1rem;
   border: 0;
+  background: transparent;
   padding: 0;
   transform: translateX(-50%);
   cursor: pointer;
 }
 
-.event-track button.death,
+.event-track button::before {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 6px;
+  height: 0.9rem;
+  background: var(--event-marker-color);
+  content: "";
+  transform: translate(-50%, -50%);
+}
+
+.event-track button.death {
+  --event-marker-color: #ee5f5f;
+}
+
 .timeline-caption i.death {
   background: #ee5f5f;
 }
 
-.event-track button.damage,
+.event-track button.damage {
+  --event-marker-color: var(--tactical-tan);
+}
+
 .timeline-caption i.damage {
   background: var(--tactical-tan);
 }
 
+.event-track button:focus,
+.event-track button:focus-visible,
 .event-track button.selected {
-  height: 1rem;
-  outline: 2px solid var(--text);
-  outline-offset: 1px;
+  outline: none;
+  box-shadow: none;
 }
 
 .timeline-caption {

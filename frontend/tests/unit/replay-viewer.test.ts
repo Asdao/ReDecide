@@ -6,6 +6,7 @@ import {
   firstEventCrossed,
   formatReplayTime,
   frameAtTick,
+  interpolatedSnapshotsAtTick,
   playerTimelineEvents,
   roundAtTick,
   showcaseReplaySchema,
@@ -55,6 +56,18 @@ describe("processed replay viewer", () => {
     expect(frameAtTick(frames, 127)?.tick).toBe(64);
     expect(frameAtTick(frames, 128)?.tick).toBe(128);
     expect(frameAtTick(frames, 10)).toBeUndefined();
+  });
+
+  it("interpolates player movement between adjacent snapshots", () => {
+    const start = { ...snapshot(64, "p1"), X: 0, Y: 20, Z: -10 };
+    const end = { ...snapshot(128, "p1"), X: 100, Y: 60, Z: 10 };
+    const frames = buildReplayFrames([start, end]);
+
+    expect(interpolatedSnapshotsAtTick(frames, 96)[0]).toMatchObject({
+      X: 50,
+      Y: 40,
+      Z: 0,
+    });
   });
 
   it("uses the reviewed Mirage overview transform", () => {

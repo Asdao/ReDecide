@@ -21,7 +21,9 @@ horizontal legend layered above the radar at the bottom center, and tooltips
 keep the view understandable without relying on color alone. The radar has no
 card border or opaque backing, so its transparent map asset floats in the
 workspace. Positions are derived from the processed snapshots with the reviewed
-Mirage overview origin and scale.
+Mirage overview origin and scale. Position samples for the same player and
+round are linearly interpolated against the authoritative playback tick, so
+movement remains continuous between the replay's half-second snapshots.
 
 A single playback clock synchronizes the radar, round selector, full-match
 timeline, scrubber, elapsed time, and event inspector. The viewer supports
@@ -36,6 +38,10 @@ exact tick, opens the event inspector, and pauses automatically. Event and round
 tracks use the range thumb's usable inset so markers align with the playback
 thumb. The layout keeps the timeline full-width at the bottom on desktop and
 sticky on narrow screens.
+All event markers use one consistent hit target and a six-pixel visual line,
+with no persistent focus or selected outline after clicking or automatic
+pausing. The wider right-side inspector uses an orange border on all four sides;
+its knowledge-boundary note uses background color without an edge border.
 The moment inspector is absent during ordinary playback. Selecting an event
 slides a wider inspector in from the right and shifts the centered radar
 slightly left; clearing the event or resuming playback restores the centered
@@ -154,7 +160,7 @@ folder on `raw.githubusercontent.com` for non-bundled future maps.
 
 From `frontend/`, `pnpm run verify` passes:
 
-- Vitest: 7 files, 71 tests passed
+- Vitest: 7 files, 72 tests passed
 - TypeScript: passed
 - ESLint: passed with no warnings
 - Next.js production build: passed; `/` and `/_not-found` prerendered
