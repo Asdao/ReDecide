@@ -4,6 +4,12 @@ import {
   initialAnalysisFlowState,
 } from "@/domain/analysis-flow";
 import { mapDisplayName } from "@/domain/maps";
+import {
+  isLandingChildHistoryEntry,
+  landingViewFromSearch,
+  landingViewHref,
+  withLandingHistoryMarker,
+} from "@/domain/landing-navigation";
 import { mapAssetKey, mapThumbnailUrl, samplesResponseSchema } from "@/domain/samples";
 
 const sample = {
@@ -25,6 +31,36 @@ const preparation = {
 };
 
 describe("backend sample flow", () => {
+  it("maps landing views to stable, query-preserving history URLs", () => {
+    expect(landingViewFromSearch("")).toBe("home");
+    expect(landingViewFromSearch("?view=samples")).toBe("samples");
+    expect(landingViewFromSearch("?view=showcase&utm_source=test")).toBe("showcase");
+    expect(landingViewFromSearch("?view=unknown")).toBe("home");
+
+    expect(landingViewHref("samples", "?utm_source=test")).toBe(
+      "/?utm_source=test&view=samples",
+    );
+    expect(landingViewHref("showcase", "?view=samples&utm_source=test")).toBe(
+      "/?view=showcase&utm_source=test",
+    );
+    expect(landingViewHref("home", "?view=showcase&utm_source=test")).toBe(
+      "/?utm_source=test",
+    );
+  });
+
+  it("marks only owned sample and showcase entries as child history views", () => {
+    const existingState = { nextInternal: "preserved" };
+    const home = withLandingHistoryMarker(existingState, "home", false);
+    const showcase = withLandingHistoryMarker(home, "showcase", true);
+
+    expect(home).toMatchObject(existingState);
+    expect(isLandingChildHistoryEntry(home)).toBe(false);
+    expect(isLandingChildHistoryEntry(showcase)).toBe(true);
+    expect(isLandingChildHistoryEntry(showcase, "showcase")).toBe(true);
+    expect(isLandingChildHistoryEntry(showcase, "samples")).toBe(false);
+    expect(isLandingChildHistoryEntry(null)).toBe(false);
+  });
+
   it("validates zero, one, and many sample responses", () => {
     expect(samplesResponseSchema.parse({ samples: [] }).samples).toEqual([]);
     expect(samplesResponseSchema.parse({ samples: [sample] }).samples).toHaveLength(1);

@@ -22,6 +22,13 @@ import {
   type ReplayFlowErrorCode,
   type SampleAnalysisFlowState,
 } from "@/domain/analysis-flow";
+import {
+  isLandingChildHistoryEntry,
+  landingViewFromSearch,
+  landingViewHref,
+  withLandingHistoryMarker,
+  type LandingView,
+} from "@/domain/landing-navigation";
 import { LandingScreen } from "./LandingScreen";
 import { ProductHeader } from "./ProductHeader";
 import { ReplayFlowScreen } from "./ReplayFlowScreen";
@@ -90,12 +97,69 @@ export function DecisionFlow() {
     | { status: "error"; message: string; attempt: number }
     | { status: "ready"; replay: ShowcaseReplay; attempt: number }
   >({ status: "idle" });
-  const previousStatus = useRef(state.status);
+  const currentScreen = showcase.status === "idle" ? state.status : "showcase";
+  const previousScreen = useRef(currentScreen);
   const requestSequence = useRef(0);
   const nextRequestId = useCallback((operation: string) => {
     requestSequence.current += 1;
     return `${operation}-${requestSequence.current}`;
   }, []);
+
+  const loadShowcase = useCallback(() => {
+    setShowcase((current) => ({
+      status: "loading",
+      attempt: "attempt" in current ? current.attempt + 1 : 1,
+    }));
+  }, []);
+
+  const applyLandingView = useCallback(
+    (view: LandingView) => {
+      dispatch({ type: "RESET" });
+      if (view === "samples") {
+        setShowcase({ status: "idle" });
+        dispatch({ type: "OPEN_SAMPLES" });
+        return;
+      }
+      if (view === "showcase") {
+        loadShowcase();
+        return;
+      }
+      setShowcase({ status: "idle" });
+    },
+    [loadShowcase],
+  );
+
+  useEffect(() => {
+    const syncFromLocation = () => {
+      applyLandingView(landingViewFromSearch(window.location.search));
+    };
+
+    const initialView = landingViewFromSearch(window.location.search);
+    if (initialView === "home") {
+      window.history.replaceState(
+        withLandingHistoryMarker(window.history.state, "home", false),
+        "",
+        landingViewHref("home", window.location.search),
+      );
+    } else if (!isLandingChildHistoryEntry(window.history.state, initialView)) {
+      const currentSearch = window.location.search;
+      const homeState = withLandingHistoryMarker(window.history.state, "home", false);
+      window.history.replaceState(
+        homeState,
+        "",
+        landingViewHref("home", currentSearch),
+      );
+      window.history.pushState(
+        withLandingHistoryMarker(homeState, initialView, true),
+        "",
+        landingViewHref(initialView, currentSearch),
+      );
+    }
+
+    syncFromLocation();
+    window.addEventListener("popstate", syncFromLocation);
+    return () => window.removeEventListener("popstate", syncFromLocation);
+  }, [applyLandingView]);
 
   useEffect(() => {
     if (showcase.status !== "loading") {
@@ -419,25 +483,43 @@ export function DecisionFlow() {
   }, [state]);
 
   useEffect(() => {
-    if (previousStatus.current === state.status) {
+    if (previousScreen.current === currentScreen) {
       return;
     }
 
-    previousStatus.current = state.status;
+    previousScreen.current = currentScreen;
     const headingId =
-      state.status === "choose" ? "page-title" : isSampleState(state) ? "samples-title" : "replay-title";
+      currentScreen === "choose"
+        ? "page-title"
+        : currentScreen === "showcase"
+          ? "replay-title"
+          : isSampleState(state)
+            ? "samples-title"
+            : "replay-title";
     document.getElementById(headingId)?.focus();
-  }, [state]);
+  }, [currentScreen, state]);
 
-  const openSamples = () => dispatch({ type: "OPEN_SAMPLES" });
-  const openShowcase = () =>
-    setShowcase((current) => ({
-      status: "loading",
-      attempt: "attempt" in current ? current.attempt + 1 : 1,
-    }));
-  const reset = () => {
-    setShowcase({ status: "idle" });
-    dispatch({ type: "RESET" });
+  const openLandingView = (view: Exclude<LandingView, "home">) => {
+    const href = landingViewHref(view, window.location.search);
+    window.history.pushState(
+      withLandingHistoryMarker(window.history.state, view, true),
+      "",
+      href,
+    );
+    applyLandingView(view);
+  };
+  const returnHome = () => {
+    if (isLandingChildHistoryEntry(window.history.state)) {
+      window.history.back();
+      return;
+    }
+
+    window.history.replaceState(
+      withLandingHistoryMarker(window.history.state, "home", false),
+      "",
+      landingViewHref("home", window.location.search),
+    );
+    applyLandingView("home");
   };
 
   let content;
@@ -449,8 +531,8 @@ export function DecisionFlow() {
           : showcase.status === "error"
             ? { status: "error" as const, message: showcase.message }
             : { status: "loading" as const })}
-        onBack={reset}
-        onRetry={openShowcase}
+        onBack={returnHome}
+        onRetry={loadShowcase}
         onSelectPlayer={(player) =>
           router.push(`/analysis?player=${encodeURIComponent(player.player_id)}`)
         }
@@ -459,8 +541,8 @@ export function DecisionFlow() {
   } else if (state.status === "choose") {
     content = (
       <LandingScreen
-        onOpenSamples={openSamples}
-        onOpenShowcase={openShowcase}
+        onOpenSamples={() => openLandingView("samples")}
+        onOpenShowcase={() => openLandingView("showcase")}
         onSelectReplay={(file) =>
           dispatch({ type: "SELECT_REPLAY_FILE", file, requestId: nextRequestId("upload") })
         }
@@ -483,8 +565,8 @@ export function DecisionFlow() {
         selectionFailedId={
           state.status === "sample-selection-error" ? state.sampleId : undefined
         }
-        onBack={reset}
-        onRetry={openSamples}
+        onBack={returnHome}
+        onRetry={() => dispatch({ type: "OPEN_SAMPLES" })}
         onSelect={(sampleId) => dispatch({ type: "SELECT_SAMPLE", sampleId })}
       />
     );
@@ -492,7 +574,7 @@ export function DecisionFlow() {
     content = (
       <ReplayFlowScreen
         state={state}
-        onBack={reset}
+        onBack={returnHome}
         onRetryUpload={() =>
           dispatch({ type: "RETRY_UPLOAD", requestId: nextRequestId("upload") })
         }
@@ -528,7 +610,7 @@ export function DecisionFlow() {
         brandHref="/"
         onBrandClick={(event) => {
           event.preventDefault();
-          reset();
+          returnHome();
         }}
       />
       {content}

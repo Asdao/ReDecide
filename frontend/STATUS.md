@@ -24,6 +24,14 @@ diagonal wipe without the earlier arrow-like edge. The product logo resets any
 in-page sample, upload, or showcase state and returns to the landing screen,
 with `/` retained as its navigation fallback.
 
+Backend samples and the processed showcase now use query-backed browser history
+entries (`?view=samples` and `?view=showcase`). Browser Back returns to the
+landing screen, Forward restores and reloads the selected view, the visible
+back controls and product logo consume owned child entries safely, and direct
+view links receive a local landing entry so their first Back remains inside the
+app. Unrelated query parameters are preserved. Returning from `/analysis` also
+restores the showcase player selector rather than losing its source context.
+
 The new analysis route renders the reviewed local Mirage radar with the
 selected player in blue, same-side players in green, and opponents in red.
 Team shapes, a selected-player ring, eliminated-player treatment, an accessible
@@ -150,6 +158,8 @@ outcomes are not rendered in the coaching result.
 - `src/domain/samples.ts` - strict API schemas, types, and safe map-asset naming
 - `src/domain/analysis-flow.ts` - explicit sample and uploaded-replay state
   machine, request ownership, scoped retries, and coaching recovery
+- `src/domain/landing-navigation.ts` - query-backed landing views, history URLs,
+  and owned-entry markers for Back and Forward navigation
 - `public/maps/de_mirage.png` - pinned current-sample thumbnail
 - `src/app/globals.css` - sample and replay screens, responsive layout, focus,
   progress, error, selector, and result styling
@@ -179,7 +189,7 @@ folder on `raw.githubusercontent.com` for non-bundled future maps.
 
 From `frontend/`, `pnpm run verify` passes:
 
-- Vitest: 7 files, 73 tests passed
+- Vitest: 7 files, 75 tests passed
 - TypeScript: passed
 - ESLint: passed with no warnings
 - Next.js production build: passed; `/` and `/_not-found` prerendered
@@ -187,6 +197,10 @@ From `frontend/`, `pnpm run verify` passes:
 Browser verification against the documented sample responses confirmed:
 
 - landing action opens the selector;
+- browser Back returns from samples or showcase to the landing screen;
+- browser Forward restores the selected samples or showcase view;
+- direct `?view=` links and Back from `/analysis` retain their expected source
+  context without console warnings or errors;
 - the returned Mirage sample renders as a horizontal selectable bar;
 - the local Mirage thumbnail is requested through Next.js image handling;
 - selection reaches the selected state after `POST /api/analyze`;
