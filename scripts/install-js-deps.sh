@@ -29,6 +29,8 @@ if [[ "$pnpm_major" != "11" ]]; then
   exit 1
 fi
 
+node "$repo_root/security/check-lockfiles.mjs"
+
 install_project() {
   local project="$1"
   echo "Installing $project from its frozen lockfile..."

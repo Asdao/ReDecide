@@ -1,0 +1,64 @@
+name: Dependency security
+
+on:
+  pull_request:
+    paths:
+      - "frontend/package.json"
+      - "frontend/pnpm-lock.yaml"
+      - "frontend/pnpm-workspace.yaml"
+      - "agent-harness/package.json"
+      - "agent-harness/pnpm-lock.yaml"
+      - "agent-harness/pnpm-workspace.yaml"
+      - "security/**"
+      - ".github/workflows/dependency-security.yml"
+  push:
+    branches: [main]
+    paths:
+      - "frontend/package.json"
+      - "frontend/pnpm-lock.yaml"
+      - "frontend/pnpm-workspace.yaml"
+      - "agent-harness/package.json"
+      - "agent-harness/pnpm-lock.yaml"
+      - "agent-harness/pnpm-workspace.yaml"
+      - "security/**"
+      - ".github/workflows/dependency-security.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  dependency-security:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - project: frontend
+            node: "24"
+          - project: agent-harness
+            node: "22"
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ${{ matrix.project }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.9.0
+          run_install: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: pnpm
+          cache-dependency-path: ${{ matrix.project }}/pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+      - run: node ../security/check-lockfiles.mjs
+      - run: pnpm audit --audit-level=high
+      - run: pnpm run typecheck
+      - run: pnpm test
+      - if: matrix.project == 'frontend'
+        run: pnpm run lint
+      - if: matrix.project == 'frontend'
+        run: pnpm run build
+      - if: matrix.project == 'agent-harness'
+        run: pnpm run build

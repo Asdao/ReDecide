@@ -48,6 +48,7 @@ implementation evidence; Person 1 owns that integration-status correction.
 - `src/fixtures/` - deployable local rehearsal packet/card
 - `tests/unit/contracts.test.ts` - boundary, pairing, and fixture-drift tests
 - `package.json` and `pnpm-lock.yaml` - pinned standalone frontend toolchain
+- `../security/` - shared dependency policy and lockfile checker
 
 ## Inputs, outputs, and dependencies
 
@@ -58,12 +59,18 @@ implementation evidence; Person 1 owns that integration-status correction.
   self-hosted Fontsource Saira/Saira Condensed/Noto Sans packages.
 - Validation: strict TypeScript, ESLint, Vitest, and a production Next.js build.
 
+Dependency security hardening was added on 2026-08-05. The frontend now uses
+pnpm 11.9.0, a seven-day minimum release age, strict lockfile/source checks,
+explicit build approvals, and the repository CI security workflow. The
+dependency-free checker passes locally; registry audit and clean-install gates
+run in CI.
+
 ## Tests and latest verification
 
 From `frontend/`:
 
 ```text
-pnpm install
+pnpm install --frozen-lockfile
 pnpm peers check
 pnpm run verify
 ```

@@ -8,9 +8,10 @@ the Python simulator.
 ## Quick start
 
 ```powershell
-pnpm install
+pnpm install --frozen-lockfile
 pnpm build
 pnpm test
+pnpm run security
 pnpm dev -- --prompt "Run seed 7 for the example scenario with the baseline policy"
 ```
 

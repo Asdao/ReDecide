@@ -8,6 +8,7 @@ Maintenance documents:
 - [Current product state](CURRENT_STATE.md)
 - [Repository cleanup plan](CLEANUP_PLAN.md)
 - [JavaScript dependency setup](JAVASCRIPT_SETUP.md)
+- [Dependency security policy and checks](DEPENDENCY_SECURITY.md)
 - [Replay maps and demo data](REPLAY_DATA_SETUP.md)
 - [Vercel frontend deployment](VERCEL_DEPLOYMENT.md)
 

@@ -77,6 +77,29 @@ The frontend also provides a combined command:
 pnpm verify
 ```
 
+## Security checks
+
+Before a local install, run the repository-level policy and lockfile check:
+
+```bash
+node security/check-lockfiles.mjs
+```
+
+After installing, run the advisory audit in each project:
+
+```bash
+cd agent-harness
+pnpm run security
+
+cd ../frontend
+pnpm run security
+```
+
+The security command does not update dependencies. It validates the checked-in
+policy and lockfile, then queries the registry for high-severity advisories.
+See [`DEPENDENCY_SECURITY.md`](DEPENDENCY_SECURITY.md) for the offline-install
+and CI workflow.
+
 ## PyCharm and WSL
 
 PyCharm’s WSL Python interpreter and the JavaScript package manager are
