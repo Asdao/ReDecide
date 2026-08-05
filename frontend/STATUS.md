@@ -1,145 +1,92 @@
 # Frontend Status
 
-Last verified: 2026-08-04 (Asia/Singapore)
-
-Owner: Person 4 - Frontend Product Experience
-
-Branch: `04/frontend`
+Last verified: 2026-08-05 (Asia/Singapore)
 
 ## Status
 
-**Saved-example landing and progress slice implemented; live/sample analysis is not integrated.**
+**Backend-driven sample-match selection implemented.**
 
-The standalone Next.js frontend now has a dark, responsive landing screen,
-outcome-blind product copy, privacy-safe copy, and a semantic preview of the
-knowledge boundary. The primary sample button now explicitly opens the
-checked-in saved demo packet, validates it through the shared frontend schema,
-and shows the three pre-intent replay stages. The page explains that the replay
-steps were completed when the example was prepared and does not claim that a
-new backend analysis ran. The upload control remains disabled with a visible
-explanation until the preparation API contract is resolved.
+The landing page's `Use a sample match` action now opens a dedicated sample
+selector and calls `GET /api/samples`. Successful responses are validated with
+strict Zod schemas before rendering. The same horizontal-list UI handles zero,
+one, or many samples and disables backend entries marked unavailable.
 
-The landing page, product header, saved-example loader, screen state, and
-progress screen are split into separate files. The progress screen supports a
-safe invalid-fixture error, retry, reset, heading focus on screen changes, one
-polite progress region, and validated map, round, and aliased-player details.
-It stops before the intent checkpoint and never mounts the checked-in Decision
-Card.
+Each sample is a full-width selectable bar with its map thumbnail on the left,
+backend-provided name, map, description, player count, recommended player, and
+availability/selection state. Selecting an available bar submits its stable
+`sample_id` to `POST /api/analyze`, validates the preparation response, and
+reports how many players the backend made available for the next step. List and
+selection errors have separate safe retry paths. Reset aborts in-flight work,
+and request cleanup prevents late responses from replacing newer state.
 
-The checked-in visual identity uses bundled Saira for interface/branding,
-Saira Condensed for display headings and prominent labels, and Noto Sans for
-longer copy and language fallback. Deep charcoal (`#0C0F12`) is the background,
-signature orange (`#F7941D`) marks decisions and primary interactions, muted
-steel blue (`#5D79AE`) defines supporting structure, and tactical tan
-(`#CCBA7C`) is reserved for uncertainty and staged-status messaging.
-Interactive/card geometry uses sharp corners. Flat CSS-only diagonal bars carry
-that palette behind the interface without gradients, a copied game asset, or an
-external image request.
+The current backend sample is Mirage. Its reviewed thumbnail from
+`MurkyYT/cs2-map-icons` is bundled locally so it does not depend on GitHub being
+reachable at runtime. Other canonical map names are normalized to that
+repository's base-thumbnail convention and use a remote image with an explicit
+missing-image fallback. The UI attributes the thumbnail source.
 
-Strict Zod schemas mirror the executable version `1.0` Pydantic contracts for
-`DecisionPacket`, `IntentInput`, and `DecisionCard`. They trim boundary strings,
-reject extra fields, enforce numeric/enum constraints and knowledge cutoffs,
-reject duplicate evidence references, and reject mismatched packet/card
-`decision_id` values. A frontend-local rehearsal packet/card is parsed through
-the same schema and tested for exact drift against the canonical backend
-fixtures.
-
-`INTEGRATION_STATUS.md` still describes the executable contracts and fixtures
-as absent. The inspected backend code and fixtures are the current
-implementation evidence; Person 1 owns that integration-status correction.
+`AnalysisProgressScreen.tsx` and the old saved-fixture loading path are no
+longer part of the rendered flow. Replay upload remains visibly disabled.
 
 ## Important paths
 
-- `src/app/page.tsx` - minimal route entry point
-- `src/app/globals.css` - restrained theme, responsive layout, focus, and
-  reduced-motion defaults
-- `src/components/DecisionFlow.tsx` - landing/progress screen control and saved
-  example loading
-- `src/components/LandingScreen.tsx` - sample and disabled-upload choices plus
-  knowledge-boundary preview
-- `src/components/AnalysisProgressScreen.tsx` - truthful saved-example progress,
-  error, retry, reset, and packet summary
-- `src/domain/analysis-flow.ts` - explicit choose/loading/ready/error states
-- `src/domain/contracts.ts` - strict version `1.0` runtime schemas and inferred
-  TypeScript types
-- `src/adapters/saved-example.ts` - validated local packet loader
-- `src/fixtures/` - deployable local rehearsal packet/card
-- `tests/unit/analysis-flow.test.ts` - saved packet and state-transition tests
-- `tests/unit/contracts.test.ts` - boundary, pairing, and fixture-drift tests
-- `package.json` and `pnpm-lock.yaml` - pinned standalone frontend toolchain
+- `src/components/DecisionFlow.tsx` - request lifecycle, abort handling, and
+  sample-selection state wiring
+- `src/components/SampleSelectorScreen.tsx` - loading, error, empty, list, map
+  thumbnail, unavailable, selecting, selected, and retry UI
+- `src/components/LandingScreen.tsx` - source selection entry point
+- `src/adapters/samples-api.ts` - `GET /api/samples` and `POST /api/analyze`
+  transport with JSON/content/status checks
+- `src/domain/samples.ts` - strict API schemas, types, and safe map-asset naming
+- `src/domain/analysis-flow.ts` - explicit sample-list and selection state
+  reducer
+- `public/maps/de_mirage.png` - pinned current-sample thumbnail
+- `src/app/globals.css` - horizontal sample bars and responsive layout
+- `tests/unit/analysis-flow.test.ts` - zero/one/many, unavailable, selection,
+  error/retry/reset, and map-name coverage
 
-## Inputs, outputs, and dependencies
+## Configuration
 
-- Input today: the validated local packet fixture. The local card remains
-  unmounted.
-- Output today: an interactive landing-to-progress route at `/`, explicitly
-  labelled as a saved demo example.
-- Runtime: Node 24, pnpm 11, Next.js 16, React 19, Zod 4, Tailwind CSS 4, and
-  self-hosted Fontsource Saira/Saira Condensed/Noto Sans packages.
-- Validation: strict TypeScript, ESLint, Vitest, and a production Next.js build.
+Set `NEXT_PUBLIC_API_BASE_URL` in `frontend/.env.local`. Local development
+defaults to `http://127.0.0.1:8000` when the variable is absent. The backend
+must allow the frontend origin through `REDECIDE_API_ALLOWED_ORIGINS`.
 
-## Tests and latest verification
+The Next.js image allowlist permits only the referenced repository's thumbnail
+folder on `raw.githubusercontent.com` for non-bundled future maps.
 
-From `frontend/`:
+## Verification
 
-```text
-pnpm install
-pnpm peers check
-pnpm run verify
-```
+From `frontend/`, `pnpm run verify` passes:
 
-Latest result on 2026-08-04:
+- Vitest: 2 files, 11 tests passed
+- TypeScript: passed
+- ESLint: passed with no warnings
+- Next.js production build: passed; `/` and `/_not-found` prerendered
 
-- Vitest: 2 files, 9 tests passed;
-- TypeScript: passed;
-- ESLint: passed with no warnings;
-- production build: passed; `/` and `/_not-found` prerendered.
+Browser verification against the documented sample responses confirmed:
 
-The in-app browser verified the sample button, ready-state content, heading
-focus, and return-to-start action. Browser console errors: none. Body-level
-horizontal overflow was absent at `1440x900` and `1280x720`. The loading and
-invalid-fixture states were not held open for a visual check because the valid
-local packet loads immediately.
+- landing action opens the selector;
+- the returned Mirage sample renders as a horizontal selectable bar;
+- the local Mirage thumbnail is requested through Next.js image handling;
+- selection reaches the selected state after `POST /api/analyze`;
+- the preparation result reports one available player;
+- no console warnings or errors; and
+- no horizontal overflow at a 390-by-844 narrow-screen override.
 
-## Open P0 integration gates for Person 1
+## Known limitations and next handoff
 
-1. Define a preparation response that lets the frontend collect intent before
-   requesting or revealing judgement.
-2. Return or retrieve a validated packet together with its matching card.
-3. Define uploaded-player discovery.
-4. Provide structured observed-action evidence; current action evidence is
-   bare IDs and cannot support expandable details.
-5. Freeze the safe response for future-information or contradiction checks.
-6. Freeze sample, upload, preparation, success, no-decision, and typed error
-   shapes, including retry rules, content type, file-size limit, timeouts, and
-   the optional intent-note limit.
-7. Confirm whether global `facts_used` is the accepted claim-citation scope or
-   add a coordinated structured citation contract.
-
-Until gate 5 is resolved, the frontend must fail closed for unsafe cards by
-suppressing coaching prose and verified-evidence presentation. None of these
-questions is represented as a frozen browser contract.
-
-## Known limitations
-
-- Genuine backend sample analysis and replay upload are not implemented yet.
-- The intent checkpoint and Decision Card screens are not implemented yet.
-- The saved example is a development/recovery path, not proof of a genuine
-  replay analysis.
-- Evidence resolution, unsafe-result suppression, the remaining screen states,
-  component tests, and automated browser tests remain to be implemented. The
-  initial choose/loading/ready/error states and local retry are implemented;
-  network timeout, cancellation, and stale-response handling are not.
-- The supported-browser list and optional intent-note limit are not frozen.
+- Only the thumbnail for the backend's current Mirage fixture is pinned
+  locally. Add reviewed local assets to `public/maps/` and the bundled allowlist
+  as new backend samples are introduced; otherwise the remote/fallback path is
+  used.
+- The next player-selection screen is not implemented. The selector stops
+  after preserving the validated `analysis_id` and player list returned by
+  `/api/analyze`.
+- Replay upload, live replay preparation, coaching, intent, and final result UI
+  remain outside this slice.
 
 ## Contract/API impact
 
-No backend or frozen contract change. The frontend consumes and mirrors the
-current executable version `1.0` schemas only.
-
-## Next handoff
-
-Add the intent checkpoint using the validated packet's timestamp and a neutral
-event summary. Collect one of the five frozen intent choices without mounting
-judgement content. Person 1 should answer the P0 gates before the genuine
-live/sample path is connected.
+No backend contract changes. The frontend now consumes the existing
+compatibility endpoints `GET /api/samples` and `POST /api/analyze` exactly as
+documented.
