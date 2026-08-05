@@ -40,7 +40,7 @@
       "layers": [
         {
           "name": "default",
-          "image": "data/public/radars/de_ancient.png",
+          "image": "/radars/de_ancient.png",
           "width": 1024,
           "height": 1024,
           "altitude_min": null,
@@ -87,7 +87,7 @@
       "layers": [
         {
           "name": "default",
-          "image": "data/public/radars/de_anubis.png",
+          "image": "/radars/de_anubis.png",
           "width": 1024,
           "height": 1024,
           "altitude_min": null,
@@ -134,7 +134,7 @@
       "layers": [
         {
           "name": "default",
-          "image": "data/public/radars/de_dust2.png",
+          "image": "/radars/de_dust2.png",
           "width": 1024,
           "height": 1024,
           "altitude_min": null,
@@ -181,7 +181,7 @@
       "layers": [
         {
           "name": "default",
-          "image": "data/public/radars/de_inferno.png",
+          "image": "/radars/de_inferno.png",
           "width": 1024,
           "height": 1024,
           "altitude_min": null,
@@ -228,7 +228,7 @@
       "layers": [
         {
           "name": "default",
-          "image": "data/public/radars/de_mirage.png",
+          "image": "/radars/de_mirage.png",
           "width": 1024,
           "height": 1024,
           "altitude_min": null,
@@ -275,7 +275,7 @@
       "layers": [
         {
           "name": "default",
-          "image": "data/public/radars/de_nuke.png",
+          "image": "/radars/de_nuke.png",
           "width": 1024,
           "height": 1024,
           "altitude_min": -495.0,
@@ -284,7 +284,7 @@
         },
         {
           "name": "lower",
-          "image": "data/public/radars/de_nuke_lower.png",
+          "image": "/radars/de_nuke_lower.png",
           "width": 1024,
           "height": 1024,
           "altitude_min": -10000.0,
@@ -331,7 +331,7 @@
       "layers": [
         {
           "name": "default",
-          "image": "data/public/radars/de_overpass.png",
+          "image": "/radars/de_overpass.png",
           "width": 1024,
           "height": 1024,
           "altitude_min": null,

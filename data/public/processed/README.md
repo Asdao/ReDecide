@@ -14,8 +14,8 @@ display names. It also removes inventory and parser-only fields while retaining
 the round boundaries, positions, health, armor, side, alive state, named map
 areas, and normalized events needed by the replay UI.
 
-Render it with `data/public/radars/de_mirage.png` and the matching normalized
-transform in `data/public/radar-info/catalog.json`.
+Render it with the browser asset at `frontend/public/radars/de_mirage.png` and
+the matching normalized transform in `data/public/radar-info/catalog.json`.
 
 The original full-resolution replay database remains private at
 `data/private/processed/full_replays.jsonl` and is intentionally ignored by
