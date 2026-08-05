@@ -2,9 +2,16 @@
 
 Last updated: 2026-08-05 (Asia/Singapore)
 
-Owner: Person 5 - User Evidence, QA, Pitch Deck, and Demo
+Owner: YJ (Person 5 - User Evidence, QA, Pitch Deck, and Demo)
 
 Branch: `05/evidence_I_think`
+
+## File naming convention
+
+- Personal working and tracking files use `_(YJ)` immediately before the file
+  extension.
+- Shared deliverables keep an exact team-required filename when integrations or
+  governance expect it, and identify YJ in the document's owner field.
 
 ## How to use this roadmap
 
