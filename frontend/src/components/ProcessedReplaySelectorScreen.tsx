@@ -80,7 +80,7 @@ export function ProcessedReplaySelectorScreen({
           <a
             href="https://github.com/MurkyYT/cs2-map-icons/tree/main/images/radars"
             target="_blank"
-            rel="noreferrer"
+            rel="noopener noreferrer"
           >
             MurkyYT/cs2-map-icons
           </a>

@@ -11,9 +11,7 @@ import {
   type ReplayManifest,
   type ReplayVisualization,
 } from "@/domain/replay";
-
-const apiBaseUrl =
-  process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/$/, "") ?? "http://127.0.0.1:8000";
+import { apiBaseUrl, isAbortError } from "@/lib/http";
 
 type ReplayOperation =
   | "upload"
@@ -64,10 +62,6 @@ export type VisualizationResponse =
   | { state: "locked" }
   | { state: "failed" }
   | { state: "ready"; value: ReplayVisualization };
-
-function isAbortError(error: unknown): boolean {
-  return error instanceof DOMException && error.name === "AbortError";
-}
 
 async function request(
   url: string,

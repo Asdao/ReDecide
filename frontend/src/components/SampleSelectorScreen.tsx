@@ -186,7 +186,11 @@ export function SampleSelectorScreen({
 
         <p className="sample-attribution">
           Map thumbnails from{" "}
-          <a href="https://github.com/MurkyYT/cs2-map-icons/tree/main/images/thumbs" target="_blank" rel="noreferrer">
+          <a
+            href="https://github.com/MurkyYT/cs2-map-icons/tree/main/images/thumbs"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
             MurkyYT/cs2-map-icons
           </a>
           .

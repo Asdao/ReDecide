@@ -4,9 +4,7 @@ import {
   type SamplePreparation,
   type SampleSummary,
 } from "@/domain/samples";
-
-const apiBaseUrl =
-  process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/$/, "") ?? "http://127.0.0.1:8000";
+import { apiBaseUrl } from "@/lib/http";
 
 async function readJson(response: Response): Promise<unknown> {
   const contentType = response.headers.get("content-type") ?? "";

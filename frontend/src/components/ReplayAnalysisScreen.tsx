@@ -18,6 +18,7 @@ import {
   type ProcessedReplay,
   type ReplayEvent,
 } from "@/domain/replay-viewer";
+import { isAbortError } from "@/lib/http";
 import { ProductHeader } from "./ProductHeader";
 
 const PLAYBACK_RATES = [0.5, 1, 2, 4, 8];
@@ -86,6 +87,7 @@ export function ReplayAnalysisScreen({
   const [selectedEventId, setSelectedEventId] = useState<string>();
   const currentTickRef = useRef(initialTick);
   const lastAnimationTime = useRef<number | undefined>(undefined);
+  const eventMarkerRefs = useRef(new Map<string, HTMLButtonElement>());
 
   useEffect(() => {
     if (initialReplay) {
@@ -120,7 +122,7 @@ export function ReplayAnalysisScreen({
         );
       })
       .catch((error: unknown) => {
-        if (active && !(error instanceof DOMException && error.name === "AbortError")) {
+        if (active && !isAbortError(error)) {
           setLoadError(error instanceof Error ? error.message : "The replay could not be loaded.");
         }
       });
@@ -221,6 +223,25 @@ export function ReplayAnalysisScreen({
     setSelectedPlayerId(playerId);
     setSelectedEventId(undefined);
   }, [uploaded]);
+
+  const moveEventMarkerFocus = useCallback(
+    (eventIndex: number, direction: "first" | "last" | "next" | "previous") => {
+      if (timelineEvents.length === 0) return;
+
+      const targetIndex =
+        direction === "first"
+          ? 0
+          : direction === "last"
+            ? timelineEvents.length - 1
+            : direction === "next"
+              ? Math.min(eventIndex + 1, timelineEvents.length - 1)
+              : Math.max(eventIndex - 1, 0);
+      const targetEvent = timelineEvents[targetIndex];
+      seek(targetEvent.tick, targetEvent.event_id);
+      requestAnimationFrame(() => eventMarkerRefs.current.get(targetEvent.event_id)?.focus());
+    },
+    [seek, timelineEvents],
+  );
 
   if (!replay) {
     return (
@@ -485,17 +506,46 @@ export function ReplayAnalysisScreen({
               className="event-track"
               aria-label={`Damage and death markers for ${selectedPlayer ? playerDisplayName(selectedPlayer) : "the selected player"}`}
             >
-              {timelineEvents.map((event) => (
+              {timelineEvents.map((event, eventIndex) => (
                 <button
                   type="button"
                   className={`${event.event === "kill" ? "death" : "damage"}${analysisEventId === event.event_id ? " coaching" : ""}${selectedEventId === event.event_id ? " selected" : ""}`}
                   style={{ left: `${((event.tick - firstTick) / duration) * 100}%` }}
                   key={event.event_id}
+                  ref={(element) => {
+                    if (element) {
+                      eventMarkerRefs.current.set(event.event_id, element);
+                    } else {
+                      eventMarkerRefs.current.delete(event.event_id);
+                    }
+                  }}
+                  tabIndex={
+                    selectedEventId === event.event_id ||
+                    (!selectedEventId && eventIndex === 0)
+                      ? 0
+                      : -1
+                  }
                   title={`Round ${event.round_num}: ${eventLabel(event)}${analysisEventId === event.event_id ? " · Saved analysis" : ""}`}
                   aria-label={`Round ${event.round_num}, ${eventLabel(event)}, ${formatReplayTime(event.tick, firstTick, replay.map.tick_rate)}${analysisEventId === event.event_id ? ", saved analysis" : ""}`}
                   onClick={(clickEvent) => {
                     clickEvent.currentTarget.blur();
                     seek(event.tick, event.event_id);
+                  }}
+                  onKeyDown={(keyEvent) => {
+                    const direction =
+                      keyEvent.key === "ArrowRight"
+                        ? "next"
+                        : keyEvent.key === "ArrowLeft"
+                          ? "previous"
+                          : keyEvent.key === "Home"
+                            ? "first"
+                            : keyEvent.key === "End"
+                              ? "last"
+                              : undefined;
+                    if (direction) {
+                      keyEvent.preventDefault();
+                      moveEventMarkerFocus(eventIndex, direction);
+                    }
                   }}
                 />
               ))}

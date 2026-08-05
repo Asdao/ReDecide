@@ -41,6 +41,7 @@ import { PROCESSED_REPLAYS, processedReplayById } from "@/domain/processed-repla
 import type { ProcessedReplay } from "@/domain/replay-viewer";
 import { normalizeBackendReplay } from "@/domain/replay-viewer";
 import type { ReplayAnalysisResult } from "@/domain/replay";
+import { isAbortError } from "@/lib/http";
 import { ReplayAnalysisScreen } from "./ReplayAnalysisScreen";
 import { ReplayMapLoadingScreen } from "./ReplayMapLoadingScreen";
 
@@ -69,10 +70,6 @@ const sampleStatuses = new Set<AnalysisFlowState["status"]>([
 
 function isSampleState(state: AnalysisFlowState): state is SampleAnalysisFlowState {
   return sampleStatuses.has(state.status);
-}
-
-function isAbortError(error: unknown): boolean {
-  return error instanceof DOMException && error.name === "AbortError";
 }
 
 function flowError(

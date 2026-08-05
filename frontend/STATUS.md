@@ -76,7 +76,10 @@ thumb. The layout keeps the timeline full-width at the bottom on desktop and
 sticky on narrow screens.
 All event markers use one consistent hit target and a six-pixel visual line,
 with no persistent focus or selected outline after clicking or automatic
-pausing. The wider right-side inspector uses an orange border on all four sides;
+pausing. The marker track now uses a roving keyboard tab stop, so it contributes
+one stop instead of every replay event to the page tab order; Left/Right and
+Home/End move between markers and keyboard focus remains visibly outlined. The
+wider right-side inspector uses an orange border on all four sides;
 saved coaching uses a borderless blue background. The inspector has no separate
 saved-analysis note or clear button. Player
 and round selectors suppress the browser's native white focus ring while
@@ -130,6 +133,12 @@ flow. Retry paths preserve only the context they need. An uncertain coaching
 request can only check `GET /result`; it cannot accidentally start a duplicate
 model call. Structurally valid results are also checked against the active
 `replay_id` and selected `player_id` before entering the result state.
+
+Frontend request helpers now share one public API base URL and one abort-error
+guard across the replay, sample, processed-save, and orchestration paths. The
+unused saved-fixture adapter, unused fixture composition module, and legacy
+coaching-result CSS were removed; all remaining CSS class selectors are backed
+by current source usage.
 
 Replay contracts now enforce cross-field invariants in addition to field
 shapes, including unique stable player IDs, valid round boundaries, selected
@@ -207,6 +216,7 @@ outcomes are not rendered in the coaching result.
   transport with JSON/content/status checks
 - `src/adapters/replay-api.ts` - typed transport for upload, preparation,
   status, player selection, coaching, recovery, and visualization retrieval
+- `src/lib/http.ts` - shared public API base URL and browser abort detection
 - `src/domain/replay.ts` - strict replay manifest, analysis, result, and
   visualization boundary schemas
 - `src/domain/maps.ts` - shared official and fallback display names for CS2 map
@@ -247,10 +257,10 @@ folder on `raw.githubusercontent.com` for non-bundled future maps.
 
 From `frontend/`, `pnpm run verify` passes:
 
-- Vitest: 7 files, 83 tests passed, including both full processed replay files,
+- Vitest: 7 files, 84 tests passed, including both full processed replay files,
   concurrent analysis/replay preparation, repeated player selection, and
-  uploaded-viewer navigation
-  and the matching Inferno analysis
+  uploaded-viewer navigation, the matching Inferno analysis, and the replay
+  timeline's single keyboard tab stop
 - TypeScript: passed
 - ESLint: passed with no warnings
 - Next.js production build: passed; `/` and `/_not-found` prerendered and
@@ -279,6 +289,11 @@ Browser verification of the uploaded-replay UI also confirmed:
 - the completed result shows the validated player, round, decision, and advice;
 - desktop and 390-by-844 layouts have no horizontal overflow; and
 - the final landing page reports no hydration errors.
+
+Live processed-replay verification additionally confirmed that a 125-marker
+timeline exposes exactly one tab stop, Right Arrow moves focus and selection to
+the next event, no browser warnings or errors are emitted, and the 390-by-844
+viewer and event inspector remain free of horizontal overflow.
 
 ## Known limitations and next handoff
 

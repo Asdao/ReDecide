@@ -1,6 +1,7 @@
 import { normalizeBackendReplay, type ProcessedReplay } from "@/domain/replay-viewer";
 import { processedReplayById } from "@/domain/processed-replays";
 import { replayAnalysisResultSchema, type ReplayAnalysisResult } from "@/domain/replay";
+import { isAbortError } from "@/lib/http";
 
 const replayCache = new Map<string, ProcessedReplay>();
 const analysisCache = new Map<string, ReplayAnalysisResult>();
@@ -30,7 +31,7 @@ export async function getProcessedReplay(
   try {
     response = await fetch(summary.replayUrl, { signal });
   } catch (error: unknown) {
-    if (error instanceof DOMException && error.name === "AbortError") {
+    if (isAbortError(error)) {
       throw error;
     }
     throw new ProcessedReplayError("The processed replay could not be loaded.");
@@ -77,7 +78,7 @@ export async function getProcessedReplayAnalysis(
   try {
     response = await fetch(summary.analysisUrl, { signal });
   } catch (error: unknown) {
-    if (error instanceof DOMException && error.name === "AbortError") {
+    if (isAbortError(error)) {
       throw error;
     }
     throw new ProcessedReplayError("The saved replay analysis could not be loaded.");

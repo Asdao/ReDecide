@@ -240,6 +240,45 @@ describe("uploaded replay screens", () => {
     expect(caption).not.toContain("Round");
   });
 
+  it("uses one keyboard tab stop for timeline markers", () => {
+    const eventReplay: ProcessedReplay = {
+      ...uploadedReplay,
+      events: [
+        {
+          event_id: "damage-1",
+          event: "damage",
+          tick: 150,
+          round_num: 1,
+          attacker_id: "ct1",
+          victim_id: "t1",
+          damage_health: 20,
+        },
+        {
+          event_id: "death-1",
+          event: "kill",
+          tick: 250,
+          round_num: 1,
+          attacker_id: "ct1",
+          victim_id: "t1",
+        },
+      ],
+      ticks: [
+        uploadedReplay.ticks[0],
+        { ...uploadedReplay.ticks[0], tick: 300 },
+      ],
+    };
+    const html = renderToStaticMarkup(createElement(ReplayAnalysisScreen, {
+      initialPlayerId: "t1",
+      initialReplay: eventReplay,
+      uploaded: true,
+      onChoosePlayer: () => undefined,
+    }));
+
+    expect(html.match(/class="damage"[^>]*tabindex="0"/g)).toHaveLength(1);
+    expect(html.match(/class="death"[^>]*tabindex="-1"/g)).toHaveLength(1);
+    expect(html).toContain("Damage and death markers for T One");
+  });
+
   it("uses one blocking alert and hides retry for a non-retryable upload rejection", () => {
     const html = renderReplayState({
       status: "upload-error",

@@ -903,8 +903,7 @@ input[type="file"] {
   border-right: 0;
 }
 
-.replay-summary dt,
-.decision-details dt {
+.replay-summary dt {
   color: var(--steel-blue-text);
   font-family: var(--font-display);
   font-size: 0.7rem;
@@ -913,8 +912,7 @@ input[type="file"] {
   text-transform: uppercase;
 }
 
-.replay-summary dd,
-.decision-details dd {
+.replay-summary dd {
   overflow: hidden;
   margin: 0.3rem 0 0;
   color: var(--text);
@@ -942,8 +940,7 @@ input[type="file"] {
 }
 
 .replay-progress-card h2,
-.replay-section-copy h2,
-.coaching-result h2 {
+.replay-section-copy h2 {
   margin: 0;
   font-family: var(--font-display);
   font-size: clamp(1.5rem, 3vw, 2.15rem);
@@ -951,8 +948,7 @@ input[type="file"] {
 }
 
 .replay-progress-card p,
-.replay-section-copy p,
-.coaching-result-heading > p:last-child {
+.replay-section-copy p {
   margin: 0.65rem 0 0;
   color: var(--muted);
   line-height: 1.6;
@@ -1055,59 +1051,6 @@ input[type="file"] {
   color: var(--muted);
 }
 
-.coaching-result {
-  display: grid;
-  grid-template-columns: minmax(0, 0.75fr) minmax(0, 1.25fr);
-  gap: 1rem;
-  margin-top: 2rem;
-}
-
-.coaching-result-heading,
-.coaching-advice,
-.decision-details {
-  border: 1px solid var(--line);
-  background: var(--surface);
-  padding: clamp(1.4rem, 3vw, 2rem);
-}
-
-.coaching-result-heading h2 {
-  margin-top: 0.65rem;
-}
-
-.coaching-advice {
-  border-color: var(--accent);
-  background: rgb(247 148 29 / 6%);
-}
-
-.coaching-advice > p:last-child {
-  margin: 0.8rem 0 0;
-  font-family: var(--font-interface);
-  font-size: clamp(1.1rem, 2.2vw, 1.45rem);
-  line-height: 1.55;
-}
-
-.decision-details {
-  grid-column: 1 / -1;
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  margin: 0;
-  padding-block: 1.1rem;
-}
-
-.decision-details div {
-  min-width: 0;
-  border-right: 1px solid var(--line);
-  padding-inline: 1rem;
-}
-
-.decision-details div:first-child {
-  padding-left: 0;
-}
-
-.decision-details div:last-child {
-  border-right: 0;
-}
-
 @media (max-width: 840px) {
   body::before {
     opacity: 0.48;
@@ -1159,13 +1102,8 @@ input[type="file"] {
     border-bottom: 1px solid var(--line);
   }
 
-  .replay-player-list,
-  .coaching-result {
+  .replay-player-list {
     grid-template-columns: 1fr;
-  }
-
-  .decision-details {
-    grid-column: 1;
   }
 
   .sample-bar {
@@ -1255,25 +1193,6 @@ input[type="file"] {
     flex-direction: column;
   }
 
-  .decision-details {
-    grid-template-columns: 1fr;
-  }
-
-  .decision-details div,
-  .decision-details div:first-child {
-    border-right: 0;
-    border-bottom: 1px solid var(--line);
-    padding: 0.85rem 0;
-  }
-
-  .decision-details div:first-child {
-    padding-top: 0;
-  }
-
-  .decision-details div:last-child {
-    border-bottom: 0;
-    padding-bottom: 0;
-  }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -1953,10 +1872,14 @@ input[type="file"] {
 }
 
 .event-track button:focus,
-.event-track button:focus-visible,
 .event-track button.selected {
   outline: none;
   box-shadow: none;
+}
+
+.event-track button:focus-visible {
+  outline: 2px solid var(--text);
+  outline-offset: 2px;
 }
 
 .timeline-caption {

@@ -207,7 +207,7 @@ export function ReplayFlowScreen({
         {state.status === "recovering-result" ? (
           <ProgressPanel
             title="Checking for completed coaching"
-            copy="The request ended before a response arrived. We are checking the saved result.."
+            copy="The request ended before a response arrived. We are checking the saved result."
           />
         ) : null}
 
