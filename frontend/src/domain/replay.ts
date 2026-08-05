@@ -58,7 +58,27 @@ export const replayManifestSchema = z
     visualization_unlocked: z.boolean(),
     visualization_error: requiredString.optional(),
   })
-  .strict();
+  .strict()
+  .superRefine((manifest, context) => {
+    const playerIds = manifest.players.map(({ player_id }) => player_id);
+    if (new Set(playerIds).size !== playerIds.length) {
+      context.addIssue({
+        code: "custom",
+        message: "replay manifest player_id values must be unique",
+        path: ["players"],
+      });
+    }
+
+    manifest.rounds.forEach((round, index) => {
+      if (round.start !== null && round.end !== null && round.end < round.start) {
+        context.addIssue({
+          code: "custom",
+          message: "replay round end must be at or after its start",
+          path: ["rounds", index, "end"],
+        });
+      }
+    });
+  });
 
 export const analysisJobSchema = z
   .object({
@@ -90,7 +110,17 @@ export const analysisPlayersSchema = z
     status: z.enum(["processing", "ready", "complete", "failed"]),
     players: z.array(analysisPlayerSchema),
   })
-  .strict();
+  .strict()
+  .superRefine(({ players }, context) => {
+    const playerIds = players.map(({ player_id }) => player_id);
+    if (new Set(playerIds).size !== playerIds.length) {
+      context.addIssue({
+        code: "custom",
+        message: "analysis player_id values must be unique",
+        path: ["players"],
+      });
+    }
+  });
 
 const analysisEventSchema = z
   .object({
@@ -198,7 +228,47 @@ export const replayAnalysisResultSchema = z
       })
       .strict(),
   })
-  .strict();
+  .strict()
+  .superRefine((result, context) => {
+    const playerIds = result.players.map(({ player_id }) => player_id);
+    if (new Set(playerIds).size !== playerIds.length) {
+      context.addIssue({
+        code: "custom",
+        message: "analysis result player_id values must be unique",
+        path: ["players"],
+      });
+    }
+
+    const candidate = result.decision_candidates.find(
+      ({ decision_id }) => decision_id === result.selected_decision.decision_id,
+    );
+    if (!candidate || candidate.player_id !== result.selected_decision.player_id) {
+      context.addIssue({
+        code: "custom",
+        message: "selected decision must match a returned decision candidate",
+        path: ["selected_decision", "decision_id"],
+      });
+    }
+
+    if (
+      result.coach_analysis.decision_id !== result.selected_decision.decision_id ||
+      result.coach_analysis.player_id !== result.selected_decision.player_id
+    ) {
+      context.addIssue({
+        code: "custom",
+        message: "coaching analysis must match the selected decision and player",
+        path: ["coach_analysis"],
+      });
+    }
+
+    if (!playerIds.includes(result.selected_decision.player_id)) {
+      context.addIssue({
+        code: "custom",
+        message: "selected player must appear in the analysis player list",
+        path: ["selected_decision", "player_id"],
+      });
+    }
+  });
 
 const replayVisualizationPlayerSchema = replayPlayerSchema;
 
@@ -213,7 +283,17 @@ export const replayVisualizationSchema = z
     events: z.array(z.record(z.string(), jsonValueSchema)),
     ticks: z.array(z.record(z.string(), jsonValueSchema)),
   })
-  .strict();
+  .strict()
+  .superRefine(({ players }, context) => {
+    const playerIds = players.map(({ player_id }) => player_id);
+    if (new Set(playerIds).size !== playerIds.length) {
+      context.addIssue({
+        code: "custom",
+        message: "visualization player_id values must be unique",
+        path: ["players"],
+      });
+    }
+  });
 
 export type ReplayManifest = z.infer<typeof replayManifestSchema>;
 export type AnalysisJob = z.infer<typeof analysisJobSchema>;

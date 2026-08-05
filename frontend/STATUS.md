@@ -4,7 +4,7 @@ Last verified: 2026-08-05 (Asia/Singapore)
 
 ## Status
 
-**Backend-driven sample-match selection implemented; replay API adapter ready.**
+**Backend-driven sample selection implemented; replay flow foundations ready.**
 
 The landing page's `Use a sample match` action now opens a dedicated sample
 selector and calls `GET /api/samples`. Successful responses are validated with
@@ -38,6 +38,21 @@ JSON response is validated before the adapter returns it. Abort errors remain
 distinguishable from normalized network, HTTP, content-type, JSON, and schema
 errors, and backend error details are not exposed through adapter messages.
 
+The main reducer now models the complete supported upload lifecycle without UI
+coupling: uploading, preparing analysis, waiting for players, choosing a stable
+player ID, running coaching, recovering an ambiguously completed request, and
+displaying a validated result. Each asynchronous state owns an explicit request
+ID, so reset, retry, mismatched IDs, and late responses cannot advance the wrong
+flow. Retry paths preserve only the context they need. An uncertain coaching
+request can only check `GET /result`; it cannot accidentally start a duplicate
+model call. Structurally valid results are also checked against the active
+`replay_id` and selected `player_id` before entering the result state.
+
+Replay contracts now enforce cross-field invariants in addition to field
+shapes, including unique stable player IDs, valid round boundaries, selected
+decision ownership, and agreement between the selected decision and coaching
+analysis.
+
 ## Important paths
 
 - `src/components/DecisionFlow.tsx` - request lifecycle, abort handling, and
@@ -52,8 +67,8 @@ errors, and backend error details are not exposed through adapter messages.
 - `src/domain/replay.ts` - strict replay manifest, analysis, result, and
   visualization boundary schemas
 - `src/domain/samples.ts` - strict API schemas, types, and safe map-asset naming
-- `src/domain/analysis-flow.ts` - explicit sample-list and selection state
-  reducer
+- `src/domain/analysis-flow.ts` - explicit sample and uploaded-replay state
+  machine, request ownership, scoped retries, and coaching recovery
 - `public/maps/de_mirage.png` - pinned current-sample thumbnail
 - `src/app/globals.css` - horizontal sample bars and responsive layout
 - `tests/unit/analysis-flow.test.ts` - zero/one/many, unavailable, selection,
@@ -61,6 +76,11 @@ errors, and backend error details are not exposed through adapter messages.
 - `tests/unit/replay-api.test.ts` - multipart upload, endpoint payloads,
   processing states, coaching recovery, visualization gating, validation,
   safe failures, and cancellation
+- `tests/unit/replay-contracts.test.ts` - replay schema strictness and
+  cross-field ownership invariants
+- `tests/unit/replay-flow.test.ts` - complete state transitions, stable IDs,
+  stale-response rejection, scoped retries, invalid selection, reset, and
+  result recovery
 
 ## Configuration
 
@@ -75,7 +95,7 @@ folder on `raw.githubusercontent.com` for non-bundled future maps.
 
 From `frontend/`, `pnpm run verify` passes:
 
-- Vitest: 3 files, 20 tests passed
+- Vitest: 5 files, 32 tests passed
 - TypeScript: passed
 - ESLint: passed with no warnings
 - Next.js production build: passed; `/` and `/_not-found` prerendered
@@ -100,9 +120,9 @@ Browser verification against the documented sample responses confirmed:
   after preserving the validated `analysis_id` and player list returned by
   `/api/analyze`.
 - Replay upload, live replay preparation, coaching, intent, and final result UI
-  remain outside the rendered flow. The transport is ready, but the landing
-  upload control remains disabled until the upload state machine and screens
-  are wired.
+  remain outside the rendered flow. The transport, contracts, and state machine
+  are ready, but the landing upload control remains disabled until effects and
+  screens are wired.
 
 ## Contract/API impact
 
