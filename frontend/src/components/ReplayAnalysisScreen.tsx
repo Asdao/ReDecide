@@ -2,7 +2,9 @@
 
 import Image from "next/image";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { getShowcaseReplay } from "@/adapters/showcase-replay";
+import { getProcessedReplay } from "@/adapters/processed-replay";
+import { mapDisplayName } from "@/domain/maps";
+import { processedReplayById } from "@/domain/processed-replays";
 import {
   buildReplayFrames,
   firstEventCrossed,
@@ -10,16 +12,17 @@ import {
   interpolatedSnapshotsAtTick,
   playerDisplayName,
   playerTimelineEvents,
+  radarOverviewForMap,
   roundAtTick,
-  worldToMirageRadar,
-  type ShowcaseEvent,
-  type ShowcaseReplay,
+  worldToRadar,
+  type ProcessedReplay,
+  type ReplayEvent,
 } from "@/domain/replay-viewer";
 import { ProductHeader } from "./ProductHeader";
 
 const PLAYBACK_RATES = [0.5, 1, 2, 4, 8];
 
-function eventLabel(event: ShowcaseEvent): string {
+function eventLabel(event: ReplayEvent): string {
   switch (event.event) {
     case "kill":
       return event.headshot ? "Headshot death" : "Death";
@@ -30,12 +33,27 @@ function eventLabel(event: ShowcaseEvent): string {
   }
 }
 
+function markerLabel(displayName: string | null): string {
+  if (!displayName) return "?";
+  const words = displayName.split(/\s+/).filter(Boolean);
+  if (words.length > 1) {
+    return words.slice(0, 2).map((word) => word[0]).join("").toUpperCase();
+  }
+  return displayName.replace(/[^a-z0-9]/gi, "").slice(0, 2).toUpperCase() || "?";
+}
+
 function clamp(value: number, minimum: number, maximum: number): number {
   return Math.min(maximum, Math.max(minimum, value));
 }
 
-export function ReplayAnalysisScreen({ initialPlayerId }: { initialPlayerId?: string }) {
-  const [replay, setReplay] = useState<ShowcaseReplay>();
+export function ReplayAnalysisScreen({
+  initialPlayerId,
+  replayId,
+}: {
+  initialPlayerId?: string;
+  replayId?: string;
+}) {
+  const [replay, setReplay] = useState<ProcessedReplay>();
   const [loadError, setLoadError] = useState<string>();
   const [loadAttempt, setLoadAttempt] = useState(0);
   const [currentTick, setCurrentTick] = useState(0);
@@ -48,7 +66,7 @@ export function ReplayAnalysisScreen({ initialPlayerId }: { initialPlayerId?: st
 
   useEffect(() => {
     const controller = new AbortController();
-    getShowcaseReplay(controller.signal)
+    getProcessedReplay(replayId, controller.signal)
       .then((value) => {
         const firstTick = value.ticks[0]?.tick ?? value.rounds[0].start;
         setReplay(value);
@@ -66,7 +84,7 @@ export function ReplayAnalysisScreen({ initialPlayerId }: { initialPlayerId?: st
         }
       });
     return () => controller.abort();
-  }, [loadAttempt]);
+  }, [loadAttempt, replayId]);
 
   const frames = useMemo(() => (replay ? buildReplayFrames(replay.ticks) : []), [replay]);
   const firstTick = frames[0]?.tick ?? 0;
@@ -81,6 +99,7 @@ export function ReplayAnalysisScreen({ initialPlayerId }: { initialPlayerId?: st
     ({ player_id }) => player_id === selectedPlayerId,
   );
   const selectedEvent = replay?.events.find(({ event_id }) => event_id === selectedEventId);
+  const replaySummary = processedReplayById(replayId);
 
   const timelineEvents = useMemo(
     () => (replay ? playerTimelineEvents(replay.events, selectedPlayerId) : []),
@@ -155,11 +174,11 @@ export function ReplayAnalysisScreen({ initialPlayerId }: { initialPlayerId?: st
   if (!replay) {
     return (
       <main className="shell analysis-loading-shell">
-        <ProductHeader brandHref="/" label="Mirage replay analysis" />
+        <ProductHeader brandHref="/" label="Processed replay viewer" />
         <section className="analysis-load-state" id="main-content" aria-live="polite">
           {loadError ? (
             <>
-              <p className="eyebrow">Showcase unavailable</p>
+              <p className="eyebrow">Replay unavailable</p>
               <h1>The replay could not be opened.</h1>
               <p>{loadError}</p>
               <button
@@ -175,10 +194,25 @@ export function ReplayAnalysisScreen({ initialPlayerId }: { initialPlayerId?: st
             </>
           ) : (
             <div className="analysis-load-card loading-border" aria-busy="true">
-              <h1>Loading Mirage analysis</h1>
+              <h1>Loading processed replay</h1>
               <p>Preparing the processed positions and timeline in your browser.</p>
             </div>
           )}
+        </section>
+      </main>
+    );
+  }
+
+  const mapName = mapDisplayName(replay.map.name);
+  const radarOverview = radarOverviewForMap(replay.map.name);
+  if (!radarOverview) {
+    return (
+      <main className="shell analysis-loading-shell">
+        <ProductHeader brandHref="/" label="Processed replay viewer" />
+        <section className="analysis-load-state" id="main-content" role="alert">
+          <p className="eyebrow">Radar unavailable</p>
+          <h1>{mapName} is not supported yet.</h1>
+          <p>This replay is valid, but its reviewed radar metadata is not bundled.</p>
         </section>
       </main>
     );
@@ -190,11 +224,11 @@ export function ReplayAnalysisScreen({ initialPlayerId }: { initialPlayerId?: st
 
   return (
     <main className="shell analysis-shell">
-      <ProductHeader brandHref="/" label="Mirage replay analysis" />
-      <section className="analysis-workspace" id="main-content" aria-label="Mirage replay analysis">
+      <ProductHeader brandHref="/" label={`${mapName} replay viewer`} />
+      <section className="analysis-workspace" id="main-content" aria-label={`${mapName} replay viewer`}>
         <header className="analysis-toolbar">
           <div>
-            <p className="eyebrow">Processed showcase · Mirage</p>
+            <p className="eyebrow">Processed replay · {mapName}</p>
             <h1>{selectedPlayer ? playerDisplayName(selectedPlayer) : "Player perspective"}</h1>
           </div>
           <div className="analysis-toolbar-controls">
@@ -261,13 +295,17 @@ export function ReplayAnalysisScreen({ initialPlayerId }: { initialPlayerId?: st
                 Clear event
               </button>
               <div className="inspector-note">
-                <p className="eyebrow">Knowledge boundary</p>
-                <p>Playback data is shown from the processed replay. No new coaching request is made.</p>
+                <p className="eyebrow">Saved analysis</p>
+                <p>
+                  {replaySummary?.analysisAvailable
+                    ? "This replay includes saved coaching analysis; no new request is made."
+                    : "This save contains replay facts only and has no saved coaching analysis."}
+                </p>
               </div>
             </aside>
           ) : null}
 
-          <section className="radar-panel" aria-label="2D Mirage radar">
+          <section className="radar-panel" aria-label={`2D ${mapName} radar`}>
             <div className="radar-heading">
               <div>
                 <p className="eyebrow">Live position</p>
@@ -280,15 +318,15 @@ export function ReplayAnalysisScreen({ initialPlayerId }: { initialPlayerId?: st
             </div>
             <div className="radar-frame">
               <Image
-                src="/radars/de_mirage.png"
-                alt="Mirage tactical radar"
+                src={radarOverview.image}
+                alt={`${mapName} tactical radar`}
                 fill
                 priority
                 sizes="(max-width: 900px) 100vw, calc(100vh - 22rem)"
               />
               <div className="radar-overlay">
                 {currentSnapshots.map((snapshot) => {
-                  const position = worldToMirageRadar(snapshot.X, snapshot.Y);
+                  const position = worldToRadar(snapshot.X, snapshot.Y, radarOverview);
                   const isSelected = snapshot.player_id === selectedPlayerId;
                   const relation = isSelected
                     ? "selected"
@@ -305,7 +343,7 @@ export function ReplayAnalysisScreen({ initialPlayerId }: { initialPlayerId?: st
                       aria-label={`${snapshot.display_name ?? snapshot.player_id}, ${relation}, ${snapshot.health} health`}
                       onClick={() => changePerspective(snapshot.player_id)}
                     >
-                      <span>{snapshot.display_name?.replace(/\D/g, "").slice(-2) ?? "?"}</span>
+                      <span>{markerLabel(snapshot.display_name)}</span>
                     </button>
                   );
                 })}

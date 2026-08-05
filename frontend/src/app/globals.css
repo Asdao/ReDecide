@@ -704,6 +704,42 @@ input[type="file"] {
   font-size: 0.78rem;
 }
 
+.processed-replay-media {
+  display: grid;
+  place-items: center;
+}
+
+.processed-replay-image {
+  width: 100%;
+  height: 100%;
+  display: block;
+  object-fit: contain;
+  padding: 0.45rem;
+  filter: saturate(0.78) contrast(1.08) brightness(0.82);
+  transition: filter 150ms ease, transform 200ms ease;
+}
+
+.processed-replay-bar:is(:hover, :focus-visible) .processed-replay-image {
+  filter: saturate(0.95) contrast(1.1) brightness(0.92);
+  transform: scale(1.025);
+}
+
+.processed-analysis-status {
+  width: fit-content;
+  border: 1px solid currentcolor;
+  padding: 0.22rem 0.45rem;
+  color: var(--verified);
+  font-family: var(--font-interface);
+  font-size: 0.67rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.processed-analysis-status.unavailable {
+  color: var(--muted);
+}
+
 .sample-select-label {
   min-width: 8.5rem;
   align-self: center;

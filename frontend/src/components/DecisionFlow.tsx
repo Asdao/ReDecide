@@ -12,7 +12,6 @@ import {
   uploadReplay,
 } from "@/adapters/replay-api";
 import { getSamples, selectSample } from "@/adapters/samples-api";
-import { getShowcaseReplay } from "@/adapters/showcase-replay";
 import {
   analysisFlowReducer,
   initialAnalysisFlowState,
@@ -33,8 +32,8 @@ import { LandingScreen } from "./LandingScreen";
 import { ProductHeader } from "./ProductHeader";
 import { ReplayFlowScreen } from "./ReplayFlowScreen";
 import { SampleSelectorScreen } from "./SampleSelectorScreen";
-import { ShowcasePlayerScreen } from "./ShowcasePlayerScreen";
-import type { ShowcaseReplay } from "@/domain/replay-viewer";
+import { ProcessedReplaySelectorScreen } from "./ProcessedReplaySelectorScreen";
+import { PROCESSED_REPLAYS } from "@/domain/processed-replays";
 
 const PLAYER_PREPARATION_TIMEOUT_MS = 90_000;
 const PLAYER_POLL_INTERVAL_MS = 1_000;
@@ -91,13 +90,8 @@ function isAmbiguousCoachingFailure(error: unknown): boolean {
 export function DecisionFlow() {
   const router = useRouter();
   const [state, dispatch] = useReducer(analysisFlowReducer, initialAnalysisFlowState);
-  const [showcase, setShowcase] = useState<
-    | { status: "idle" }
-    | { status: "loading"; attempt: number }
-    | { status: "error"; message: string; attempt: number }
-    | { status: "ready"; replay: ShowcaseReplay; attempt: number }
-  >({ status: "idle" });
-  const currentScreen = showcase.status === "idle" ? state.status : "showcase";
+  const [processedReplaysOpen, setProcessedReplaysOpen] = useState(false);
+  const currentScreen = processedReplaysOpen ? "processed-replays" : state.status;
   const previousScreen = useRef(currentScreen);
   const requestSequence = useRef(0);
   const nextRequestId = useCallback((operation: string) => {
@@ -105,28 +99,21 @@ export function DecisionFlow() {
     return `${operation}-${requestSequence.current}`;
   }, []);
 
-  const loadShowcase = useCallback(() => {
-    setShowcase((current) => ({
-      status: "loading",
-      attempt: "attempt" in current ? current.attempt + 1 : 1,
-    }));
-  }, []);
-
   const applyLandingView = useCallback(
     (view: LandingView) => {
       dispatch({ type: "RESET" });
       if (view === "samples") {
-        setShowcase({ status: "idle" });
+        setProcessedReplaysOpen(false);
         dispatch({ type: "OPEN_SAMPLES" });
         return;
       }
       if (view === "showcase") {
-        loadShowcase();
+        setProcessedReplaysOpen(true);
         return;
       }
-      setShowcase({ status: "idle" });
+      setProcessedReplaysOpen(false);
     },
-    [loadShowcase],
+    [],
   );
 
   useEffect(() => {
@@ -160,28 +147,6 @@ export function DecisionFlow() {
     window.addEventListener("popstate", syncFromLocation);
     return () => window.removeEventListener("popstate", syncFromLocation);
   }, [applyLandingView]);
-
-  useEffect(() => {
-    if (showcase.status !== "loading") {
-      return;
-    }
-
-    const controller = new AbortController();
-    const attempt = showcase.attempt;
-    getShowcaseReplay(controller.signal)
-      .then((replay) => setShowcase({ status: "ready", replay, attempt }))
-      .catch((error: unknown) => {
-        if (!(error instanceof DOMException && error.name === "AbortError")) {
-          setShowcase({
-            status: "error",
-            message: error instanceof Error ? error.message : "The Mirage showcase could not be loaded.",
-            attempt,
-          });
-        }
-      });
-
-    return () => controller.abort();
-  }, [showcase]);
 
   useEffect(() => {
     if (state.status !== "loading-samples") {
@@ -491,8 +456,8 @@ export function DecisionFlow() {
     const headingId =
       currentScreen === "choose"
         ? "page-title"
-        : currentScreen === "showcase"
-          ? "replay-title"
+        : currentScreen === "processed-replays"
+          ? "processed-replays-title"
           : isSampleState(state)
             ? "samples-title"
             : "replay-title";
@@ -531,18 +496,13 @@ export function DecisionFlow() {
   };
 
   let content;
-  if (showcase.status !== "idle") {
+  if (processedReplaysOpen) {
     content = (
-      <ShowcasePlayerScreen
-        {...(showcase.status === "ready"
-          ? { status: "ready" as const, replay: showcase.replay }
-          : showcase.status === "error"
-            ? { status: "error" as const, message: showcase.message }
-            : { status: "loading" as const })}
+      <ProcessedReplaySelectorScreen
+        replays={PROCESSED_REPLAYS}
         onBack={returnHome}
-        onRetry={loadShowcase}
-        onSelectPlayer={(player) =>
-          router.push(`/analysis?player=${encodeURIComponent(player.player_id)}`)
+        onSelect={(replayId) =>
+          router.push(`/analysis?replay=${encodeURIComponent(replayId)}`)
         }
       />
     );

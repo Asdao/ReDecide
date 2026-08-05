@@ -4,10 +4,11 @@ import { describe, expect, it } from "vitest";
 import backendResult from "../../../backend/tests/fixtures/analysis_api_result.json";
 import { LandingScreen } from "@/components/LandingScreen";
 import { ProductHeader } from "@/components/ProductHeader";
+import { ProcessedReplaySelectorScreen } from "@/components/ProcessedReplaySelectorScreen";
 import { ReplayAnalysisScreen } from "@/components/ReplayAnalysisScreen";
 import { ReplayFlowScreen } from "@/components/ReplayFlowScreen";
 import { SampleSelectorScreen } from "@/components/SampleSelectorScreen";
-import { ShowcasePlayerScreen } from "@/components/ShowcasePlayerScreen";
+import { PROCESSED_REPLAYS } from "@/domain/processed-replays";
 import type { ReplayAnalysisFlowState } from "@/domain/analysis-flow";
 import {
   analysisJobSchema,
@@ -101,19 +102,11 @@ describe("uploaded replay screens", () => {
         onSelect: () => undefined,
       }),
     );
-    const showcaseHtml = renderToStaticMarkup(
-      createElement(ShowcasePlayerScreen, {
-        status: "loading",
-        onBack: () => undefined,
-        onRetry: () => undefined,
-        onSelectPlayer: () => undefined,
-      }),
-    );
     const analysisHtml = renderToStaticMarkup(
       createElement(ReplayAnalysisScreen, {}),
     );
 
-    for (const html of [uploadHtml, sampleHtml, showcaseHtml, analysisHtml]) {
+    for (const html of [uploadHtml, sampleHtml, analysisHtml]) {
       expect(html).toContain("loading-border");
       expect(html).not.toContain("loading-marker");
       expect(html).not.toContain("progress-marker");
@@ -213,9 +206,9 @@ describe("sample replay screens", () => {
     expect(html).toContain("Use a sample match");
     expect(html).toContain('<button class="secondary" type="button" aria-describedby="sample-note"');
     expect(html).toContain("currently available from the backend");
-    expect(html).toContain("Open processed showcase");
-    expect(html).toContain("processed Mirage showcase");
-    expect(html).toContain("go straight to the replay view");
+    expect(html).toContain("Open processed replays");
+    expect(html).toContain("already-processed replay");
+    expect(html).toContain("2D viewer");
     expect(html).toContain('class="action-note action-note-accent"');
     expect(html.match(/class="action-note action-note-steel"/g)).toHaveLength(2);
   });
@@ -231,32 +224,20 @@ describe("sample replay screens", () => {
     expect(html).toContain('aria-label="Back to RE:DECIDE home"');
   });
 
-  it("presents the processed replay players before entering analysis", () => {
-    const replay = {
-      schema_version: "replay_visualization_v1" as const,
-      replay_id: "mirage-showcase",
-      source: "mirage.dem",
-      map: { name: "de_mirage" as const, tick_rate: 64 },
-      players: manifest.players.map((player) => ({ ...player, sides: player.sides.map((side) => side.toLowerCase()) })),
-      rounds: [{ round_num: 1, start: 100, end: 300 }],
-      events: [],
-      ticks: [],
-    };
+  it("lists both processed saves and their analysis availability", () => {
     const html = renderToStaticMarkup(
-      createElement(ShowcasePlayerScreen, {
-        status: "ready",
-        replay,
+      createElement(ProcessedReplaySelectorScreen, {
+        replays: PROCESSED_REPLAYS,
         onBack: () => undefined,
-        onRetry: () => undefined,
-        onSelectPlayer: () => undefined,
+        onSelect: () => undefined,
       }),
     );
 
-    expect(html).toContain("Choose your");
-    expect(html).toContain("CT One");
-    expect(html).toContain("T One");
-    expect(html).toContain("Open analysis");
-    expect(html).toContain("Teammates are green and opponents are red");
+    expect(html).toContain("Mirage showcase");
+    expect(html).toContain("Inferno processed replay");
+    expect(html.match(/No saved analysis/g)).toHaveLength(2);
+    expect(html.match(/Open replay/g)).toHaveLength(2);
+    expect(html).not.toContain("Choose your");
   });
 
   it("uses an official map name instead of the backend map identifier", () => {

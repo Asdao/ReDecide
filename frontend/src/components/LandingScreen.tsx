@@ -56,7 +56,7 @@ export function LandingScreen({
             onClick={onOpenShowcase}
             aria-describedby="showcase-note"
           >
-            Open processed showcase
+            Open processed replays
           </button>
         </div>
         <div className="action-notes">
@@ -67,7 +67,7 @@ export function LandingScreen({
             Choose from the sample matches currently available from the backend.
           </p>
           <p className="action-note action-note-steel" id="showcase-note">
-            Explore the already-processed Mirage showcase and go straight to the replay view.
+            Choose an already-processed replay and go straight to its 2D viewer.
           </p>
         </div>
       </div>

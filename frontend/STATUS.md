@@ -4,54 +4,55 @@ Last verified: 2026-08-05 (Asia/Singapore)
 
 ## Status
 
-**Backend sample selection, uploaded `.dem` coaching, processed-showcase player selection, and the first 2D replay workspace are implemented.**
+**Backend sample selection, uploaded `.dem` coaching, a two-save processed replay catalog, and a map-aware 2D replay workspace are implemented.**
 
 The landing page's `Use a sample match` action calls `GET /api/samples` and
 renders the backend-returned list through the compatibility sample selector.
 Selecting an available entry submits its stable `sample_id` to
-`POST /api/analyze`. A separate `Open processed showcase` action loads the
-bundled, already-processed `mirage-showcase.replay.json`; the user chooses one
-of its 10 stable player IDs and continues to `/analysis` without upload, demo
-parsing, analysis preparation, or coaching calls. The native `.dem` action
-continues to use the complete backend flow.
+`POST /api/analyze`. A separate `Open processed replays` action opens a local
+list containing the bundled Mirage showcase and backend-generated Inferno
+visualization. Selecting either save goes directly to `/analysis`; player
+perspective remains selectable inside the viewer. Neither save currently
+contains a saved coaching-analysis payload, and the list labels that state
+explicitly. The native `.dem` action continues to use the complete backend flow.
 
 The `.dem` upload is the primary orange landing action; backend samples and the
-processed showcase use the steel-blue secondary treatment. Their concise help
+processed replay catalog use the steel-blue secondary treatment. Their concise help
 text shares one line below the action row and is revealed only for the hovered
 or keyboard-focused action, with tan help text for upload and steel-blue help
 text for the secondary actions. The secondary hover fill now uses a single
 diagonal wipe without the earlier arrow-like edge. The product logo is a normal
 link to `/`, so activating it performs a fresh page navigation and clears all
-in-memory sample, upload, or showcase state.
+in-memory sample, upload, or processed-replay state.
 
-Backend samples and the processed showcase now use query-backed browser history
+Backend samples and the processed replay catalog use query-backed browser history
 entries (`?view=samples` and `?view=showcase`). Browser Back returns to the
 landing screen, Forward restores and reloads the selected view, the visible
 back controls consume owned child entries safely, and direct view links receive
 a local landing entry so their first Back remains inside the app. Unrelated
-query parameters are preserved. Returning from `/analysis` also restores the
-showcase player selector rather than losing its source context.
+query parameters are preserved. Browser Back from `/analysis` also restores the
+processed replay list rather than losing its source context.
 Selecting a local `.dem` also pushes an owned, same-URL upload history entry,
 so browser Back returns to the landing state and truncates any stale Forward
-entry that could otherwise reopen the processed showcase. The upload itself is
+entry that could otherwise reopen the processed replay catalog. The upload itself is
 not restored on Forward because browsers do not allow local `File` objects to
 be reconstructed safely.
 
 Every loading surface now uses the same rotating orange perimeter around its
-content box, including sample retrieval, processed-showcase loading, browser
-replay preparation, and all uploaded-replay progress states. The former
+content box, including sample retrieval, browser replay loading and preparation,
+and all uploaded-replay progress states. The former
 floating square markers and pulse animations were removed. The moving border is
 a solid, hard-edged orange segment without a translucent gradient ramp, and the
 global reduced-motion treatment still collapses it to a static border state.
 
-The new analysis route renders the reviewed local Mirage radar with the
+The analysis route renders the reviewed local radar for the selected replay with the
 selected player in blue, same-side players in green, and opponents in red.
 Team shapes, a selected-player ring, eliminated-player treatment, an accessible
 horizontal legend layered above the radar at the bottom center, and tooltips
 keep the view understandable without relying on color alone. The radar has no
 card border or opaque backing, so its transparent map asset floats in the
-workspace. Positions are derived from the processed snapshots with the reviewed
-Mirage overview origin and scale. Position samples for the same player and
+workspace. Positions are derived from normalized backend snapshots with the
+reviewed map-specific overview origin and scale. Position samples for the same player and
 round are linearly interpolated against the authoritative playback tick, so
 movement remains continuous between the replay's half-second snapshots.
 
@@ -85,11 +86,19 @@ original opacity, colors, and 22-degree angle.
 The moment inspector is absent during ordinary playback. Selecting an event
 slides a wider inspector in from the right and shifts the centered radar
 slightly left; clearing the event or resuming playback restores the centered
-map.
+map. The inspector also states whether the opened save includes saved coaching
+analysis; it never starts a model request.
+
+The processed replay adapter accepts the documented backend
+`replay_visualization_v1` output without requiring the sanitized Mirage shape.
+It associates backend snapshots with stable top-level players by their unique
+display names, normalizes sides and event participants, derives `alive` from
+health only when absent, removes duplicate parser event aliases from the viewer,
+and generates deterministic event IDs when the backend did not return one.
 
 The backend-driven compatibility sample selector, schemas, adapter, reducer
-states, and tests power the sample-match landing action. The processed
-visualization showcase remains a distinct, explicitly labelled option.
+states, and tests power the sample-match landing action. The processed replay
+catalog remains a distinct, explicitly labelled option.
 
 `AnalysisProgressScreen.tsx` and the old saved-fixture loading path are no
 longer part of the rendered flow. The landing page now exposes a labelled,
@@ -140,20 +149,20 @@ outcomes are not rendered in the coaching result.
 
 ## Important paths
 
-- `src/components/DecisionFlow.tsx` - backend sample-list entry, showcase loading
-  and routing, plus uploaded replay polling, timeouts, cancellation, and request
+- `src/components/DecisionFlow.tsx` - backend sample-list entry, processed replay
+  catalog routing, plus uploaded replay polling, timeouts, cancellation, and request
   ownership
-- `src/components/ShowcasePlayerScreen.tsx` - processed-showcase loading,
-  errors, replay summary, and stable player selection
-- `src/components/ReplayAnalysisScreen.tsx` - Mirage radar, playback clock,
+- `src/components/ProcessedReplaySelectorScreen.tsx` - two-save processed replay
+  list, map summaries, analysis-availability labels, and direct viewer selection
+- `src/components/ReplayAnalysisScreen.tsx` - map-aware radar, playback clock,
   controls, event inspector, player perspective, and full-match timeline
-- `src/app/analysis/page.tsx` - player-aware analysis route and metadata
-- `src/adapters/showcase-replay.ts` - local showcase retrieval and safe boundary
+- `src/app/analysis/page.tsx` - replay- and player-aware viewer route and metadata
+- `src/adapters/processed-replay.ts` - catalog-based replay retrieval and safe boundary
   failure handling
-- `src/domain/replay-viewer.ts` - strict showcase contract, frame indexing,
-  deterministic seeking, clock formatting, and reviewed Mirage transform
-- `public/replays/mirage-showcase.replay.json` - browser-served copy of the
-  canonical processed showcase
+- `src/domain/processed-replays.ts` - bundled save catalog and analysis availability
+- `src/domain/replay-viewer.ts` - backend-output normalization, frame indexing,
+  deterministic seeking, clock formatting, and reviewed map transforms
+- `public/replays/*.replay.json` - browser-served Mirage and Inferno processed saves
 - `src/components/ReplayFlowScreen.tsx` - upload/preparation progress, player
   selection, coaching/recovery, safe errors, and final coaching result
 - `src/components/SampleSelectorScreen.tsx` - loading, error, empty, list, map
@@ -185,8 +194,10 @@ outcomes are not rendered in the coaching result.
 - `tests/unit/replay-flow.test.ts` - complete state transitions, stable IDs,
   stale-response rejection, scoped retries, invalid selection, reset, and
   result recovery
-- `tests/unit/replay-ui.test.ts` - enabled upload input, player availability,
-  truthful coaching wait, live-region semantics, and outcome-safe result UI
+- `tests/unit/replay-viewer.test.ts` - both full replay fixtures, backend snapshot
+  normalization, transforms, interpolation, and event selection
+- `tests/unit/replay-ui.test.ts` - enabled upload input, processed replay catalog,
+  analysis labels, truthful coaching wait, and outcome-safe result UI
 
 ## Configuration
 
@@ -201,10 +212,11 @@ folder on `raw.githubusercontent.com` for non-bundled future maps.
 
 From `frontend/`, `pnpm run verify` passes:
 
-- Vitest: 7 files, 76 tests passed
+- Vitest: 7 files, 78 tests passed, including both full processed replay files
 - TypeScript: passed
 - ESLint: passed with no warnings
-- Next.js production build: passed; `/` and `/_not-found` prerendered
+- Next.js production build: passed; `/` and `/_not-found` prerendered and
+  `/analysis` rendered on demand
 
 Browser verification against the documented sample responses confirmed:
 
@@ -244,13 +256,14 @@ Browser verification of the uploaded-replay UI also confirmed:
   fixtures for post-upload states and did not send user replay data.
 - Visualization JSON retrieval for uploaded replays is implemented in the
   adapter but is not yet connected from a completed live coaching result into
-  the radar/timeline workspace. The current workspace intentionally uses the
-  bundled Mirage showcase. Player intent remains disabled because no public
-  backend contract exists.
+  the radar/timeline workspace. The local viewer currently opens only cataloged
+  processed saves. Neither bundled save contains a coaching-analysis payload,
+  and player intent remains disabled because no public backend contract exists.
 
 ## Contract/API impact
 
-No backend contract changes. In addition to the compatibility sample APIs, the
+No backend contract changes. The local processed-replay adapter now consumes the
+documented backend `replay_visualization_v1` shape directly. In addition to the compatibility sample APIs, the
 frontend adapter now implements the documented `/api/replay/*` and
 `/api/analysis/*` contracts and the rendered UI consumes the supported upload,
 preparation, player-selection, coaching, and result endpoints.

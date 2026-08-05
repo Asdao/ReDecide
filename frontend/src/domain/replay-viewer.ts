@@ -3,7 +3,7 @@ import { z } from "zod";
 const requiredString = z.string().trim().min(1);
 const nonnegativeInteger = z.number().int().nonnegative();
 
-const showcasePlayerSchema = z
+const replayPlayerSchema = z
   .object({
     player_id: requiredString,
     display_name: requiredString.nullable(),
@@ -11,7 +11,7 @@ const showcasePlayerSchema = z
   })
   .strict();
 
-const showcaseRoundSchema = z
+const replayRoundSchema = z
   .object({
     round_num: nonnegativeInteger,
     start: nonnegativeInteger,
@@ -25,7 +25,7 @@ const showcaseRoundSchema = z
   })
   .passthrough();
 
-const showcaseEventSchema = z
+const replayEventSchema = z
   .object({
     event_id: requiredString,
     event: requiredString,
@@ -39,9 +39,9 @@ const showcaseEventSchema = z
     damage_health: z.number().optional(),
     bomb_site: requiredString.nullable().optional(),
   })
-  .passthrough();
+  .strict();
 
-const showcaseSnapshotSchema = z
+const replaySnapshotSchema = z
   .object({
     tick: nonnegativeInteger,
     round_num: nonnegativeInteger,
@@ -57,53 +57,250 @@ const showcaseSnapshotSchema = z
     has_defuser: z.boolean(),
     place: z.string().nullable(),
   })
-  .passthrough();
+  .strict();
 
-export const showcaseReplaySchema = z
+export const processedReplaySchema = z
   .object({
     schema_version: z.literal("replay_visualization_v1"),
     replay_id: requiredString,
     source: requiredString,
     map: z
       .object({
-        name: z.literal("de_mirage"),
+        name: requiredString,
         tick_rate: z.number().positive(),
       })
       .strict(),
-    players: z.array(showcasePlayerSchema).min(1),
-    rounds: z.array(showcaseRoundSchema).min(1),
-    events: z.array(showcaseEventSchema),
-    ticks: z.array(showcaseSnapshotSchema).min(1),
+    players: z.array(replayPlayerSchema).min(1),
+    rounds: z.array(replayRoundSchema).min(1),
+    events: z.array(replayEventSchema),
+    ticks: z.array(replaySnapshotSchema).min(1),
   })
   .strict();
 
-export type ShowcaseReplay = z.infer<typeof showcaseReplaySchema>;
-export type ShowcasePlayer = ShowcaseReplay["players"][number];
-export type ShowcaseRound = ShowcaseReplay["rounds"][number];
-export type ShowcaseEvent = ShowcaseReplay["events"][number];
-export type ShowcaseSnapshot = ShowcaseReplay["ticks"][number];
+const backendTickSchema = z
+  .object({
+    tick: nonnegativeInteger,
+    round_num: nonnegativeInteger,
+    player_id: requiredString.optional(),
+    display_name: requiredString.nullable().optional(),
+    player_name: requiredString.optional(),
+    name: requiredString.optional(),
+    side: z.string(),
+    X: z.number(),
+    Y: z.number(),
+    Z: z.number(),
+    health: z.number(),
+    armor: z.number().optional(),
+    armor_value: z.number().optional(),
+    alive: z.boolean().optional(),
+    has_defuser: z.boolean().optional(),
+    place: z.string().nullable().optional(),
+  })
+  .passthrough();
+
+const backendEventSchema = z
+  .object({
+    event_id: requiredString.optional(),
+    event: requiredString,
+    tick: nonnegativeInteger,
+    round_num: nonnegativeInteger.optional(),
+    round: nonnegativeInteger.optional(),
+  })
+  .passthrough();
+
+const backendReplaySchema = z
+  .object({
+    schema_version: z.literal("replay_visualization_v1"),
+    replay_id: requiredString,
+    source: requiredString,
+    map: z
+      .object({
+        name: requiredString,
+        tick_rate: z.number().positive(),
+      })
+      .strict(),
+    players: z.array(replayPlayerSchema).min(1),
+    rounds: z.array(replayRoundSchema).min(1),
+    events: z.array(backendEventSchema),
+    ticks: z.array(backendTickSchema).min(1),
+  })
+  .strict();
+
+export type ProcessedReplay = z.infer<typeof processedReplaySchema>;
+export type ReplayPlayer = ProcessedReplay["players"][number];
+export type ReplayRound = ProcessedReplay["rounds"][number];
+export type ReplayEvent = ProcessedReplay["events"][number];
+export type ReplaySnapshot = ProcessedReplay["ticks"][number];
 
 export type ReplayFrame = {
   tick: number;
-  snapshots: ShowcaseSnapshot[];
+  snapshots: ReplaySnapshot[];
 };
 
-export const MIRAGE_OVERVIEW = {
-  positionX: -3230,
-  positionY: 1713,
-  scale: 5,
-  imageSize: 1024,
-} as const;
+export type RadarOverview = {
+  positionX: number;
+  positionY: number;
+  scale: number;
+  imageSize: number;
+  image: string;
+};
 
-export function worldToMirageRadar(x: number, y: number) {
-  const { positionX, positionY, scale, imageSize } = MIRAGE_OVERVIEW;
+const RADAR_OVERVIEWS: Readonly<Record<string, RadarOverview>> = {
+  de_ancient: { positionX: -2953, positionY: 2164, scale: 5, imageSize: 1024, image: "/radars/de_ancient.png" },
+  de_anubis: { positionX: -2796, positionY: 3328, scale: 5.22, imageSize: 1024, image: "/radars/de_anubis.png" },
+  de_dust2: { positionX: -2476, positionY: 3239, scale: 4.4, imageSize: 1024, image: "/radars/de_dust2.png" },
+  de_inferno: { positionX: -2087, positionY: 3870, scale: 4.9, imageSize: 1024, image: "/radars/de_inferno.png" },
+  de_mirage: { positionX: -3230, positionY: 1713, scale: 5, imageSize: 1024, image: "/radars/de_mirage.png" },
+  de_nuke: { positionX: -3453, positionY: 2887, scale: 7, imageSize: 1024, image: "/radars/de_nuke.png" },
+  de_overpass: { positionX: -4831, positionY: 1781, scale: 5.2, imageSize: 1024, image: "/radars/de_overpass.png" },
+};
+
+export function radarOverviewForMap(mapName: string): RadarOverview | undefined {
+  return RADAR_OVERVIEWS[mapName];
+}
+
+export function worldToRadar(x: number, y: number, overview: RadarOverview) {
+  const { positionX, positionY, scale, imageSize } = overview;
   return {
     left: ((x - positionX) / (scale * imageSize)) * 100,
     top: ((positionY - y) / (scale * imageSize)) * 100,
   };
 }
 
-export function buildReplayFrames(snapshots: ShowcaseSnapshot[]): ReplayFrame[] {
+function stringField(record: Record<string, unknown>, ...keys: string[]): string | undefined {
+  for (const key of keys) {
+    const value = record[key];
+    if (typeof value === "string" && value.trim()) {
+      return value.trim();
+    }
+  }
+  return undefined;
+}
+
+function numberField(record: Record<string, unknown>, ...keys: string[]): number | undefined {
+  for (const key of keys) {
+    const value = record[key];
+    if (typeof value === "number" && Number.isFinite(value)) {
+      return value;
+    }
+  }
+  return undefined;
+}
+
+function playerIdForEvent(
+  event: Record<string, unknown>,
+  playersById: ReadonlyMap<string, ReplayPlayer>,
+  playersByName: ReadonlyMap<string, ReplayPlayer>,
+  idKey: string,
+  nameKey: string,
+): string | undefined {
+  const suppliedId = stringField(event, idKey);
+  if (suppliedId && playersById.has(suppliedId)) {
+    return suppliedId;
+  }
+  const suppliedName = stringField(event, nameKey);
+  return suppliedName ? playersByName.get(suppliedName)?.player_id : undefined;
+}
+
+const renderedEventTypes = new Set(["damage", "kill", "plant", "defuse", "detonate"]);
+
+export function normalizeBackendReplay(value: unknown): ProcessedReplay {
+  const input = backendReplaySchema.parse(value);
+  const playersById = new Map(input.players.map((player) => [player.player_id, player]));
+  const playersByName = new Map(
+    input.players.flatMap((player) =>
+      player.display_name ? [[player.display_name, player] as const] : [],
+    ),
+  );
+
+  const ticks = input.ticks.map((tick) => {
+    const displayName = tick.display_name ?? tick.player_name ?? tick.name ?? null;
+    const player =
+      (tick.player_id ? playersById.get(tick.player_id) : undefined) ??
+      (displayName ? playersByName.get(displayName) : undefined);
+    if (!player) {
+      throw new Error("A replay snapshot could not be matched to a listed player.");
+    }
+
+    const side = tick.side.toLowerCase();
+    if (side !== "ct" && side !== "t") {
+      throw new Error("A replay snapshot used an unsupported team side.");
+    }
+
+    return {
+      tick: tick.tick,
+      round_num: tick.round_num,
+      player_id: player.player_id,
+      display_name: displayName ?? player.display_name,
+      side,
+      X: tick.X,
+      Y: tick.Y,
+      Z: tick.Z,
+      health: tick.health,
+      armor: tick.armor ?? tick.armor_value ?? 0,
+      alive: tick.alive ?? tick.health > 0,
+      has_defuser: tick.has_defuser ?? false,
+      place: tick.place ?? null,
+    };
+  });
+
+  const eventOrdinals = new Map<string, number>();
+  const events = input.events.flatMap((event) => {
+    if (!renderedEventTypes.has(event.event)) {
+      return [];
+    }
+    const record: Record<string, unknown> = event;
+    const roundNum = event.round_num ?? event.round;
+    if (roundNum === undefined) {
+      return [];
+    }
+
+    const attackerId = playerIdForEvent(
+      record,
+      playersById,
+      playersByName,
+      "attacker_id",
+      "attacker_name",
+    );
+    const victimId = playerIdForEvent(
+      record,
+      playersById,
+      playersByName,
+      "victim_id",
+      "victim_name",
+    );
+    const playerId =
+      playerIdForEvent(record, playersById, playersByName, "player_id", "name") ??
+      playerIdForEvent(record, playersById, playersByName, "player_id", "player_name");
+    const fingerprint = [event.event, roundNum, event.tick, attackerId, victimId, playerId]
+      .filter((part) => part !== undefined)
+      .join(":");
+    const ordinal = eventOrdinals.get(fingerprint) ?? 0;
+    eventOrdinals.set(fingerprint, ordinal + 1);
+
+    return [{
+      event_id: event.event_id ?? `${fingerprint}:${ordinal}`,
+      event: event.event,
+      tick: event.tick,
+      round_num: roundNum,
+      attacker_id: attackerId ?? null,
+      victim_id: victimId ?? null,
+      player_id: playerId ?? null,
+      weapon: stringField(record, "weapon") ?? null,
+      headshot: typeof record.headshot === "boolean" ? record.headshot : false,
+      damage_health: numberField(record, "damage_health", "dmg_health_real", "dmg_health"),
+      bomb_site: stringField(record, "bomb_site", "bombsite") ?? null,
+    }];
+  });
+
+  return processedReplaySchema.parse({
+    ...input,
+    ticks,
+    events,
+  });
+}
+
+export function buildReplayFrames(snapshots: ReplaySnapshot[]): ReplayFrame[] {
   const sorted = [...snapshots].sort(
     (left, right) => left.tick - right.tick || left.player_id.localeCompare(right.player_id),
   );
@@ -147,7 +344,7 @@ export function frameAtTick(frames: ReplayFrame[], tick: number): ReplayFrame | 
 export function interpolatedSnapshotsAtTick(
   frames: ReplayFrame[],
   tick: number,
-): ShowcaseSnapshot[] {
+): ReplaySnapshot[] {
   const currentIndex = frameIndexAtTick(frames, tick);
   if (currentIndex < 0) {
     return [];
@@ -177,7 +374,7 @@ export function interpolatedSnapshotsAtTick(
   });
 }
 
-export function roundAtTick(rounds: ShowcaseRound[], tick: number): ShowcaseRound | undefined {
+export function roundAtTick(rounds: ReplayRound[], tick: number): ReplayRound | undefined {
   for (let index = rounds.length - 1; index >= 0; index -= 1) {
     const round = rounds[index];
     const end = round.official_end ?? round.end;
@@ -195,14 +392,14 @@ export function formatReplayTime(tick: number, firstTick: number, tickRate: numb
   return `${minutes}:${remaining.toString().padStart(2, "0")}`;
 }
 
-export function playerDisplayName(player: ShowcasePlayer): string {
+export function playerDisplayName(player: ReplayPlayer): string {
   return player.display_name ?? "Unnamed player";
 }
 
 export function playerTimelineEvents(
-  events: ShowcaseEvent[],
+  events: ReplayEvent[],
   playerId: string,
-): ShowcaseEvent[] {
+): ReplayEvent[] {
   return events.filter(
     (event) =>
       (event.event === "damage" || event.event === "kill") &&
@@ -211,10 +408,10 @@ export function playerTimelineEvents(
 }
 
 export function firstEventCrossed(
-  events: ShowcaseEvent[],
+  events: ReplayEvent[],
   previousTick: number,
   nextTick: number,
-): ShowcaseEvent | undefined {
+): ReplayEvent | undefined {
   return events.find(
     (event) => event.tick > previousTick && event.tick <= nextTick,
   );

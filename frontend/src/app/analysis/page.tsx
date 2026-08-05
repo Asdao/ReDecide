@@ -2,15 +2,15 @@ import type { Metadata } from "next";
 import { ReplayAnalysisScreen } from "@/components/ReplayAnalysisScreen";
 
 export const metadata: Metadata = {
-  title: "Mirage replay analysis · RE:DECIDE",
-  description: "Explore a processed CS2 Mirage replay on a synchronized 2D radar and timeline.",
+  title: "Processed replay viewer · RE:DECIDE",
+  description: "Explore a processed CS2 replay on a synchronized 2D radar and timeline.",
 };
 
 export default async function AnalysisPage({
   searchParams,
 }: {
-  searchParams: Promise<{ player?: string }>;
+  searchParams: Promise<{ player?: string; replay?: string }>;
 }) {
-  const { player } = await searchParams;
-  return <ReplayAnalysisScreen initialPlayerId={player} />;
+  const { player, replay } = await searchParams;
+  return <ReplayAnalysisScreen initialPlayerId={player} replayId={replay} />;
 }

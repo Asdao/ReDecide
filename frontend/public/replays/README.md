@@ -20,3 +20,16 @@ the matching normalized transform in `data/public/radar-info/catalog.json`.
 The original full-resolution replay database remains private at
 `data/private/processed/full_replays.jsonl` and is intentionally ignored by
 Git.
+
+`inferno-processed.replay.json` is the unmodified public
+`replay_visualization_v1` shape emitted by the backend for a 29-round Inferno
+replay. Unlike the sanitized Mirage fixture, its snapshots retain the backend's
+`name` and `player_name` fields and omit `alive` when the parser does not return
+it. The browser adapter associates snapshots with the stable top-level player
+records by their unique display names and derives alive state from health only
+when the field is absent.
+
+Neither bundled visualization contains a saved coaching-analysis payload. The
+processed-replay selector reports that independently from visualization
+availability so a future save can advertise bundled analysis without changing
+the replay contract.
