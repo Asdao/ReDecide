@@ -281,10 +281,37 @@ a:focus-visible {
 }
 
 .secondary {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
   border: 1px solid var(--steel-blue);
   background: var(--surface-raised);
   color: var(--text);
   cursor: pointer;
+  transition:
+    border-color 0.3s cubic-bezier(0.22, 0.61, 0.36, 1),
+    color 0.3s cubic-bezier(0.22, 0.61, 0.36, 1);
+}
+
+.secondary::before {
+  position: absolute;
+  z-index: -1;
+  inset: -120% -30%;
+  border-right: 2px solid var(--steel-blue-text);
+  background: var(--steel-blue);
+  content: "";
+  pointer-events: none;
+  transform: translateX(-120%) rotate(22deg);
+  transform-origin: center;
+  transition: transform 0.3s cubic-bezier(0.22, 0.61, 0.36, 1);
+}
+
+.secondary:not(:disabled, :has(+ input:disabled)):is(:hover, :focus-visible) {
+  border-color: var(--steel-blue-text);
+}
+
+.secondary:not(:disabled, :has(+ input:disabled)):is(:hover, :focus-visible)::before {
+  transform: translateX(0) rotate(22deg);
 }
 
 .primary:disabled,
