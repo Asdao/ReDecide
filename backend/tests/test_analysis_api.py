@@ -151,10 +151,222 @@ def _replay_json() -> dict[str, Any]:
     }
 
 
-def _prepare_and_wait_for_players(client: Any) -> tuple[str, list[dict[str, Any]]]:
+def _two_player_replay_json() -> dict[str, Any]:
+    """Replay fixture with two coachable players so repeated runs can differ."""
+
+    return {
+        "schema_version": 1,
+        "replay_id": "api-flow-test-two-players",
+        "demo_file": "api-flow-test-two-players.dem",
+        "header": {"map_name": "de_mirage", "tick_rate": 64},
+        "rounds": [
+            {"round_num": 1, "start": 100, "end": 300, "winner": "CT"},
+            {"round_num": 2, "start": 400, "end": 620, "winner": "T"},
+        ],
+        "damages": [
+            {
+                "round_num": 1,
+                "tick": 164,
+                "attacker_steamid": "t1",
+                "victim_steamid": "ct1",
+                "attacker_side": "T",
+                "victim_side": "CT",
+                "weapon": "ak47",
+                "dmg_health": 20,
+            },
+            {
+                "round_num": 2,
+                "tick": 464,
+                "attacker_steamid": "ct1",
+                "victim_steamid": "t1",
+                "attacker_side": "CT",
+                "victim_side": "T",
+                "weapon": "m4a1",
+                "dmg_health": 18,
+            },
+        ],
+        "kills": [
+            {
+                "round_num": 1,
+                "tick": 240,
+                "attacker_steamid": "t1",
+                "victim_steamid": "ct1",
+                "attacker_side": "T",
+                "victim_side": "CT",
+                "weapon": "ak47",
+            },
+            {
+                "round_num": 2,
+                "tick": 540,
+                "attacker_steamid": "ct1",
+                "victim_steamid": "t1",
+                "attacker_side": "CT",
+                "victim_side": "T",
+                "weapon": "m4a1",
+            },
+        ],
+        "ticks": [
+            {
+                "round_num": 1,
+                "tick": 100,
+                "steamid": "t1",
+                "player_name": "T One",
+                "team_name": "T",
+                "health": 100,
+                "alive": True,
+                "X": 1,
+                "Y": 1,
+            },
+            {
+                "round_num": 1,
+                "tick": 100,
+                "steamid": "ct1",
+                "player_name": "CT One",
+                "team_name": "CT",
+                "health": 100,
+                "alive": True,
+                "X": 2,
+                "Y": 2,
+            },
+            {
+                "round_num": 1,
+                "tick": 164,
+                "steamid": "t1",
+                "player_name": "T One",
+                "team_name": "T",
+                "health": 100,
+                "alive": True,
+                "X": 1,
+                "Y": 1,
+            },
+            {
+                "round_num": 1,
+                "tick": 164,
+                "steamid": "ct1",
+                "player_name": "CT One",
+                "team_name": "CT",
+                "health": 80,
+                "alive": True,
+                "X": 2,
+                "Y": 2,
+            },
+            {
+                "round_num": 2,
+                "tick": 400,
+                "steamid": "t1",
+                "player_name": "T One",
+                "team_name": "T",
+                "health": 100,
+                "alive": True,
+                "X": 3,
+                "Y": 3,
+            },
+            {
+                "round_num": 2,
+                "tick": 400,
+                "steamid": "ct1",
+                "player_name": "CT One",
+                "team_name": "CT",
+                "health": 100,
+                "alive": True,
+                "X": 4,
+                "Y": 4,
+            },
+            {
+                "round_num": 2,
+                "tick": 464,
+                "steamid": "t1",
+                "player_name": "T One",
+                "team_name": "T",
+                "health": 82,
+                "alive": True,
+                "X": 3,
+                "Y": 3,
+            },
+            {
+                "round_num": 2,
+                "tick": 464,
+                "steamid": "ct1",
+                "player_name": "CT One",
+                "team_name": "CT",
+                "health": 100,
+                "alive": True,
+                "X": 4,
+                "Y": 4,
+            },
+        ],
+    }
+
+
+def _no_candidate_replay_json() -> dict[str, Any]:
+    """Replay fixture with players but no decision candidates for them."""
+
+    return {
+        "schema_version": 1,
+        "replay_id": "api-flow-test-no-candidates",
+        "demo_file": "api-flow-test-no-candidates.dem",
+        "header": {"map_name": "de_mirage", "tick_rate": 64},
+        "rounds": [{"round_num": 1, "start": 100, "end": 300, "winner": "CT"}],
+        "damages": [],
+        "kills": [],
+        "ticks": [
+            {
+                "round_num": 1,
+                "tick": 100,
+                "steamid": "t1",
+                "player_name": "T One",
+                "team_name": "T",
+                "health": 100,
+                "alive": True,
+                "X": 1,
+                "Y": 1,
+            },
+            {
+                "round_num": 1,
+                "tick": 100,
+                "steamid": "ct1",
+                "player_name": "CT One",
+                "team_name": "CT",
+                "health": 100,
+                "alive": True,
+                "X": 2,
+                "Y": 2,
+            },
+            {
+                "round_num": 1,
+                "tick": 164,
+                "steamid": "t1",
+                "player_name": "T One",
+                "team_name": "T",
+                "health": 100,
+                "alive": True,
+                "X": 1,
+                "Y": 1,
+            },
+            {
+                "round_num": 1,
+                "tick": 164,
+                "steamid": "ct1",
+                "player_name": "CT One",
+                "team_name": "CT",
+                "health": 100,
+                "alive": True,
+                "X": 2,
+                "Y": 2,
+            },
+        ],
+    }
+
+
+def _prepare_and_wait_for_players(
+    client: Any, replay: dict[str, Any] | None = None
+) -> tuple[str, list[dict[str, Any]]]:
     """Submit the fixture and wait for the asynchronous selector to be ready."""
 
-    prepared = client.post("/api/analysis/prepare", json={"replay": _replay_json()})
+    prepared = client.post(
+        "/api/analysis/prepare",
+        json={"replay": replay or _replay_json()},
+    )
     assert prepared.status_code in (200, 202), prepared.text
     analysis_id = prepared.json()["analysis_id"]
     deadline = time.monotonic() + 20
@@ -290,6 +502,66 @@ def test_player_selection_requires_one_valid_player_and_accepts_stable_id(tmp_pa
     assert run.json()["selected_decision"]["player_id"] == selected["player_id"]
 
 
+def test_repeated_player_runs_keep_results_scoped_to_each_selection(
+    tmp_path: Any,
+) -> None:
+    calls: list[str] = []
+
+    def adapter(payload: dict[str, Any]) -> dict[str, str]:
+        player_id = payload["selected_decision"]["player_id"]
+        calls.append(player_id)
+        return {
+            "decision_id": "decision_001",
+            "what_could_be_done_better": f"Coach feedback for {player_id}.",
+        }
+
+    orchestration = importlib.import_module("backend.app.orchestration")
+    service = orchestration.AnalysisService(
+        log_dir=tmp_path,
+        coach_adapter=adapter,
+    )
+    module = importlib.import_module("backend.app.main")
+    client = _client_for_app(module.create_app(service=service))
+    analysis_id, players = _prepare_and_wait_for_players(client, _two_player_replay_json())
+    players_with_candidates = [player for player in players if player["decision_ids"]]
+    assert len(players_with_candidates) >= 2, players
+
+    player_a, player_b = players_with_candidates[:2]
+
+    run_a = client.post(
+        f"/api/analysis/{analysis_id}/run",
+        json={"player_id": player_a["player_id"]},
+    )
+    assert run_a.status_code == 200, run_a.text
+    body_a = run_a.json()
+    result_a = client.get(f"/api/analysis/{analysis_id}/result")
+    assert result_a.status_code == 200, result_a.text
+
+    run_b = client.post(
+        f"/api/analysis/{analysis_id}/run",
+        json={"player_id": player_b["player_id"]},
+    )
+    assert run_b.status_code == 200, run_b.text
+    body_b = run_b.json()
+    result_b = client.get(f"/api/analysis/{analysis_id}/result")
+    assert result_b.status_code == 200, result_b.text
+    historical_a = client.get(
+        f"/api/analysis/{analysis_id}/result",
+        params={"player_id": player_a["player_id"]},
+    )
+    assert historical_a.status_code == 200, historical_a.text
+
+    assert calls == [player_a["player_id"], player_b["player_id"]]
+    assert body_a["selected_decision"]["player_id"] == player_a["player_id"]
+    assert result_a.json()["selected_decision"]["player_id"] == player_a["player_id"]
+    assert body_b["selected_decision"]["player_id"] == player_b["player_id"]
+    assert result_b.json()["selected_decision"]["player_id"] == player_b["player_id"]
+    assert historical_a.json()["selected_decision"]["player_id"] == player_a["player_id"]
+    assert body_a["coach_analysis"]["decision_id"] != body_b["coach_analysis"]["decision_id"]
+    assert body_a["coach_analysis"]["player_id"] == player_a["player_id"]
+    assert body_b["coach_analysis"]["player_id"] == player_b["player_id"]
+
+
 def test_final_result_is_not_available_before_player_selection(tmp_path: Any) -> None:
     client = _load_client(tmp_path)
     analysis_id, _players = _prepare_and_wait_for_players(client)
@@ -386,3 +658,19 @@ def test_safe_pi_adapter_failure_reason_is_preserved(tmp_path: Any) -> None:
     assert run.json()["detail"] == (
         "coaching analysis failed: agent-harness dependencies are not installed"
     )
+
+
+def test_player_without_decision_candidates_returns_clear_422(tmp_path: Any) -> None:
+    client = _load_client(tmp_path)
+    analysis_id, players = _prepare_and_wait_for_players(
+        client, _no_candidate_replay_json()
+    )
+    selected = next(player for player in players if not player["decision_ids"])
+
+    run = client.post(
+        f"/api/analysis/{analysis_id}/run",
+        json={"player_id": selected["player_id"]},
+    )
+
+    assert run.status_code == 422, run.text
+    assert run.json()["detail"] == "selected player has no first-contact decision candidate"
