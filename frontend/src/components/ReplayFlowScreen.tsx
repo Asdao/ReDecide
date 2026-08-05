@@ -11,6 +11,8 @@ type ReplayFlowScreenProps = {
   onSelectPlayer: (playerId: string) => void;
   onRetryCoaching: () => void;
   onRetryRecovery: () => void;
+  onRetryVisualization: () => void;
+  onReturnToPlayers: () => void;
 };
 
 function playerName(player: AnalysisPlayer): string {
@@ -36,16 +38,19 @@ function replayProgressMessage(state: ReplayAnalysisFlowState): string {
       return `Generating coaching for ${playerName(state.selectedPlayer)}.`;
     case "recovering-result":
       return "Checking whether coaching completed without starting another coaching request.";
+    case "loading-visualization":
+      return "Coaching is ready. Loading the replay map and timeline.";
     case "choosing-player":
       return "Player selection is ready.";
-    case "result":
-      return `Coaching for ${playerName(state.selectedPlayer)} is ready.`;
     case "upload-error":
     case "analysis-prepare-error":
     case "players-error":
     case "coaching-error":
     case "result-recovery-error":
+    case "visualization-error":
       return "";
+    case "viewer":
+      return `The replay workspace for ${playerName(state.selectedPlayer)} is ready.`;
   }
 }
 
@@ -126,14 +131,22 @@ export function ReplayFlowScreen({
   onSelectPlayer,
   onRetryCoaching,
   onRetryRecovery,
+  onRetryVisualization,
+  onReturnToPlayers,
 }: ReplayFlowScreenProps) {
   const progressMessage = replayProgressMessage(state);
   const heading =
     state.status === "choosing-player"
       ? { prefix: "Choose your", accent: "player." }
-      : state.status === "result"
-        ? { prefix: "Replay the", accent: "decision." }
-        : { prefix: "Preparing your", accent: "replay." };
+      : { prefix: "Preparing your", accent: "replay." };
+  const playerSelected =
+    state.status === "running-coaching" ||
+    state.status === "recovering-result" ||
+    state.status === "result-recovery-error" ||
+    state.status === "coaching-error" ||
+    state.status === "loading-visualization" ||
+    state.status === "visualization-error" ||
+    state.status === "viewer";
 
   return (
     <section className="replay-screen" id="main-content" aria-labelledby="replay-title">
@@ -150,8 +163,12 @@ export function ReplayFlowScreen({
               {heading.prefix} <span className="accent-word">{heading.accent}</span>
             </h1>
           </div>
-          <button className="secondary" type="button" onClick={onBack}>
-            Back to start
+          <button
+            className="secondary"
+            type="button"
+            onClick={playerSelected ? onReturnToPlayers : onBack}
+          >
+            {playerSelected ? "Back to player selection" : "Back to start"}
           </button>
         </div>
 
@@ -191,6 +208,13 @@ export function ReplayFlowScreen({
           <ProgressPanel
             title="Checking for completed coaching"
             copy="The request ended before a response arrived. We are checking the saved result without starting another model call."
+          />
+        ) : null}
+
+        {state.status === "loading-visualization" ? (
+          <ProgressPanel
+            title="Opening the replay workspace"
+            copy="Coaching is complete. The map, positions, and timeline are loading now."
           />
         ) : null}
 
@@ -244,6 +268,16 @@ export function ReplayFlowScreen({
           />
         ) : null}
 
+        {state.status === "visualization-error" ? (
+          <ErrorPanel
+            message={state.error.message}
+            retryable={state.error.retryable}
+            retryLabel="Try loading the replay again"
+            onRetry={onRetryVisualization}
+            onBack={onReturnToPlayers}
+          />
+        ) : null}
+
         {state.status === "choosing-player" ? (
           <div className="replay-player-section">
             <div className="replay-section-copy">
@@ -278,39 +312,6 @@ export function ReplayFlowScreen({
           </div>
         ) : null}
 
-        {state.status === "result" ? (
-          <article className="coaching-result" aria-labelledby="coaching-result-title">
-            <div className="coaching-result-heading">
-              <p className="eyebrow">Coaching complete</p>
-              <h2 id="coaching-result-title">
-                {playerName(state.selectedPlayer)} · Round{" "}
-                {state.result.selected_decision.round_number}
-              </h2>
-              <p>
-                {state.result.selected_decision.event_category} decision at tick{" "}
-                {state.result.selected_decision.decision_open_tick}
-              </p>
-            </div>
-            <div className="coaching-advice">
-              <p className="eyebrow">What could be done better</p>
-              <p>{state.result.coach_analysis.what_could_be_done_better}</p>
-            </div>
-            <dl className="decision-details">
-              <div>
-                <dt>Observed action</dt>
-                <dd>{state.result.selected_decision.observed_action.replaceAll("_", " ")}</dd>
-              </div>
-              <div>
-                <dt>Role</dt>
-                <dd>{state.result.selected_decision.role}</dd>
-              </div>
-              <div>
-                <dt>Side</dt>
-                <dd>{state.result.selected_decision.side.toUpperCase()}</dd>
-              </div>
-            </dl>
-          </article>
-        ) : null}
       </div>
     </section>
   );

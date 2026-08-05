@@ -1,5 +1,5 @@
 export type LandingView = "home" | "samples" | "showcase";
-export type LandingHistoryView = LandingView | "upload";
+export type LandingHistoryView = LandingView | "upload" | "upload-viewer";
 
 type LandingHistoryMarker = {
   view: LandingHistoryView;
@@ -40,6 +40,28 @@ export function withLandingHistoryMarker(
   };
 }
 
+export function landingHistoryViewFromState(
+  state: unknown,
+): LandingHistoryView | undefined {
+  if (!isRecord(state)) {
+    return undefined;
+  }
+
+  const marker = state[historyMarkerKey];
+  if (!isRecord(marker)) {
+    return undefined;
+  }
+
+  const view = marker.view;
+  return view === "home" ||
+    view === "samples" ||
+    view === "showcase" ||
+    view === "upload" ||
+    view === "upload-viewer"
+    ? view
+    : undefined;
+}
+
 export function isLandingChildHistoryEntry(
   state: unknown,
   view?: Exclude<LandingHistoryView, "home">,
@@ -54,6 +76,9 @@ export function isLandingChildHistoryEntry(
   }
 
   return view === undefined
-    ? marker.view === "samples" || marker.view === "showcase" || marker.view === "upload"
+    ? marker.view === "samples" ||
+        marker.view === "showcase" ||
+        marker.view === "upload" ||
+        marker.view === "upload-viewer"
     : marker.view === view;
 }

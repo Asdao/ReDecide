@@ -62,23 +62,36 @@ function eventMatchesAnalysis(event: ReplayEvent, analysis: ReplayAnalysisResult
 export function ReplayAnalysisScreen({
   initialPlayerId,
   replayId,
+  initialReplay,
+  initialAnalysis,
+  uploaded = false,
+  onChoosePlayer,
 }: {
   initialPlayerId?: string;
   replayId?: string;
+  initialReplay?: ProcessedReplay;
+  initialAnalysis?: ReplayAnalysisResult;
+  uploaded?: boolean;
+  onChoosePlayer?: () => void;
 }) {
-  const [replay, setReplay] = useState<ProcessedReplay>();
-  const [analysis, setAnalysis] = useState<ReplayAnalysisResult>();
+  const initialTick = initialReplay?.ticks[0]?.tick ?? initialReplay?.rounds[0]?.start ?? 0;
+  const [replay, setReplay] = useState<ProcessedReplay | undefined>(initialReplay);
+  const [analysis, setAnalysis] = useState<ReplayAnalysisResult | undefined>(initialAnalysis);
   const [loadError, setLoadError] = useState<string>();
   const [loadAttempt, setLoadAttempt] = useState(0);
-  const [currentTick, setCurrentTick] = useState(0);
+  const [currentTick, setCurrentTick] = useState(initialTick);
   const [playing, setPlaying] = useState(false);
   const [playbackRate, setPlaybackRate] = useState(1);
   const [selectedPlayerId, setSelectedPlayerId] = useState(initialPlayerId ?? "");
   const [selectedEventId, setSelectedEventId] = useState<string>();
-  const currentTickRef = useRef(0);
+  const currentTickRef = useRef(initialTick);
   const lastAnimationTime = useRef<number | undefined>(undefined);
 
   useEffect(() => {
+    if (initialReplay) {
+      return;
+    }
+
     const controller = new AbortController();
     let active = true;
     Promise.all([
@@ -115,7 +128,7 @@ export function ReplayAnalysisScreen({
       active = false;
       controller.abort();
     };
-  }, [loadAttempt, replayId]);
+  }, [initialAnalysis, initialReplay, loadAttempt, replayId]);
 
   const frames = useMemo(() => (replay ? buildReplayFrames(replay.ticks) : []), [replay]);
   const firstTick = frames[0]?.tick ?? 0;
@@ -204,14 +217,15 @@ export function ReplayAnalysisScreen({
   );
 
   const changePerspective = useCallback((playerId: string) => {
+    if (uploaded) return;
     setSelectedPlayerId(playerId);
     setSelectedEventId(undefined);
-  }, []);
+  }, [uploaded]);
 
   if (!replay) {
     return (
       <main className="shell analysis-loading-shell">
-        <ProductHeader brandHref="/" label="Processed replay viewer" />
+        <ProductHeader brandHref="/" label={uploaded ? "Uploaded replay viewer" : "Processed replay viewer"} />
         <section className="analysis-load-state" id="main-content" aria-live="polite">
           {loadError ? (
             <>
@@ -245,11 +259,16 @@ export function ReplayAnalysisScreen({
   if (!radarOverview) {
     return (
       <main className="shell analysis-loading-shell">
-        <ProductHeader brandHref="/" label="Processed replay viewer" />
+        <ProductHeader brandHref="/" label={uploaded ? "Uploaded replay viewer" : "Processed replay viewer"} />
         <section className="analysis-load-state" id="main-content" role="alert">
           <p className="eyebrow">Radar unavailable</p>
           <h1>{mapName} is not supported yet.</h1>
           <p>This replay is valid, but its reviewed radar metadata is not bundled.</p>
+          {uploaded && onChoosePlayer ? (
+            <button className="secondary" type="button" onClick={onChoosePlayer}>
+              Back to player selection
+            </button>
+          ) : null}
         </section>
       </main>
     );
@@ -265,23 +284,29 @@ export function ReplayAnalysisScreen({
       <section className="analysis-workspace" id="main-content" aria-label={`${mapName} replay viewer`}>
         <header className="analysis-toolbar">
           <div>
-            <p className="eyebrow">Processed replay · {mapName}</p>
+            <p className="eyebrow">{uploaded ? "Uploaded replay" : "Processed replay"} · {mapName}</p>
             <h1>{selectedPlayer ? playerDisplayName(selectedPlayer) : "Player perspective"}</h1>
           </div>
           <div className="analysis-toolbar-controls">
-            <label>
-              <span>Perspective</span>
-              <select
-                value={selectedPlayerId}
-                onChange={(event) => changePerspective(event.currentTarget.value)}
-              >
-                {replay.players.map((player) => (
-                  <option value={player.player_id} key={player.player_id}>
-                    {playerDisplayName(player)}
-                  </option>
-                ))}
-              </select>
-            </label>
+            {uploaded && onChoosePlayer ? (
+              <button className="secondary analysis-player-return" type="button" onClick={onChoosePlayer}>
+                Choose another player
+              </button>
+            ) : (
+              <label>
+                <span>Perspective</span>
+                <select
+                  value={selectedPlayerId}
+                  onChange={(event) => changePerspective(event.currentTarget.value)}
+                >
+                  {replay.players.map((player) => (
+                    <option value={player.player_id} key={player.player_id}>
+                      {playerDisplayName(player)}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
             <label>
               <span>Round</span>
               <select
@@ -367,17 +392,29 @@ export function ReplayAnalysisScreen({
                       ? "ally"
                       : "enemy";
                   return (
-                    <button
-                      type="button"
-                      className={`player-marker ${relation} side-${snapshot.side}${snapshot.alive ? "" : " dead"}`}
-                      style={{ left: `${position.left}%`, top: `${position.top}%` }}
-                      key={snapshot.player_id}
-                      title={`${snapshot.display_name ?? snapshot.player_id} · ${snapshot.side.toUpperCase()} · ${snapshot.health} HP${snapshot.alive ? "" : " · eliminated"}`}
-                      aria-label={`${snapshot.display_name ?? snapshot.player_id}, ${relation}, ${snapshot.health} health`}
-                      onClick={() => changePerspective(snapshot.player_id)}
-                    >
-                      <span>{markerLabel(snapshot.display_name)}</span>
-                    </button>
+                    uploaded ? (
+                      <span
+                        className={`player-marker ${relation} side-${snapshot.side}${snapshot.alive ? "" : " dead"}`}
+                        style={{ left: `${position.left}%`, top: `${position.top}%` }}
+                        key={snapshot.player_id}
+                        title={`${snapshot.display_name ?? snapshot.player_id} · ${snapshot.side.toUpperCase()} · ${snapshot.health} HP${snapshot.alive ? "" : " · eliminated"}`}
+                        aria-label={`${snapshot.display_name ?? snapshot.player_id}, ${relation}, ${snapshot.health} health`}
+                      >
+                        <span>{markerLabel(snapshot.display_name)}</span>
+                      </span>
+                    ) : (
+                      <button
+                        type="button"
+                        className={`player-marker ${relation} side-${snapshot.side}${snapshot.alive ? "" : " dead"}`}
+                        style={{ left: `${position.left}%`, top: `${position.top}%` }}
+                        key={snapshot.player_id}
+                        title={`${snapshot.display_name ?? snapshot.player_id} · ${snapshot.side.toUpperCase()} · ${snapshot.health} HP${snapshot.alive ? "" : " · eliminated"}`}
+                        aria-label={`${snapshot.display_name ?? snapshot.player_id}, ${relation}, ${snapshot.health} health`}
+                        onClick={() => changePerspective(snapshot.player_id)}
+                      >
+                        <span>{markerLabel(snapshot.display_name)}</span>
+                      </button>
+                    )
                   );
                 })}
               </div>

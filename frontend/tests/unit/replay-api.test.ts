@@ -5,6 +5,7 @@ import {
   getAnalysisResult,
   getReplayVisualization,
   prepareReplayAnalysis,
+  prepareReplayWorkspace,
   runReplayCoaching,
   uploadReplay,
 } from "@/adapters/replay-api";
@@ -163,6 +164,25 @@ describe("replay API adapter", () => {
     await expect(prepareReplayAnalysis("replay-1")).resolves.toEqual(job);
     const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
     expect(JSON.parse(String(init.body))).toEqual({ replay_id: "replay-1" });
+  });
+
+  it("starts replay JSON retrieval alongside analysis preparation", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse(job, 202))
+      .mockResolvedValueOnce(
+        jsonResponse({ status: "locked_until_coaching_complete" }, 403),
+      );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(prepareReplayWorkspace("replay-1")).resolves.toEqual(job);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock.mock.calls[0][0]).toBe(
+      "http://127.0.0.1:8000/api/analysis/prepare",
+    );
+    expect(fetchMock.mock.calls[1][0]).toBe(
+      "http://127.0.0.1:8000/api/replay/replay-1/json",
+    );
   });
 
   it("represents a 202 player response as processing without fabricating players", async () => {

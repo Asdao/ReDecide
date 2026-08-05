@@ -8,6 +8,7 @@ import { ProcessedReplaySelectorScreen } from "@/components/ProcessedReplaySelec
 import { ProcessedReplayPlayerScreen } from "@/components/ProcessedReplayPlayerScreen";
 import { ReplayAnalysisScreen } from "@/components/ReplayAnalysisScreen";
 import { ReplayFlowScreen } from "@/components/ReplayFlowScreen";
+import { ReplayMapLoadingScreen } from "@/components/ReplayMapLoadingScreen";
 import { SampleSelectorScreen } from "@/components/SampleSelectorScreen";
 import { PROCESSED_REPLAYS } from "@/domain/processed-replays";
 import type { ReplayAnalysisFlowState } from "@/domain/analysis-flow";
@@ -17,6 +18,7 @@ import {
   replayAnalysisResultSchema,
   replayManifestSchema,
 } from "@/domain/replay";
+import type { ProcessedReplay } from "@/domain/replay-viewer";
 
 const file = new File(["demo"], "match.dem", { type: "application/octet-stream" });
 const manifest = replayManifestSchema.parse({
@@ -55,6 +57,32 @@ const result = replayAnalysisResultSchema.parse({
     source: "round_score",
   },
 });
+const uploadedReplay: ProcessedReplay = {
+  schema_version: "replay_visualization_v1",
+  replay_id: "api-flow-test",
+  source: "match.dem",
+  map: { name: "de_mirage", tick_rate: 64 },
+  players: manifest.players,
+  rounds: [{ round_num: 1, start: 100, end: 300 }],
+  events: [],
+  ticks: [
+    {
+      tick: 100,
+      round_num: 1,
+      player_id: "t1",
+      display_name: "T One",
+      side: "t",
+      X: 0,
+      Y: 0,
+      Z: 0,
+      health: 100,
+      armor: 0,
+      alive: true,
+      has_defuser: false,
+      place: null,
+    },
+  ],
+};
 
 const callbacks = {
   onBack: () => undefined,
@@ -64,6 +92,8 @@ const callbacks = {
   onSelectPlayer: () => undefined,
   onRetryCoaching: () => undefined,
   onRetryRecovery: () => undefined,
+  onRetryVisualization: () => undefined,
+  onReturnToPlayers: () => undefined,
 };
 
 function renderReplayState(state: ReplayAnalysisFlowState): string {
@@ -115,8 +145,16 @@ describe("uploaded replay screens", () => {
         onSelectPlayer: () => undefined,
       }),
     );
+    const mapLoadingHtml = renderToStaticMarkup(
+      createElement(ReplayMapLoadingScreen, {
+        manifest,
+        player: players[1],
+        phase: "coaching",
+        onReturnToPlayers: () => undefined,
+      }),
+    );
 
-    for (const html of [uploadHtml, sampleHtml, processedPlayerHtml, analysisHtml]) {
+    for (const html of [uploadHtml, sampleHtml, processedPlayerHtml, analysisHtml, mapLoadingHtml]) {
       expect(html).toContain("loading-border");
       expect(html).not.toContain("loading-marker");
       expect(html).not.toContain("progress-marker");
@@ -149,38 +187,35 @@ describe("uploaded replay screens", () => {
   });
 
   it("sets truthful expectations during the long coaching request", () => {
-    const html = renderReplayState({
-      status: "running-coaching",
-      file,
+    const html = renderToStaticMarkup(createElement(ReplayMapLoadingScreen, {
       manifest,
-      analysis,
-      players,
-      selectedPlayer: players[1],
-      requestId: "coach-1",
-    });
+      player: players[1],
+      phase: "coaching",
+      onReturnToPlayers: () => undefined,
+    }));
 
     expect(html).toContain("around 30 seconds");
-    expect(html).toContain("will not be uploaded again");
+    expect(html).toContain("T One");
+    expect(html).toContain("%2Fradars%2Fde_mirage.png");
+    expect(html).toContain("radar-frame loading-border replay-map-loading-frame");
+    expect(html).toContain("Back to player selection");
+    expect(html).not.toContain("Perspective");
     expect(html).toContain('aria-live="polite"');
     expect(html).toContain('aria-busy="true"');
-    expect(html).toContain('<span class="accent-word">replay.</span>');
   });
 
-  it("renders validated coaching without exposing the later match outcome", () => {
-    const html = renderReplayState({
-      status: "result",
-      file,
-      manifest,
-      analysis,
-      players,
-      selectedPlayer: players[1],
-      result,
-    });
+  it("keeps uploaded replay perspective fixed inside the map workspace", () => {
+    const html = renderToStaticMarkup(createElement(ReplayAnalysisScreen, {
+      initialPlayerId: "t1",
+      initialReplay: uploadedReplay,
+      initialAnalysis: result,
+      uploaded: true,
+      onChoosePlayer: () => undefined,
+    }));
 
-    expect(html).toContain("What could be done better");
-    expect(html).toContain('<span class="accent-word">decision.</span>');
-    expect(html).toContain("Break line of sight after first contact and wait for support.");
     expect(html).toContain("T One");
+    expect(html).toContain("Choose another player");
+    expect(html).not.toContain("Perspective");
     expect(html).not.toContain("eventual_winner");
     expect(html).not.toContain("round_score");
   });

@@ -213,6 +213,15 @@ export async function prepareReplayAnalysis(
   return parseSuccessful(response, analysisJobSchema, "prepare");
 }
 
+export function prepareReplayWorkspace(
+  replayId: string,
+  signal?: AbortSignal,
+): Promise<AnalysisJob> {
+  const preparation = prepareReplayAnalysis(replayId, signal);
+  void getReplayVisualization(replayId, signal).catch(() => undefined);
+  return preparation;
+}
+
 export async function getAnalysisStatus(
   analysisId: string,
   signal?: AbortSignal,

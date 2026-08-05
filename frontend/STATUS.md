@@ -4,7 +4,7 @@ Last verified: 2026-08-05 (Asia/Singapore)
 
 ## Status
 
-**Backend sample selection, uploaded `.dem` coaching, a two-save processed replay catalog, and a map-aware 2D replay workspace are implemented.**
+**Backend sample selection, complete uploaded `.dem` coaching-to-replay playback, a two-save processed replay catalog, and a map-aware 2D replay workspace are implemented.**
 
 The landing page's `Use a sample match` action calls `GET /api/samples` and
 renders the backend-returned list through the compatibility sample selector.
@@ -142,6 +142,27 @@ only an explicit backend `failed` state can enable a coaching retry. Other
 ambiguous states can only re-check the result. Reset aborts browser requests
 and stale request IDs prevent late completions from replacing the active flow.
 
+As soon as upload returns `replay_id`, the browser starts
+`POST /api/analysis/prepare` and an initial
+`GET /api/replay/{replay_id}/json` request together. The initial replay request
+may truthfully report processing or locked; analysis preparation continues
+independently. Selecting a player pushes an owned browser-history entry and
+opens a map-shaped loading workspace using the reviewed radar asset at the same
+size and position as the finished 2D viewer. Once coaching succeeds, the
+browser polls the replay JSON until it is unlocked, validates and normalizes it,
+then replaces the loading overlay with positions, events, controls, and the
+timeline without changing the workspace geometry.
+
+Uploaded replay viewers keep the coached player fixed: they have no inline
+perspective selector and player markers cannot switch perspective. The visible
+`Choose another player` action and browser Back both return to the authoritative
+analysis player selector without re-uploading or re-preparing the replay.
+Selecting another player reuses the same `analysis_id` and calls
+`POST /api/analysis/{analysis_id}/run` again with the new stable `player_id`.
+Browser Forward can restore an already completed viewer from in-memory state
+without repeating the model call; an incomplete or cancelled request is never
+restarted by history navigation.
+
 Responsive replay screens cover upload, preparation, player discovery,
 selection, coaching, ambiguous-result recovery, scoped errors/retries, and the
 validated coaching result. Progress uses one polite live region, blocking
@@ -158,7 +179,10 @@ outcomes are not rendered in the coaching result.
 - `src/components/ProcessedReplayPlayerScreen.tsx` - selected-save loading,
   replay summary, analysis status, and stable player-perspective selection
 - `src/components/ReplayAnalysisScreen.tsx` - map-aware radar, playback clock,
-  controls, event inspector, player perspective, and full-match timeline
+  controls, event inspector, processed-save perspective switching, fixed
+  uploaded-replay perspective, and full-match timeline
+- `src/components/ReplayMapLoadingScreen.tsx` - uploaded-replay coaching and
+  visualization loading state using the final radar workspace geometry
 - `src/app/analysis/page.tsx` - replay- and player-aware viewer route and metadata
 - `src/adapters/processed-replay.ts` - catalog-based replay retrieval and safe boundary
   failure handling
@@ -217,7 +241,9 @@ folder on `raw.githubusercontent.com` for non-bundled future maps.
 
 From `frontend/`, `pnpm run verify` passes:
 
-- Vitest: 7 files, 81 tests passed, including both full processed replay files
+- Vitest: 7 files, 82 tests passed, including both full processed replay files,
+  concurrent analysis/replay preparation, repeated player selection, and
+  uploaded-viewer navigation
   and the matching Inferno analysis
 - TypeScript: passed
 - ESLint: passed with no warnings
@@ -260,16 +286,15 @@ Browser verification of the uploaded-replay UI also confirmed:
 - A real native `.dem` has not yet completed the full backend flow, matching the
   backend's documented current limitation. Browser QA used validated replay
   fixtures for post-upload states and did not send user replay data.
-- Visualization JSON retrieval for uploaded replays is implemented in the
-  adapter but is not yet connected from a completed live coaching result into
-  the radar/timeline workspace. The local viewer currently opens only cataloged
-  processed saves. Only Inferno currently has a paired saved coaching result,
-  and player intent remains disabled because no public backend contract exists.
+- Only Inferno currently has a paired saved coaching result for the processed
+  save catalog. Uploaded replays use their live completed analysis. Player
+  intent remains disabled because no public backend contract exists.
 
 ## Contract/API impact
 
-No backend contract changes. The local processed-replay adapter now consumes the
-documented backend `replay_visualization_v1` shape directly. In addition to the compatibility sample APIs, the
-frontend adapter now implements the documented `/api/replay/*` and
-`/api/analysis/*` contracts and the rendered UI consumes the supported upload,
-preparation, player-selection, coaching, and result endpoints.
+No backend contract changes. The local processed-replay adapter and uploaded
+flow consume the documented `replay_visualization_v1` shape directly. In
+addition to the compatibility sample APIs, the frontend adapter implements the
+documented `/api/replay/*` and `/api/analysis/*` contracts. The rendered upload
+flow now consumes preparation, player selection, repeat coaching, result
+recovery, visualization unlock, and replay playback endpoints end to end.

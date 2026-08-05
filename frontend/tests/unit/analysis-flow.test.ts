@@ -6,6 +6,7 @@ import {
 import { mapDisplayName } from "@/domain/maps";
 import {
   isLandingChildHistoryEntry,
+  landingHistoryViewFromState,
   landingViewFromSearch,
   landingViewHref,
   withLandingHistoryMarker,
@@ -53,6 +54,7 @@ describe("backend sample flow", () => {
     const home = withLandingHistoryMarker(existingState, "home", false);
     const showcase = withLandingHistoryMarker(home, "showcase", true);
     const upload = withLandingHistoryMarker(home, "upload", true);
+    const uploadViewer = withLandingHistoryMarker(upload, "upload-viewer", true);
 
     expect(home).toMatchObject(existingState);
     expect(isLandingChildHistoryEntry(home)).toBe(false);
@@ -61,6 +63,9 @@ describe("backend sample flow", () => {
     expect(isLandingChildHistoryEntry(showcase, "samples")).toBe(false);
     expect(isLandingChildHistoryEntry(upload)).toBe(true);
     expect(isLandingChildHistoryEntry(upload, "upload")).toBe(true);
+    expect(isLandingChildHistoryEntry(uploadViewer, "upload-viewer")).toBe(true);
+    expect(landingHistoryViewFromState(upload)).toBe("upload");
+    expect(landingHistoryViewFromState(uploadViewer)).toBe("upload-viewer");
     expect(isLandingChildHistoryEntry(null)).toBe(false);
   });
 

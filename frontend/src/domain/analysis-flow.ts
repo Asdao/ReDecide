@@ -5,6 +5,7 @@ import type {
   ReplayAnalysisResult,
   ReplayManifest,
 } from "./replay";
+import type { ProcessedReplay } from "./replay-viewer";
 
 export type ReplayFlowErrorCode =
   | "invalid-file"
@@ -14,6 +15,7 @@ export type ReplayFlowErrorCode =
   | "empty-player-list"
   | "coaching-failed"
   | "result-recovery-failed"
+  | "visualization-failed"
   | "invalid-response";
 
 export type ReplayFlowError = {
@@ -54,6 +56,10 @@ type SelectedPlayerContext = PlayerSelectionContext & {
   selectedPlayer: AnalysisPlayer;
 };
 
+type CompletedCoachingContext = SelectedPlayerContext & {
+  result: ReplayAnalysisResult;
+};
+
 export type AnalysisFlowState =
   | { status: "choose" }
   | { status: "loading-samples" }
@@ -78,7 +84,9 @@ export type AnalysisFlowState =
   | ({ status: "recovering-result"; requestId: string } & SelectedPlayerContext)
   | ({ status: "result-recovery-error"; error: ReplayFlowError } & SelectedPlayerContext)
   | ({ status: "coaching-error"; error: ReplayFlowError } & SelectedPlayerContext)
-  | ({ status: "result"; result: ReplayAnalysisResult } & SelectedPlayerContext);
+  | ({ status: "loading-visualization"; requestId: string } & CompletedCoachingContext)
+  | ({ status: "visualization-error"; error: ReplayFlowError } & CompletedCoachingContext)
+  | ({ status: "viewer"; replay: ProcessedReplay } & CompletedCoachingContext);
 
 export type SampleAnalysisFlowState = Extract<
   AnalysisFlowState,
@@ -130,6 +138,7 @@ export type AnalysisFlowAction =
       type: "COACHING_SUCCEEDED";
       requestId: string;
       result: ReplayAnalysisResult;
+      visualizationRequestId: string;
     }
   | {
       type: "COACHING_REQUEST_UNCERTAIN";
@@ -137,11 +146,26 @@ export type AnalysisFlowAction =
       recoveryRequestId: string;
     }
   | { type: "COACHING_FAILED"; requestId: string; error: ReplayFlowError }
-  | { type: "RESULT_RECOVERED"; requestId: string; result: ReplayAnalysisResult }
+  | {
+      type: "RESULT_RECOVERED";
+      requestId: string;
+      result: ReplayAnalysisResult;
+      visualizationRequestId: string;
+    }
   | { type: "RESULT_CONFIRMED_ABSENT"; requestId: string; error: ReplayFlowError }
   | { type: "RESULT_RECOVERY_FAILED"; requestId: string; error: ReplayFlowError }
   | { type: "RETRY_RESULT_RECOVERY"; requestId: string }
   | { type: "RETRY_COACHING"; requestId: string }
+  | { type: "VISUALIZATION_LOADED"; requestId: string; replay: ProcessedReplay }
+  | { type: "VISUALIZATION_FAILED"; requestId: string; error: ReplayFlowError }
+  | { type: "RETRY_VISUALIZATION"; requestId: string }
+  | { type: "RETURN_TO_PLAYER_SELECTION" }
+  | {
+      type: "RESTORE_VIEWER";
+      selectedPlayerId: string;
+      result: ReplayAnalysisResult;
+      replay: ProcessedReplay;
+    }
   | { type: "RESET" };
 
 export const initialAnalysisFlowState: AnalysisFlowState = { status: "choose" };
@@ -185,13 +209,23 @@ function selectedPlayerContext(state: SelectedPlayerContext): SelectedPlayerCont
   return { ...playerSelectionContext(state), selectedPlayer: state.selectedPlayer };
 }
 
+function completedCoachingContext(state: CompletedCoachingContext): CompletedCoachingContext {
+  return { ...selectedPlayerContext(state), result: state.result };
+}
+
 function finishCoaching(
   state: Extract<AnalysisFlowState, { status: "running-coaching" | "recovering-result" }>,
   result: ReplayAnalysisResult,
+  visualizationRequestId: string,
 ): AnalysisFlowState {
   const context = selectedPlayerContext(state);
   return resultMatchesSelection(result, state)
-    ? { ...context, status: "result", result }
+    ? {
+        ...context,
+        status: "loading-visualization",
+        result,
+        requestId: visualizationRequestId,
+      }
     : {
         ...context,
         status: "coaching-error",
@@ -344,7 +378,7 @@ export function analysisFlowReducer(
       }
     case "COACHING_SUCCEEDED":
       return state.status === "running-coaching" && state.requestId === action.requestId
-        ? finishCoaching(state, action.result)
+        ? finishCoaching(state, action.result, action.visualizationRequestId)
         : state;
     case "COACHING_REQUEST_UNCERTAIN":
       if (state.status !== "running-coaching" || state.requestId !== action.requestId) {
@@ -372,7 +406,7 @@ export function analysisFlowReducer(
       }
     case "RESULT_RECOVERED":
       return state.status === "recovering-result" && state.requestId === action.requestId
-        ? finishCoaching(state, action.result)
+        ? finishCoaching(state, action.result, action.visualizationRequestId)
         : state;
     case "RESULT_CONFIRMED_ABSENT":
       if (state.status !== "recovering-result" || state.requestId !== action.requestId) {
@@ -407,6 +441,68 @@ export function analysisFlowReducer(
             requestId: action.requestId,
           }
         : state;
+    case "VISUALIZATION_LOADED":
+      return state.status === "loading-visualization" && state.requestId === action.requestId
+        ? {
+            ...completedCoachingContext(state),
+            status: "viewer",
+            replay: action.replay,
+          }
+        : state;
+    case "VISUALIZATION_FAILED":
+      return state.status === "loading-visualization" && state.requestId === action.requestId
+        ? {
+            ...completedCoachingContext(state),
+            status: "visualization-error",
+            error: action.error,
+          }
+        : state;
+    case "RETRY_VISUALIZATION":
+      return state.status === "visualization-error" && state.error.retryable
+        ? {
+            ...completedCoachingContext(state),
+            status: "loading-visualization",
+            requestId: action.requestId,
+          }
+        : state;
+    case "RETURN_TO_PLAYER_SELECTION":
+      if (
+        state.status !== "running-coaching" &&
+        state.status !== "recovering-result" &&
+        state.status !== "result-recovery-error" &&
+        state.status !== "coaching-error" &&
+        state.status !== "loading-visualization" &&
+        state.status !== "visualization-error" &&
+        state.status !== "viewer"
+      ) {
+        return state;
+      }
+      return {
+        ...playerSelectionContext(state),
+        status: "choosing-player",
+      };
+    case "RESTORE_VIEWER":
+      if (state.status !== "choosing-player") {
+        return state;
+      }
+      {
+        const selectedPlayer = state.players.find(
+          ({ player_id }) => player_id === action.selectedPlayerId,
+        );
+        if (!selectedPlayer) {
+          return state;
+        }
+        const context = { ...state, selectedPlayer };
+        return resultMatchesSelection(action.result, context) &&
+          action.replay.replay_id === state.manifest.replay_id
+          ? {
+              ...context,
+              status: "viewer",
+              result: action.result,
+              replay: action.replay,
+            }
+          : state;
+      }
     case "RESET":
       return initialAnalysisFlowState;
   }

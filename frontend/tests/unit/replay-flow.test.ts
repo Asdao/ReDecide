@@ -13,6 +13,7 @@ import {
   replayAnalysisResultSchema,
   replayManifestSchema,
 } from "@/domain/replay";
+import type { ProcessedReplay } from "@/domain/replay-viewer";
 
 const file = new File(["demo"], "match.dem", { type: "application/octet-stream" });
 
@@ -55,6 +56,33 @@ const result = replayAnalysisResultSchema.parse({
     source: "round_score",
   },
 });
+
+const replay: ProcessedReplay = {
+  schema_version: "replay_visualization_v1",
+  replay_id: "api-flow-test",
+  source: "match.dem",
+  map: { name: "de_mirage", tick_rate: 64 },
+  players: manifest.players,
+  rounds: [{ round_num: 1, start: 100, end: 300 }],
+  events: [],
+  ticks: [
+    {
+      tick: 100,
+      round_num: 1,
+      player_id: "t1",
+      display_name: "T One",
+      side: "t",
+      X: 0,
+      Y: 0,
+      Z: 0,
+      health: 100,
+      armor: 0,
+      alive: true,
+      has_defuser: false,
+      place: null,
+    },
+  ],
+};
 
 const retryableError: ReplayFlowError = {
   code: "upload-failed",
@@ -138,13 +166,60 @@ describe("uploaded replay state machine", () => {
       type: "COACHING_SUCCEEDED",
       requestId: "coach-1",
       result,
+      visualizationRequestId: "visualization-1",
     });
     expect(completed).toMatchObject({
-      status: "result",
+      status: "loading-visualization",
       result: { replay_id: "api-flow-test" },
       selectedPlayer: { player_id: "t1" },
+      requestId: "visualization-1",
     });
-    expect(completed).not.toHaveProperty("requestId");
+
+    const viewer = analysisFlowReducer(completed, {
+      type: "VISUALIZATION_LOADED",
+      requestId: "visualization-1",
+      replay,
+    });
+    expect(viewer).toMatchObject({
+      status: "viewer",
+      replay: { replay_id: "api-flow-test" },
+      selectedPlayer: { player_id: "t1" },
+    });
+
+    const playerSelection = analysisFlowReducer(viewer, {
+      type: "RETURN_TO_PLAYER_SELECTION",
+    });
+    expect(playerSelection).toMatchObject({
+      status: "choosing-player",
+      analysis: { analysis_id: "analysis-1" },
+    });
+
+    const restoredViewer = analysisFlowReducer(playerSelection, {
+      type: "RESTORE_VIEWER",
+      selectedPlayerId: "t1",
+      result,
+      replay,
+    });
+    expect(restoredViewer).toMatchObject({
+      status: "viewer",
+      selectedPlayer: { player_id: "t1" },
+    });
+
+    const selectionAgain = analysisFlowReducer(restoredViewer, {
+      type: "RETURN_TO_PLAYER_SELECTION",
+    });
+
+    const secondCoaching = analysisFlowReducer(selectionAgain, {
+      type: "SELECT_PLAYER",
+      playerId: "ct1",
+      requestId: "coach-2",
+    });
+    expect(secondCoaching).toMatchObject({
+      status: "running-coaching",
+      selectedPlayer: { player_id: "ct1" },
+      analysis: { analysis_id: "analysis-1" },
+      requestId: "coach-2",
+    });
   });
 
   it("ignores stale requests, mismatched analysis IDs, and completions after reset", () => {
@@ -178,6 +253,7 @@ describe("uploaded replay state machine", () => {
         type: "COACHING_SUCCEEDED",
         requestId: "coach-stale",
         result,
+        visualizationRequestId: "visualization-stale",
       }),
     ).toBe(coaching);
 
@@ -187,6 +263,7 @@ describe("uploaded replay state machine", () => {
         type: "COACHING_SUCCEEDED",
         requestId: "coach-1",
         result,
+        visualizationRequestId: "visualization-1",
       }),
     ).toEqual(initialAnalysisFlowState);
   });
@@ -330,8 +407,13 @@ describe("uploaded replay state machine", () => {
       type: "RESULT_RECOVERED",
       requestId: "recovery-2",
       result,
+      visualizationRequestId: "visualization-recovered",
     });
-    expect(completed).toMatchObject({ status: "result", result });
+    expect(completed).toMatchObject({
+      status: "loading-visualization",
+      requestId: "visualization-recovered",
+      result,
+    });
   });
 
   it("allows an explicit retry after a confirmed coaching failure", () => {
@@ -361,6 +443,7 @@ describe("uploaded replay state machine", () => {
       type: "COACHING_SUCCEEDED",
       requestId: "coach-1",
       result: wrongReplayResult,
+      visualizationRequestId: "visualization-1",
     });
     expect(completed).toMatchObject({
       status: "coaching-error",

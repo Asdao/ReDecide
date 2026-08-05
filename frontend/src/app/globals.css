@@ -1345,6 +1345,12 @@ input[type="file"] {
   gap: 0.75rem;
 }
 
+.analysis-player-return {
+  min-height: 2.4rem;
+  padding: 0.55rem 0.9rem;
+  white-space: nowrap;
+}
+
 .analysis-toolbar-controls label {
   display: grid;
   grid-template-columns: auto minmax(7rem, auto);
@@ -1467,6 +1473,39 @@ input[type="file"] {
 
 .radar-overlay {
   z-index: 1;
+}
+
+.replay-map-loading-frame {
+  overflow: hidden;
+}
+
+.replay-map-loading-frame > img {
+  opacity: 0.54;
+}
+
+.replay-map-loading-copy {
+  position: absolute;
+  z-index: 3;
+  inset: 0;
+  display: grid;
+  place-content: center;
+  gap: 0.65rem;
+  background: rgb(7 10 14 / 46%);
+  padding: clamp(1.5rem, 5vw, 3rem);
+  text-align: center;
+  backdrop-filter: blur(2px);
+}
+
+.replay-map-loading-copy strong {
+  font-family: var(--font-display);
+  font-size: clamp(1.35rem, 3vw, 2.15rem);
+  text-transform: uppercase;
+}
+
+.replay-map-loading-copy span {
+  max-width: 32rem;
+  color: #d2d6db;
+  line-height: 1.55;
 }
 
 .player-marker {
@@ -1860,6 +1899,39 @@ input[type="file"] {
   --event-marker-color: var(--tactical-tan);
 }
 
+.replay-timeline-loading {
+  min-height: 6.7rem;
+  display: grid;
+  align-content: center;
+  gap: 0.9rem;
+  color: var(--muted);
+  font-family: var(--font-interface);
+  font-size: 0.75rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.replay-timeline-loading > div {
+  height: 0.55rem;
+  overflow: hidden;
+  background: var(--surface-raised);
+}
+
+.replay-timeline-loading > div::after {
+  width: 28%;
+  height: 100%;
+  display: block;
+  background: var(--accent);
+  content: "";
+  animation: replay-loading-track 1.8s ease-in-out infinite alternate;
+}
+
+@keyframes replay-loading-track {
+  to {
+    transform: translateX(255%);
+  }
+}
+
 .event-track button.coaching {
   --event-marker-color: #4f9cff;
 
@@ -1978,6 +2050,10 @@ input[type="file"] {
     flex: 1;
   }
 
+  .analysis-player-return {
+    flex: 1;
+  }
+
   .radar-panel {
     border-bottom: 1px solid var(--line);
   }
@@ -2023,6 +2099,11 @@ input[type="file"] {
   .analysis-toolbar-controls label {
     display: grid;
     grid-template-columns: 1fr;
+  }
+
+  .analysis-player-return {
+    width: 100%;
+    white-space: normal;
   }
 
   .analysis-toolbar-controls label > span {

@@ -7,7 +7,8 @@ import {
   getAnalysisPlayers,
   getAnalysisResult,
   getAnalysisStatus,
-  prepareReplayAnalysis,
+  getReplayVisualization,
+  prepareReplayWorkspace,
   runReplayCoaching,
   uploadReplay,
 } from "@/adapters/replay-api";
@@ -24,6 +25,7 @@ import {
 } from "@/domain/analysis-flow";
 import {
   isLandingChildHistoryEntry,
+  landingHistoryViewFromState,
   landingViewFromSearch,
   landingViewHref,
   withLandingHistoryMarker,
@@ -37,12 +39,24 @@ import { ProcessedReplaySelectorScreen } from "./ProcessedReplaySelectorScreen";
 import { ProcessedReplayPlayerScreen } from "./ProcessedReplayPlayerScreen";
 import { PROCESSED_REPLAYS, processedReplayById } from "@/domain/processed-replays";
 import type { ProcessedReplay } from "@/domain/replay-viewer";
+import { normalizeBackendReplay } from "@/domain/replay-viewer";
+import type { ReplayAnalysisResult } from "@/domain/replay";
+import { ReplayAnalysisScreen } from "./ReplayAnalysisScreen";
+import { ReplayMapLoadingScreen } from "./ReplayMapLoadingScreen";
 
 const PLAYER_PREPARATION_TIMEOUT_MS = 90_000;
 const PLAYER_POLL_INTERVAL_MS = 1_000;
 const COACHING_TIMEOUT_MS = 45_000;
 const RECOVERY_GRACE_MS = 1_500;
 const RECOVERY_TIMEOUT_MS = 45_000;
+const VISUALIZATION_TIMEOUT_MS = 90_000;
+const VISUALIZATION_POLL_INTERVAL_MS = 1_000;
+
+type UploadedViewerCache = {
+  selectedPlayerId: string;
+  result: ReplayAnalysisResult;
+  replay: ProcessedReplay;
+};
 
 const sampleStatuses = new Set<AnalysisFlowState["status"]>([
   "loading-samples",
@@ -106,6 +120,7 @@ export function DecisionFlow() {
       : "processed-player"
     : state.status;
   const previousScreen = useRef(currentScreen);
+  const uploadedViewerCache = useRef<UploadedViewerCache | undefined>(undefined);
   const requestSequence = useRef(0);
   const nextRequestId = useCallback((operation: string) => {
     requestSequence.current += 1;
@@ -165,6 +180,20 @@ export function DecisionFlow() {
 
   useEffect(() => {
     const syncFromLocation = () => {
+      const historyView = landingHistoryViewFromState(window.history.state);
+      if (historyView === "upload") {
+        setProcessedReplaysOpen(false);
+        setProcessedReplay({ status: "catalog" });
+        dispatch({ type: "RETURN_TO_PLAYER_SELECTION" });
+        return;
+      }
+      if (historyView === "upload-viewer") {
+        const cached = uploadedViewerCache.current;
+        if (cached) {
+          dispatch({ type: "RESTORE_VIEWER", ...cached });
+        }
+        return;
+      }
       applyLandingView(landingViewFromSearch(window.location.search));
     };
 
@@ -266,7 +295,7 @@ export function DecisionFlow() {
 
     const controller = new AbortController();
     const requestId = state.requestId;
-    prepareReplayAnalysis(state.manifest.replay_id, controller.signal)
+    prepareReplayWorkspace(state.manifest.replay_id, controller.signal)
       .then((analysis) =>
         dispatch({
           type: "ANALYSIS_PREPARED",
@@ -389,7 +418,14 @@ export function DecisionFlow() {
       state.selectedPlayer.player_id,
       controller.signal,
     )
-      .then((result) => dispatch({ type: "COACHING_SUCCEEDED", requestId, result }))
+      .then((result) =>
+        dispatch({
+          type: "COACHING_SUCCEEDED",
+          requestId,
+          result,
+          visualizationRequestId: nextRequestId("visualization"),
+        }),
+      )
       .catch((error: unknown) => {
         if (isAbortError(error) && !timedOut) {
           return;
@@ -435,7 +471,12 @@ export function DecisionFlow() {
           return;
         }
         if (recovered.state === "ready") {
-          dispatch({ type: "RESULT_RECOVERED", requestId, result: recovered.value });
+          dispatch({
+            type: "RESULT_RECOVERED",
+            requestId,
+            result: recovered.value,
+            visualizationRequestId: nextRequestId("visualization"),
+          });
           return;
         }
 
@@ -492,6 +533,113 @@ export function DecisionFlow() {
         clearTimeout(timer);
       }
     };
+  }, [nextRequestId, state]);
+
+  useEffect(() => {
+    if (state.status !== "loading-visualization") {
+      return;
+    }
+
+    const controller = new AbortController();
+    const requestId = state.requestId;
+    const replayId = state.manifest.replay_id;
+    const deadline = Date.now() + VISUALIZATION_TIMEOUT_MS;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    let cancelled = false;
+
+    const poll = async () => {
+      try {
+        const response = await getReplayVisualization(replayId, controller.signal);
+        if (cancelled) return;
+
+        if (response.state === "failed") {
+          dispatch({
+            type: "VISUALIZATION_FAILED",
+            requestId,
+            error: {
+              code: "visualization-failed",
+              message: "The replay map could not be generated for this demo.",
+              retryable: false,
+            },
+          });
+          return;
+        }
+
+        if (response.state === "ready") {
+          let replay: ProcessedReplay;
+          try {
+            replay = normalizeBackendReplay(response.value);
+          } catch {
+            dispatch({
+              type: "VISUALIZATION_FAILED",
+              requestId,
+              error: {
+                code: "invalid-response",
+                message: "The replay map data was not in a supported format.",
+                retryable: false,
+              },
+            });
+            return;
+          }
+          if (
+            replay.replay_id !== replayId ||
+            replay.source !== state.result.source ||
+            replay.map.name !== state.result.map_name
+          ) {
+            dispatch({
+              type: "VISUALIZATION_FAILED",
+              requestId,
+              error: {
+                code: "invalid-response",
+                message: "The replay map did not match the completed analysis.",
+                retryable: false,
+              },
+            });
+            return;
+          }
+          uploadedViewerCache.current = {
+            selectedPlayerId: state.selectedPlayer.player_id,
+            result: state.result,
+            replay,
+          };
+          dispatch({ type: "VISUALIZATION_LOADED", requestId, replay });
+          return;
+        }
+
+        if (Date.now() >= deadline) {
+          dispatch({
+            type: "VISUALIZATION_FAILED",
+            requestId,
+            error: {
+              code: "visualization-failed",
+              message: "The replay map is taking longer than expected to become available.",
+              retryable: true,
+            },
+          });
+          return;
+        }
+        timer = setTimeout(poll, VISUALIZATION_POLL_INTERVAL_MS);
+      } catch (error: unknown) {
+        if (!isAbortError(error)) {
+          dispatch({
+            type: "VISUALIZATION_FAILED",
+            requestId,
+            error: flowError(
+              error,
+              "visualization-failed",
+              "The replay map could not be loaded.",
+            ),
+          });
+        }
+      }
+    };
+
+    void poll();
+    return () => {
+      cancelled = true;
+      controller.abort();
+      if (timer) clearTimeout(timer);
+    };
   }, [state]);
 
   useEffect(() => {
@@ -543,6 +691,46 @@ export function DecisionFlow() {
     );
     applyLandingView("home");
   };
+  const returnToPlayerSelection = () => {
+    if (landingHistoryViewFromState(window.history.state) === "upload-viewer") {
+      window.history.back();
+      return;
+    }
+    dispatch({ type: "RETURN_TO_PLAYER_SELECTION" });
+  };
+
+  if (state.status === "viewer") {
+    return (
+      <ReplayAnalysisScreen
+        initialPlayerId={state.selectedPlayer.player_id}
+        initialReplay={state.replay}
+        initialAnalysis={state.result}
+        uploaded
+        onChoosePlayer={returnToPlayerSelection}
+      />
+    );
+  }
+
+  if (
+    state.status === "running-coaching" ||
+    state.status === "recovering-result" ||
+    state.status === "loading-visualization"
+  ) {
+    return (
+      <ReplayMapLoadingScreen
+        manifest={state.manifest}
+        player={state.selectedPlayer}
+        phase={
+          state.status === "running-coaching"
+            ? "coaching"
+            : state.status === "recovering-result"
+              ? "recovery"
+              : "visualization"
+        }
+        onReturnToPlayers={returnToPlayerSelection}
+      />
+    );
+  }
 
   let content;
   if (processedReplaysOpen) {
@@ -624,13 +812,19 @@ export function DecisionFlow() {
         onRetryPlayers={() =>
           dispatch({ type: "RETRY_PLAYERS", requestId: nextRequestId("players") })
         }
-        onSelectPlayer={(playerId) =>
+        onSelectPlayer={(playerId) => {
+          uploadedViewerCache.current = undefined;
+          window.history.pushState(
+            withLandingHistoryMarker(window.history.state, "upload-viewer", true),
+            "",
+            landingViewHref("home", window.location.search),
+          );
           dispatch({
             type: "SELECT_PLAYER",
             playerId,
             requestId: nextRequestId("coaching"),
-          })
-        }
+          });
+        }}
         onRetryCoaching={() =>
           dispatch({ type: "RETRY_COACHING", requestId: nextRequestId("coaching") })
         }
@@ -640,6 +834,13 @@ export function DecisionFlow() {
             requestId: nextRequestId("recovery"),
           })
         }
+        onRetryVisualization={() =>
+          dispatch({
+            type: "RETRY_VISUALIZATION",
+            requestId: nextRequestId("visualization"),
+          })
+        }
+        onReturnToPlayers={returnToPlayerSelection}
       />
     );
   }
