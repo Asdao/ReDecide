@@ -285,6 +285,29 @@ describe("uploaded replay state machine", () => {
       }),
     ).toBe(recovering);
 
+    const confirmedAbsent = analysisFlowReducer(recovering, {
+      type: "RESULT_CONFIRMED_ABSENT",
+      requestId: "recovery-1",
+      error: {
+        code: "coaching-failed",
+        message: "No completed result was found.",
+        retryable: true,
+      },
+    });
+    expect(confirmedAbsent).toMatchObject({
+      status: "coaching-error",
+      mayHaveCompleted: false,
+    });
+    expect(
+      analysisFlowReducer(confirmedAbsent, {
+        type: "RETRY_COACHING",
+        requestId: "coach-after-confirmation",
+      }),
+    ).toMatchObject({
+      status: "running-coaching",
+      requestId: "coach-after-confirmation",
+    });
+
     const recoveryError = analysisFlowReducer(recovering, {
       type: "RESULT_RECOVERY_FAILED",
       requestId: "recovery-1",

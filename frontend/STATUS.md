@@ -4,7 +4,7 @@ Last verified: 2026-08-05 (Asia/Singapore)
 
 ## Status
 
-**Backend-driven sample selection implemented; replay flow foundations ready.**
+**Uploaded `.dem` coaching flow and backend-driven sample selection implemented.**
 
 The landing page's `Use a sample match` action now opens a dedicated sample
 selector and calls `GET /api/samples`. Successful responses are validated with
@@ -26,7 +26,8 @@ repository's base-thumbnail convention and use a remote image with an explicit
 missing-image fallback. The UI attributes the thumbnail source.
 
 `AnalysisProgressScreen.tsx` and the old saved-fixture loading path are no
-longer part of the rendered flow. Replay upload remains visibly disabled.
+longer part of the rendered flow. The landing page now exposes a labelled,
+keyboard-focusable `.dem` picker alongside the existing sample-match action.
 
 The frontend now also has a typed, UI-independent adapter for the complete
 uploaded-replay API sequence. It uploads one `.dem` through
@@ -53,10 +54,28 @@ shapes, including unique stable player IDs, valid round boundaries, selected
 decision ownership, and agreement between the selected decision and coaching
 analysis.
 
+The replay state machine is now connected to the adapter and rendered screens.
+Choosing a `.dem` uploads it once, prepares analysis by `replay_id`, polls the
+documented player endpoint until ready, displays player names while submitting
+stable `player_id` values, allows only players with a coaching decision, and
+runs the coach with a 45-second client allowance for the documented 30-second
+request. A lost or timed-out coaching response checks `GET /result` after a
+grace period before any new model call can be enabled. Reset aborts browser
+requests and stale request IDs prevent late completions from replacing the
+active flow.
+
+Responsive replay screens cover upload, preparation, player discovery,
+selection, coaching, ambiguous-result recovery, scoped errors/retries, and the
+validated coaching result. Progress uses one polite live region, blocking
+errors use alerts, headings receive focus on state changes, and later replay
+outcomes are not rendered in the coaching result.
+
 ## Important paths
 
-- `src/components/DecisionFlow.tsx` - request lifecycle, abort handling, and
-  sample-selection state wiring
+- `src/components/DecisionFlow.tsx` - sample and replay request effects,
+  polling, timeouts, cancellation, request ownership, and screen routing
+- `src/components/ReplayFlowScreen.tsx` - upload/preparation progress, player
+  selection, coaching/recovery, safe errors, and final coaching result
 - `src/components/SampleSelectorScreen.tsx` - loading, error, empty, list, map
   thumbnail, unavailable, selecting, selected, and retry UI
 - `src/components/LandingScreen.tsx` - source selection entry point
@@ -70,7 +89,8 @@ analysis.
 - `src/domain/analysis-flow.ts` - explicit sample and uploaded-replay state
   machine, request ownership, scoped retries, and coaching recovery
 - `public/maps/de_mirage.png` - pinned current-sample thumbnail
-- `src/app/globals.css` - horizontal sample bars and responsive layout
+- `src/app/globals.css` - sample and replay screens, responsive layout, focus,
+  progress, error, selector, and result styling
 - `tests/unit/analysis-flow.test.ts` - zero/one/many, unavailable, selection,
   error/retry/reset, and map-name coverage
 - `tests/unit/replay-api.test.ts` - multipart upload, endpoint payloads,
@@ -81,6 +101,8 @@ analysis.
 - `tests/unit/replay-flow.test.ts` - complete state transitions, stable IDs,
   stale-response rejection, scoped retries, invalid selection, reset, and
   result recovery
+- `tests/unit/replay-ui.test.ts` - enabled upload input, player availability,
+  truthful coaching wait, live-region semantics, and outcome-safe result UI
 
 ## Configuration
 
@@ -95,7 +117,7 @@ folder on `raw.githubusercontent.com` for non-bundled future maps.
 
 From `frontend/`, `pnpm run verify` passes:
 
-- Vitest: 5 files, 32 tests passed
+- Vitest: 6 files, 36 tests passed
 - TypeScript: passed
 - ESLint: passed with no warnings
 - Next.js production build: passed; `/` and `/_not-found` prerendered
@@ -110,22 +132,35 @@ Browser verification against the documented sample responses confirmed:
 - no console warnings or errors; and
 - no horizontal overflow at a 390-by-844 narrow-screen override.
 
+Browser verification of the uploaded-replay UI also confirmed:
+
+- the `.dem` picker is enabled, labelled, and restricted with `accept=".dem"`;
+- desktop player selection distinguishes selectable and unavailable players;
+- the coaching screen truthfully communicates the approximately 30-second wait;
+- the coaching error screen exposes an enabled, scoped retry;
+- the completed result shows the validated player, round, decision, and advice;
+- desktop and 390-by-844 layouts have no horizontal overflow; and
+- the final landing page reports no hydration errors.
+
 ## Known limitations and next handoff
 
 - Only the thumbnail for the backend's current Mirage fixture is pinned
   locally. Add reviewed local assets to `public/maps/` and the bundled allowlist
   as new backend samples are introduced; otherwise the remote/fallback path is
   used.
-- The next player-selection screen is not implemented. The selector stops
+- The next player-selection screen for the compatibility sample path is not implemented. It stops
   after preserving the validated `analysis_id` and player list returned by
   `/api/analyze`.
-- Replay upload, live replay preparation, coaching, intent, and final result UI
-  remain outside the rendered flow. The transport, contracts, and state machine
-  are ready, but the landing upload control remains disabled until effects and
-  screens are wired.
+- A real native `.dem` has not yet completed the full backend flow, matching the
+  backend's documented current limitation. Browser QA used validated replay
+  fixtures for post-upload states and did not send user replay data.
+- Visualization JSON retrieval is implemented in the adapter but is not yet
+  rendered as the future radar/timeline workspace. Player intent remains
+  disabled because no public backend contract exists.
 
 ## Contract/API impact
 
 No backend contract changes. In addition to the compatibility sample APIs, the
 frontend adapter now implements the documented `/api/replay/*` and
-`/api/analysis/*` contracts without changing the rendered UI.
+`/api/analysis/*` contracts and the rendered UI consumes the supported upload,
+preparation, player-selection, coaching, and result endpoints.
