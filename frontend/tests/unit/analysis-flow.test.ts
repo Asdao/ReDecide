@@ -1,42 +1,92 @@
 import { describe, expect, it } from "vitest";
-import { loadSavedExample } from "@/adapters/saved-example";
 import {
   analysisFlowReducer,
   initialAnalysisFlowState,
 } from "@/domain/analysis-flow";
+import { mapAssetKey, mapThumbnailUrl, samplesResponseSchema } from "@/domain/samples";
 
-describe("saved example flow", () => {
-  it("loads and validates the saved decision packet", () => {
-    const packet = loadSavedExample();
+const sample = {
+  sample_id: "fixture-mirage-01",
+  display_name: "Mirage post-contact example",
+  description: "Low-health repeat exposure after first contact",
+  map: "de_mirage",
+  players: ["PlayerA"],
+  recommended_player: "PlayerA",
+  available: true,
+};
 
-    expect(packet.decision_id).toBe("fixture-match-7-PlayerA-12345");
-    expect(packet.known_before_decision).toHaveLength(2);
+const preparation = {
+  stage: "PLAYER_SELECTION_REQUIRED" as const,
+  analysis_id: "sample:fixture-mirage-01",
+  players: ["PlayerA"],
+  decision_packet: null,
+  neutral_summary: null,
+};
+
+describe("backend sample flow", () => {
+  it("validates zero, one, and many sample responses", () => {
+    expect(samplesResponseSchema.parse({ samples: [] }).samples).toEqual([]);
+    expect(samplesResponseSchema.parse({ samples: [sample] }).samples).toHaveLength(1);
+    expect(samplesResponseSchema.parse({ samples: [sample, { ...sample, sample_id: "two" }] }).samples).toHaveLength(2);
   });
 
-  it("moves from the landing page to loading and ready", () => {
-    const loading = analysisFlowReducer(initialAnalysisFlowState, { type: "OPEN_EXAMPLE" });
-    expect(loading).toEqual({ status: "loading-example" });
+  it("moves from the landing page to a loaded backend list", () => {
+    const loading = analysisFlowReducer(initialAnalysisFlowState, { type: "OPEN_SAMPLES" });
+    expect(loading).toEqual({ status: "loading-samples" });
 
-    const packet = loadSavedExample();
-    const ready = analysisFlowReducer(loading, { type: "EXAMPLE_LOADED", packet });
-    expect(ready).toEqual({ status: "example-ready", packet });
+    const ready = analysisFlowReducer(loading, { type: "SAMPLES_LOADED", samples: [sample] });
+    expect(ready).toEqual({ status: "samples-ready", samples: [sample] });
   });
 
-  it("supports a safe error, retry, and reset", () => {
-    const loading = analysisFlowReducer(initialAnalysisFlowState, { type: "OPEN_EXAMPLE" });
-    const failed = analysisFlowReducer(loading, { type: "EXAMPLE_FAILED" });
-    expect(failed).toEqual({ status: "example-error" });
+  it("selects an available sample and preserves the backend preparation", () => {
+    const ready = { status: "samples-ready" as const, samples: [sample] };
+    const selecting = analysisFlowReducer(ready, {
+      type: "SELECT_SAMPLE",
+      sampleId: sample.sample_id,
+    });
+    expect(selecting).toEqual({
+      status: "selecting-sample",
+      samples: [sample],
+      sampleId: sample.sample_id,
+    });
 
-    const retrying = analysisFlowReducer(failed, { type: "OPEN_EXAMPLE" });
-    expect(retrying).toEqual({ status: "loading-example" });
+    expect(
+      analysisFlowReducer(selecting, {
+        type: "SAMPLE_SELECTED",
+        sampleId: sample.sample_id,
+        preparation,
+      }),
+    ).toEqual({
+      status: "sample-selected",
+      samples: [sample],
+      sampleId: sample.sample_id,
+      preparation,
+    });
+  });
+
+  it("does not select an unavailable sample", () => {
+    const unavailable = { ...sample, available: false };
+    const ready = { status: "samples-ready" as const, samples: [unavailable] };
+    expect(
+      analysisFlowReducer(ready, { type: "SELECT_SAMPLE", sampleId: unavailable.sample_id }),
+    ).toEqual(ready);
+  });
+
+  it("supports safe list and selection errors, retry, and reset", () => {
+    const loading = analysisFlowReducer(initialAnalysisFlowState, { type: "OPEN_SAMPLES" });
+    const failed = analysisFlowReducer(loading, { type: "SAMPLES_FAILED" });
+    expect(failed).toEqual({ status: "samples-error" });
+
+    const retrying = analysisFlowReducer(failed, { type: "OPEN_SAMPLES" });
+    expect(retrying).toEqual({ status: "loading-samples" });
     expect(analysisFlowReducer(retrying, { type: "RESET" })).toEqual({ status: "choose" });
   });
 
-  it("ignores a loaded packet unless an example is being opened", () => {
-    const packet = loadSavedExample();
-
-    expect(
-      analysisFlowReducer(initialAnalysisFlowState, { type: "EXAMPLE_LOADED", packet }),
-    ).toEqual(initialAnalysisFlowState);
+  it("maps backend map names to the repository thumbnail convention", () => {
+    expect(mapAssetKey("de_mirage")).toBe("de_mirage");
+    expect(mapAssetKey("Mirage")).toBe("de_mirage");
+    expect(mapAssetKey("Office")).toBe("cs_office");
+    expect(mapAssetKey("Pool Day")).toBe("ar_pool_day");
+    expect(mapThumbnailUrl("de_mirage")).toBe("/maps/de_mirage.png");
   });
 });
