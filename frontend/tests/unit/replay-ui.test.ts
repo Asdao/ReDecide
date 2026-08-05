@@ -224,7 +224,6 @@ describe("sample replay screens", () => {
     const html = renderToStaticMarkup(
       createElement(ProductHeader, {
         brandHref: "/",
-        onBrandClick: () => undefined,
       }),
     );
 

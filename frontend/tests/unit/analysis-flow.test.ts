@@ -52,12 +52,15 @@ describe("backend sample flow", () => {
     const existingState = { nextInternal: "preserved" };
     const home = withLandingHistoryMarker(existingState, "home", false);
     const showcase = withLandingHistoryMarker(home, "showcase", true);
+    const upload = withLandingHistoryMarker(home, "upload", true);
 
     expect(home).toMatchObject(existingState);
     expect(isLandingChildHistoryEntry(home)).toBe(false);
     expect(isLandingChildHistoryEntry(showcase)).toBe(true);
     expect(isLandingChildHistoryEntry(showcase, "showcase")).toBe(true);
     expect(isLandingChildHistoryEntry(showcase, "samples")).toBe(false);
+    expect(isLandingChildHistoryEntry(upload)).toBe(true);
+    expect(isLandingChildHistoryEntry(upload, "upload")).toBe(true);
     expect(isLandingChildHistoryEntry(null)).toBe(false);
   });
 

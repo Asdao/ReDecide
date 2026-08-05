@@ -20,17 +20,22 @@ processed showcase use the steel-blue secondary treatment. Their concise help
 text shares one line below the action row and is revealed only for the hovered
 or keyboard-focused action, with tan help text for upload and steel-blue help
 text for the secondary actions. The secondary hover fill now uses a single
-diagonal wipe without the earlier arrow-like edge. The product logo resets any
-in-page sample, upload, or showcase state and returns to the landing screen,
-with `/` retained as its navigation fallback.
+diagonal wipe without the earlier arrow-like edge. The product logo is a normal
+link to `/`, so activating it performs a fresh page navigation and clears all
+in-memory sample, upload, or showcase state.
 
 Backend samples and the processed showcase now use query-backed browser history
 entries (`?view=samples` and `?view=showcase`). Browser Back returns to the
 landing screen, Forward restores and reloads the selected view, the visible
-back controls and product logo consume owned child entries safely, and direct
-view links receive a local landing entry so their first Back remains inside the
-app. Unrelated query parameters are preserved. Returning from `/analysis` also
-restores the showcase player selector rather than losing its source context.
+back controls consume owned child entries safely, and direct view links receive
+a local landing entry so their first Back remains inside the app. Unrelated
+query parameters are preserved. Returning from `/analysis` also restores the
+showcase player selector rather than losing its source context.
+Selecting a local `.dem` also pushes an owned, same-URL upload history entry,
+so browser Back returns to the landing state and truncates any stale Forward
+entry that could otherwise reopen the processed showcase. The upload itself is
+not restored on Forward because browsers do not allow local `File` objects to
+be reconstructed safely.
 
 Every loading surface now uses the same rotating orange perimeter around its
 content box, including sample retrieval, processed-showcase loading, browser

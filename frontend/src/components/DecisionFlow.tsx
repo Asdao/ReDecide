@@ -508,6 +508,14 @@ export function DecisionFlow() {
     );
     applyLandingView(view);
   };
+  const selectReplayFile = (file: File) => {
+    window.history.pushState(
+      withLandingHistoryMarker(window.history.state, "upload", true),
+      "",
+      landingViewHref("home", window.location.search),
+    );
+    dispatch({ type: "SELECT_REPLAY_FILE", file, requestId: nextRequestId("upload") });
+  };
   const returnHome = () => {
     if (isLandingChildHistoryEntry(window.history.state)) {
       window.history.back();
@@ -543,9 +551,7 @@ export function DecisionFlow() {
       <LandingScreen
         onOpenSamples={() => openLandingView("samples")}
         onOpenShowcase={() => openLandingView("showcase")}
-        onSelectReplay={(file) =>
-          dispatch({ type: "SELECT_REPLAY_FILE", file, requestId: nextRequestId("upload") })
-        }
+        onSelectReplay={selectReplayFile}
       />
     );
   } else if (isSampleState(state)) {
@@ -606,13 +612,7 @@ export function DecisionFlow() {
 
   return (
     <main className="shell">
-      <ProductHeader
-        brandHref="/"
-        onBrandClick={(event) => {
-          event.preventDefault();
-          returnHome();
-        }}
-      />
+      <ProductHeader brandHref="/" />
       {content}
     </main>
   );

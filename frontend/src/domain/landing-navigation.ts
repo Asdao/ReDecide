@@ -1,7 +1,8 @@
 export type LandingView = "home" | "samples" | "showcase";
+export type LandingHistoryView = LandingView | "upload";
 
 type LandingHistoryMarker = {
-  view: LandingView;
+  view: LandingHistoryView;
   child: boolean;
 };
 
@@ -30,7 +31,7 @@ export function landingViewHref(view: LandingView, currentSearch = ""): string {
 
 export function withLandingHistoryMarker(
   state: unknown,
-  view: LandingView,
+  view: LandingHistoryView,
   child: boolean,
 ): Record<string, unknown> {
   return {
@@ -41,7 +42,7 @@ export function withLandingHistoryMarker(
 
 export function isLandingChildHistoryEntry(
   state: unknown,
-  view?: Exclude<LandingView, "home">,
+  view?: Exclude<LandingHistoryView, "home">,
 ): boolean {
   if (!isRecord(state)) {
     return false;
@@ -53,6 +54,6 @@ export function isLandingChildHistoryEntry(
   }
 
   return view === undefined
-    ? marker.view === "samples" || marker.view === "showcase"
+    ? marker.view === "samples" || marker.view === "showcase" || marker.view === "upload"
     : marker.view === view;
 }
