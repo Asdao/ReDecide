@@ -8,15 +8,17 @@ Branch: `05/evidence_I_think`
 
 ## Current status
 
-**Person 5 workspace setup is in progress. Research, human review, QA, deck,
-demo, disclosures, and final submission verification have not yet been
-completed.**
+**Person 5 workspace setup and the initial secondary-research review are
+complete. Human review, QA, deck, demo, disclosures, and final submission
+verification have not yet been completed.**
 
-The personal roadmap has been created. The next work is to confirm the exact
-submission deadline and final demonstrable product scope, then begin cited
-secondary research. Formal user interviews may not be practical within the
-remaining timeline, so any desk research will be labelled as secondary
-research rather than user validation.
+The research draft compares public CS2 analytics, demo-review, and training
+workflows; reviews outcome-bias research and explainable-AI guidance; and keeps
+unsupported product claims out of the proposed pitch. Formal user interviews
+were not conducted, so the findings are labelled as secondary research rather
+than user validation. The next document is the human-review protocol, while
+the team confirms the exact deadline, final product scope, and available
+decision cases.
 
 ## Completed
 
@@ -25,15 +27,21 @@ research rather than user validation.
 - [x] Created the working branch `05/evidence_I_think` from `main`.
 - [x] Created `docs/PERSON_5_ROADMAP_(YJ).md`.
 - [x] Defined the `_(YJ)` naming convention for personal working files.
+- [x] Created `docs/USER_RESEARCH_(YJ).md`.
+- [x] Reviewed and registered 13 secondary sources covering competitors,
+      outcome bias, explainable AI, and anecdotal community signals.
+- [x] Documented safe pitch wording, unsupported claims, and research
+      limitations.
 
 ## In progress
 
 - [ ] Confirming the final product and submission details with the team.
-- [ ] Preparing the secondary-research method and source criteria.
+- [ ] Preparing the masked human-review protocol.
+- [ ] Requesting genuine decision cases and system outputs from Persons 2 and
+      3.
 
 ## Not started
 
-- [ ] Cited user-problem and competitor research
 - [ ] Human-review protocol
 - [ ] Anonymized review cases
 - [ ] QA execution and issue reporting
@@ -78,7 +86,7 @@ are used in the deck, demo, or submission claims.
 
 | Measure | Current count | Notes |
 | --- | ---: | --- |
-| Secondary sources reviewed | 0 | Research not started |
+| Secondary sources reviewed | 13 | Initial source register completed |
 | Personal interviews | 0 | May not be feasible within timeline |
 | Asynchronous research responses | 0 | Optional convenience sample |
 | Knowledgeable human reviewers | 0 | Not yet recruited |
@@ -128,12 +136,14 @@ severity, and supporting evidence.
 
 1. Send the decision questions above to the relevant team members.
 2. Record the exact deadline and final demo scope.
-3. Create `docs/USER_RESEARCH_(YJ).md` after the research method is agreed.
+3. Create `docs/HUMAN_REVIEW_PROTOCOL_(YJ).md`.
 4. Ask Persons 2 and 3 how many genuine masked decision cases are available.
-5. Update this file whenever a blocker or deliverable materially changes.
+5. Review the research claims with the team before using them in the deck.
+6. Update this file whenever a blocker or deliverable materially changes.
 
 ## Update log
 
 | Date | Update | Evidence or next action |
 | --- | --- | --- |
 | 2026-08-05 | Created initial Person 5 status | Confirm deadline and product truth with team |
+| 2026-08-05 | Completed initial secondary-research draft with 13 registered sources | Review claims with team and prepare human-review protocol |
