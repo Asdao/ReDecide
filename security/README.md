@@ -58,6 +58,12 @@ historical trust-downgrade check. The exceptions do not apply to later
 versions. The agent harness similarly exempts only its already-locked
 `undici-types@6.21.0` from the trust-history check.
 
+The workspace policies also pin three audited transitive security fixes:
+frontend forces `postcss@8.5.23` and `sharp@0.35.0`, and the agent harness
+forces `undici@8.9.0`. Their exact versions are temporarily exempt from the
+release-age delay because they remediate current advisories; replacement
+versions require another reviewed lockfile change.
+
 These controls reduce supply-chain risk; they cannot prove that a package was
 benign when it was published. Keep provider tokens and production credentials
 out of dependency-install and untrusted development environments.

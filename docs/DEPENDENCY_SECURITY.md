@@ -52,6 +52,10 @@ Release-age or trust exceptions must be exact-version selectors and include a
 review rationale in [`../security/README.md`](../security/README.md). Broad
 package or scope exclusions are rejected by the repository checker.
 
+Security overrides are likewise exact and enforced by the checker. They exist
+only for current audited transitive fixes (`postcss`, `sharp`, and `undici`),
+not as permission for unattended upgrades.
+
 ## CI gate
 
 Every pull request and push to `main` runs the dependency-security workflow; it

@@ -4,8 +4,14 @@ blockExoticSubdeps: true
 trustPolicy: no-downgrade
 verifyDepsBeforeRun: error
 
+minimumReleaseAgeExclude:
+  - undici@8.9.0
+
 trustPolicyExclude:
   - undici-types@6.21.0
+
+overrides:
+  undici: 8.9.0
 
 allowBuilds:
   '@google/genai': false

@@ -5,6 +5,10 @@ import { fileURLToPath } from "node:url";
 const securityDir = dirname(fileURLToPath(import.meta.url));
 const repoRoot = dirname(securityDir);
 const projects = ["frontend", "agent-harness"];
+const requiredOverrides = {
+  frontend: { postcss: "8.5.23", sharp: "0.35.0" },
+  "agent-harness": { undici: "8.9.0" },
+};
 
 const failures = [];
 
@@ -48,6 +52,19 @@ function policyList(text, key) {
   return values;
 }
 
+function policyMap(text, key) {
+  const lines = text.split(/\r?\n/);
+  const start = lines.findIndex((line) => line.trim() === `${key}:`);
+  if (start === -1) return {};
+  const values = {};
+  for (let index = start + 1; index < lines.length; index += 1) {
+    const match = /^\s{2}([^:#]+):\s+([^#\s]+)\s*$/.exec(lines[index]);
+    if (!match) break;
+    values[match[1].replace(/^['"]|['"]$/g, "")] = match[2].replace(/^['"]|['"]$/g, "");
+  }
+  return values;
+}
+
 for (const project of projects) {
   const projectDir = join(repoRoot, project);
   const packageJson = JSON.parse(await readFile(join(projectDir, "package.json"), "utf8"));
@@ -79,6 +96,10 @@ for (const project of projects) {
         fail(`${project}: ${key} must contain exact package versions, found ${selector}`);
       }
     }
+  }
+  const overrides = policyMap(workspace, "overrides");
+  for (const [name, version] of Object.entries(requiredOverrides[project])) {
+    if (overrides[name] !== version) fail(`${project}: security override ${name} must be pinned to ${version}`);
   }
 
   if (!/^lockfileVersion:\s*['"]?9\.0['"]?/m.test(lockfile)) {
