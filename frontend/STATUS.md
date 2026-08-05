@@ -4,29 +4,48 @@ Last verified: 2026-08-05 (Asia/Singapore)
 
 ## Status
 
-**Uploaded `.dem` coaching flow and backend-driven sample selection implemented.**
+**Uploaded `.dem` coaching flow, processed-showcase player selection, and the first 2D replay workspace are implemented.**
 
-The landing page's `Use a sample match` action now opens a dedicated sample
-selector and calls `GET /api/samples`. Successful responses are validated with
-strict Zod schemas before rendering. The same horizontal-list UI handles zero,
-one, or many samples and disables backend entries marked unavailable.
+The landing page's `Use a sample match` action now opens the bundled,
+already-processed `mirage-showcase.replay.json` rather than sending the sample
+through the backend. It preserves the uploaded-replay interaction order: the
+showcase loads, the user chooses one of the 10 stable player IDs, and the
+selection is carried into `/analysis`. Upload, demo parsing, analysis
+preparation, and coaching calls are skipped only for this explicit showcase
+path. The native `.dem` action continues to use the complete backend flow.
 
-Each sample is a full-width selectable bar with its map thumbnail on the left,
-backend-provided name, map, description, player count, recommended player, and
-availability/selection state. Selecting an available bar submits its stable
-`sample_id` to `POST /api/analyze`, validates the preparation response, and
-reports how many players the backend made available for the next step. List and
-selection errors have separate safe retry paths. Reset aborts in-flight work,
-and request cleanup prevents late responses from replacing newer state.
+The new analysis route renders the reviewed local Mirage radar with the
+selected player in blue, same-side players in green, and opponents in red.
+Team shapes, a selected-player ring, eliminated-player treatment, an accessible
+horizontal legend layered above the radar at the bottom center, and tooltips
+keep the view understandable without relying on color alone. The radar has no
+card border or opaque backing, so its transparent map asset floats in the
+workspace. Positions are derived from the processed snapshots with the reviewed
+Mirage overview origin and scale.
 
-The current backend sample is Mirage. Its reviewed thumbnail from
-`MurkyYT/cs2-map-icons` is bundled locally so it does not depend on GitHub being
-reachable at runtime. Other canonical map names are normalized to that
-repository's base-thumbnail convention and use a remote image with an explicit
-missing-image fallback. Visible map labels in both the sample selector and
-uploaded-replay flow use official names instead of internal IDs. Unknown future
-or workshop IDs are safely humanized by removing their mode prefix and
-separating their slug. The UI attributes the thumbnail source.
+A single playback clock synchronizes the radar, round selector, full-match
+timeline, scrubber, elapsed time, and event inspector. The viewer supports
+play/pause, five-second rewind/fast-forward, 0.5x through 8x playback, direct
+scrubbing, round jumps, and stable kill/objective event markers. Selecting a
+marker seeks to its exact tick and exposes the known event facts without
+starting another model call. Timeline markers are perspective-specific: they
+show only damage received and deaths where the selected player is the victim,
+and refresh immediately when the perspective changes. Playback detects the
+first selected-player event crossed by the authoritative clock, seeks to its
+exact tick, opens the event inspector, and pauses automatically. Event and round
+tracks use the range thumb's usable inset so markers align with the playback
+thumb. The layout keeps the timeline full-width at the bottom on desktop and
+sticky on narrow screens.
+The moment inspector is absent during ordinary playback. Selecting an event
+slides a wider inspector in from the right and shifts the centered radar
+slightly left; clearing the event or resuming playback restores the centered
+map.
+
+The earlier backend-driven compatibility sample selector, schemas, adapter,
+reducer states, and tests remain in the codebase, but the landing action no
+longer enters that path. They continue to cover `GET /api/samples` and
+`POST /api/analyze` without being confused with the processed visualization
+showcase.
 
 `AnalysisProgressScreen.tsx` and the old saved-fixture loading path are no
 longer part of the rendered flow. The landing page now exposes a labelled,
@@ -77,8 +96,19 @@ outcomes are not rendered in the coaching result.
 
 ## Important paths
 
-- `src/components/DecisionFlow.tsx` - sample and replay request effects,
-  polling, timeouts, cancellation, request ownership, and screen routing
+- `src/components/DecisionFlow.tsx` - showcase loading and routing plus uploaded
+  replay polling, timeouts, cancellation, and request ownership
+- `src/components/ShowcasePlayerScreen.tsx` - processed-showcase loading,
+  errors, replay summary, and stable player selection
+- `src/components/ReplayAnalysisScreen.tsx` - Mirage radar, playback clock,
+  controls, event inspector, player perspective, and full-match timeline
+- `src/app/analysis/page.tsx` - player-aware analysis route and metadata
+- `src/adapters/showcase-replay.ts` - local showcase retrieval and safe boundary
+  failure handling
+- `src/domain/replay-viewer.ts` - strict showcase contract, frame indexing,
+  deterministic seeking, clock formatting, and reviewed Mirage transform
+- `public/replays/mirage-showcase.replay.json` - browser-served copy of the
+  canonical processed showcase
 - `src/components/ReplayFlowScreen.tsx` - upload/preparation progress, player
   selection, coaching/recovery, safe errors, and final coaching result
 - `src/components/SampleSelectorScreen.tsx` - loading, error, empty, list, map
@@ -124,7 +154,7 @@ folder on `raw.githubusercontent.com` for non-bundled future maps.
 
 From `frontend/`, `pnpm run verify` passes:
 
-- Vitest: 6 files, 64 tests passed
+- Vitest: 7 files, 71 tests passed
 - TypeScript: passed
 - ESLint: passed with no warnings
 - Next.js production build: passed; `/` and `/_not-found` prerendered
@@ -156,14 +186,17 @@ Browser verification of the uploaded-replay UI also confirmed:
   as new backend samples are introduced; otherwise the remote/fallback path is
   used.
 - The next player-selection screen for the compatibility sample path is not
-  implemented. It stops after preserving the validated `analysis_id` and
-  player list returned by `/api/analyze`.
+  used by the landing action now that the explicit processed showcase path is
+  available. The compatibility adapter and reducer remain for backend contract
+  coverage.
 - A real native `.dem` has not yet completed the full backend flow, matching the
   backend's documented current limitation. Browser QA used validated replay
   fixtures for post-upload states and did not send user replay data.
-- Visualization JSON retrieval is implemented in the adapter but is not yet
-  rendered as the future radar/timeline workspace. Player intent remains
-  disabled because no public backend contract exists.
+- Visualization JSON retrieval for uploaded replays is implemented in the
+  adapter but is not yet connected from a completed live coaching result into
+  the radar/timeline workspace. The current workspace intentionally uses the
+  bundled Mirage showcase. Player intent remains disabled because no public
+  backend contract exists.
 
 ## Contract/API impact
 

@@ -38,7 +38,7 @@ export function LandingScreen({ onOpenExample, onSelectReplay }: LandingScreenPr
           />
         </div>
         <p className="source-note" id="demo-note">
-          Choose from the sample matches currently available on the backend.
+          Open the processed Mirage showcase, choose a player, and go straight to the replay view.
         </p>
         <p className="privacy" id="upload-help">
           Your replay is uploaded once, then the backend prepares player selection and coaching.

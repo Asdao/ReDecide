@@ -1,7 +1,17 @@
-export function ProductHeader() {
+export function ProductHeader({
+  brandHref = "#main-content",
+  label = "Outcome-blind decision coaching",
+}: {
+  brandHref?: string;
+  label?: string;
+}) {
   return (
     <nav className="topbar" aria-label="Product">
-      <a className="brand" href="#main-content" aria-label="Skip to main content">
+      <a
+        className="brand"
+        href={brandHref}
+        aria-label={brandHref === "#main-content" ? "Skip to main content" : "Back to RE:DECIDE home"}
+      >
         <span aria-hidden="true">RE:</span>DECIDE
         <svg
           className="brand-outline"
@@ -13,7 +23,7 @@ export function ProductHeader() {
           <rect x="0.75" y="0.75" width="98.5" height="38.5" pathLength="100" />
         </svg>
       </a>
-      <span className="eyebrow">Outcome-blind decision coaching</span>
+      <span className="eyebrow">{label}</span>
     </nav>
   );
 }

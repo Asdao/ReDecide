@@ -5,6 +5,7 @@ import backendResult from "../../../backend/tests/fixtures/analysis_api_result.j
 import { LandingScreen } from "@/components/LandingScreen";
 import { ReplayFlowScreen } from "@/components/ReplayFlowScreen";
 import { SampleSelectorScreen } from "@/components/SampleSelectorScreen";
+import { ShowcasePlayerScreen } from "@/components/ShowcasePlayerScreen";
 import type { ReplayAnalysisFlowState } from "@/domain/analysis-flow";
 import {
   analysisJobSchema,
@@ -161,6 +162,47 @@ describe("uploaded replay screens", () => {
 });
 
 describe("sample replay screens", () => {
+  it("keeps the home sample action but identifies the direct processed-replay path", () => {
+    const html = renderToStaticMarkup(
+      createElement(LandingScreen, {
+        onOpenExample: () => undefined,
+        onSelectReplay: () => undefined,
+      }),
+    );
+
+    expect(html).toContain("Use a sample match");
+    expect(html).toContain("processed Mirage showcase");
+    expect(html).toContain("choose a player");
+  });
+
+  it("presents the processed replay players before entering analysis", () => {
+    const replay = {
+      schema_version: "replay_visualization_v1" as const,
+      replay_id: "mirage-showcase",
+      source: "mirage.dem",
+      map: { name: "de_mirage" as const, tick_rate: 64 },
+      players: manifest.players.map((player) => ({ ...player, sides: player.sides.map((side) => side.toLowerCase()) })),
+      rounds: [{ round_num: 1, start: 100, end: 300 }],
+      events: [],
+      ticks: [],
+    };
+    const html = renderToStaticMarkup(
+      createElement(ShowcasePlayerScreen, {
+        status: "ready",
+        replay,
+        onBack: () => undefined,
+        onRetry: () => undefined,
+        onSelectPlayer: () => undefined,
+      }),
+    );
+
+    expect(html).toContain("Choose your");
+    expect(html).toContain("CT One");
+    expect(html).toContain("T One");
+    expect(html).toContain("Open analysis");
+    expect(html).toContain("Teammates are green and opponents are red");
+  });
+
   it("uses an official map name instead of the backend map identifier", () => {
     const html = renderToStaticMarkup(
       createElement(SampleSelectorScreen, {

@@ -1,6 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useReducer, useRef } from "react";
+import { useRouter } from "next/navigation";
+import { useCallback, useEffect, useReducer, useRef, useState } from "react";
 import {
   ReplayApiError,
   getAnalysisPlayers,
@@ -11,6 +12,7 @@ import {
   uploadReplay,
 } from "@/adapters/replay-api";
 import { getSamples, selectSample } from "@/adapters/samples-api";
+import { getShowcaseReplay } from "@/adapters/showcase-replay";
 import {
   analysisFlowReducer,
   initialAnalysisFlowState,
@@ -24,6 +26,8 @@ import { LandingScreen } from "./LandingScreen";
 import { ProductHeader } from "./ProductHeader";
 import { ReplayFlowScreen } from "./ReplayFlowScreen";
 import { SampleSelectorScreen } from "./SampleSelectorScreen";
+import { ShowcasePlayerScreen } from "./ShowcasePlayerScreen";
+import type { ShowcaseReplay } from "@/domain/replay-viewer";
 
 const PLAYER_PREPARATION_TIMEOUT_MS = 90_000;
 const PLAYER_POLL_INTERVAL_MS = 1_000;
@@ -78,13 +82,42 @@ function isAmbiguousCoachingFailure(error: unknown): boolean {
 }
 
 export function DecisionFlow() {
+  const router = useRouter();
   const [state, dispatch] = useReducer(analysisFlowReducer, initialAnalysisFlowState);
+  const [showcase, setShowcase] = useState<
+    | { status: "idle" }
+    | { status: "loading"; attempt: number }
+    | { status: "error"; message: string; attempt: number }
+    | { status: "ready"; replay: ShowcaseReplay; attempt: number }
+  >({ status: "idle" });
   const previousStatus = useRef(state.status);
   const requestSequence = useRef(0);
   const nextRequestId = useCallback((operation: string) => {
     requestSequence.current += 1;
     return `${operation}-${requestSequence.current}`;
   }, []);
+
+  useEffect(() => {
+    if (showcase.status !== "loading") {
+      return;
+    }
+
+    const controller = new AbortController();
+    const attempt = showcase.attempt;
+    getShowcaseReplay(controller.signal)
+      .then((replay) => setShowcase({ status: "ready", replay, attempt }))
+      .catch((error: unknown) => {
+        if (!(error instanceof DOMException && error.name === "AbortError")) {
+          setShowcase({
+            status: "error",
+            message: error instanceof Error ? error.message : "The Mirage showcase could not be loaded.",
+            attempt,
+          });
+        }
+      });
+
+    return () => controller.abort();
+  }, [showcase]);
 
   useEffect(() => {
     if (state.status !== "loading-samples") {
@@ -396,11 +429,33 @@ export function DecisionFlow() {
     document.getElementById(headingId)?.focus();
   }, [state]);
 
-  const openSamples = () => dispatch({ type: "OPEN_SAMPLES" });
-  const reset = () => dispatch({ type: "RESET" });
+  const openSamples = () =>
+    setShowcase((current) => ({
+      status: "loading",
+      attempt: "attempt" in current ? current.attempt + 1 : 1,
+    }));
+  const reset = () => {
+    setShowcase({ status: "idle" });
+    dispatch({ type: "RESET" });
+  };
 
   let content;
-  if (state.status === "choose") {
+  if (showcase.status !== "idle") {
+    content = (
+      <ShowcasePlayerScreen
+        {...(showcase.status === "ready"
+          ? { status: "ready" as const, replay: showcase.replay }
+          : showcase.status === "error"
+            ? { status: "error" as const, message: showcase.message }
+            : { status: "loading" as const })}
+        onBack={reset}
+        onRetry={openSamples}
+        onSelectPlayer={(player) =>
+          router.push(`/analysis?player=${encodeURIComponent(player.player_id)}`)
+        }
+      />
+    );
+  } else if (state.status === "choose") {
     content = (
       <LandingScreen
         onOpenExample={openSamples}
