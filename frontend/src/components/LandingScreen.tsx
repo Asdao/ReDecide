@@ -19,7 +19,7 @@ export function LandingScreen({ onOpenExample }: LandingScreenProps) {
 
         <div className="actions" aria-label="Choose an analysis source">
           <button className="primary" type="button" onClick={onOpenExample} aria-describedby="demo-note">
-            Try a sample match
+            Use a sample match
           </button>
           <label className="secondary" htmlFor="demo-upload" aria-describedby="upload-help">
             Upload a *.dem
@@ -27,7 +27,7 @@ export function LandingScreen({ onOpenExample }: LandingScreenProps) {
           <input id="demo-upload" type="file" accept=".dem" disabled />
         </div>
         <p className="source-note" id="demo-note">
-          Opens a saved demo example. It is not a new backend analysis.
+          Choose from the sample matches currently available on the backend.
         </p>
         <p className="privacy" id="upload-help">
           Replay upload will be enabled after the analysis service is connected.
