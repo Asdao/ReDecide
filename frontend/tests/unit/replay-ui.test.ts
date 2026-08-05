@@ -3,6 +3,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import backendResult from "../../../backend/tests/fixtures/analysis_api_result.json";
 import { LandingScreen } from "@/components/LandingScreen";
+import { ProductHeader } from "@/components/ProductHeader";
 import { ReplayFlowScreen } from "@/components/ReplayFlowScreen";
 import { SampleSelectorScreen } from "@/components/SampleSelectorScreen";
 import { ShowcasePlayerScreen } from "@/components/ShowcasePlayerScreen";
@@ -80,7 +81,8 @@ describe("uploaded replay screens", () => {
     expect(html).toContain('id="demo-upload"');
     expect(html).toContain('accept=".dem"');
     expect(html).not.toContain('id="demo-upload" type="file" accept=".dem" disabled');
-    expect(html).toContain("uploaded once");
+    expect(html).toContain('<label class="primary" for="demo-upload"');
+    expect(html).toContain("Upload once");
   });
 
   it("renders display names and disables players without a coaching decision", () => {
@@ -173,10 +175,25 @@ describe("sample replay screens", () => {
     );
 
     expect(html).toContain("Use a sample match");
+    expect(html).toContain('<button class="secondary" type="button" aria-describedby="sample-note"');
     expect(html).toContain("currently available from the backend");
     expect(html).toContain("Open processed showcase");
     expect(html).toContain("processed Mirage showcase");
     expect(html).toContain("go straight to the replay view");
+    expect(html).toContain('class="action-note action-note-accent"');
+    expect(html.match(/class="action-note action-note-steel"/g)).toHaveLength(2);
+  });
+
+  it("gives the product logo a home navigation target", () => {
+    const html = renderToStaticMarkup(
+      createElement(ProductHeader, {
+        brandHref: "/",
+        onBrandClick: () => undefined,
+      }),
+    );
+
+    expect(html).toContain('href="/"');
+    expect(html).toContain('aria-label="Back to RE:DECIDE home"');
   });
 
   it("presents the processed replay players before entering analysis", () => {

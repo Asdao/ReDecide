@@ -15,6 +15,15 @@ of its 10 stable player IDs and continues to `/analysis` without upload, demo
 parsing, analysis preparation, or coaching calls. The native `.dem` action
 continues to use the complete backend flow.
 
+The `.dem` upload is the primary orange landing action; backend samples and the
+processed showcase use the steel-blue secondary treatment. Their concise help
+text shares one line below the action row and is revealed only for the hovered
+or keyboard-focused action, with tan help text for upload and steel-blue help
+text for the secondary actions. The secondary hover fill now uses a single
+diagonal wipe without the earlier arrow-like edge. The product logo resets any
+in-page sample, upload, or showcase state and returns to the landing screen,
+with `/` retained as its navigation fallback.
+
 The new analysis route renders the reviewed local Mirage radar with the
 selected player in blue, same-side players in green, and opponents in red.
 Team shapes, a selected-player ring, eliminated-player treatment, an accessible
@@ -170,7 +179,7 @@ folder on `raw.githubusercontent.com` for non-bundled future maps.
 
 From `frontend/`, `pnpm run verify` passes:
 
-- Vitest: 7 files, 72 tests passed
+- Vitest: 7 files, 73 tests passed
 - TypeScript: passed
 - ESLint: passed with no warnings
 - Next.js production build: passed; `/` and `/_not-found` prerendered

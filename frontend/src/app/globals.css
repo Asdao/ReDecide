@@ -273,7 +273,9 @@ a:focus-visible {
 }
 
 .primary:is(:hover, :focus-visible)::before,
-.primary:is(:hover, :focus-visible)::after {
+.primary:is(:hover, :focus-visible)::after,
+.primary:has(+ input:focus-visible)::before,
+.primary:has(+ input:focus-visible)::after {
   animation: sample-button-shine 0.5s cubic-bezier(0.22, 0.61, 0.36, 1);
 }
 
@@ -310,12 +312,11 @@ a:focus-visible {
 .secondary::before {
   position: absolute;
   z-index: -1;
-  inset: -120% -30%;
-  border-right: 2px solid var(--steel-blue-text);
+  inset: -25% -20%;
   background: var(--steel-blue);
   content: "";
   pointer-events: none;
-  transform: translateX(-120%) rotate(22deg);
+  transform: translateX(-125%) skewX(-22deg);
   transform-origin: center;
   transition: transform 0.3s cubic-bezier(0.22, 0.61, 0.36, 1);
 }
@@ -325,10 +326,11 @@ a:focus-visible {
 }
 
 .secondary:not(:disabled, :has(+ input:disabled)):is(:hover, :focus-visible)::before {
-  transform: translateX(0) rotate(22deg);
+  transform: translateX(0) skewX(-22deg);
 }
 
 .primary:disabled,
+.primary:has(+ input:disabled),
 .secondary:has(+ input:disabled) {
   cursor: not-allowed;
   opacity: 0.66;
@@ -343,21 +345,57 @@ input[type="file"] {
   white-space: nowrap;
 }
 
-.privacy,
-.source-note {
-  max-width: 38rem;
-  color: var(--muted);
+.action-notes {
+  position: relative;
+  min-height: 1.55rem;
+  margin-top: 0.65rem;
   font-size: 0.875rem;
   line-height: 1.55;
 }
 
-.privacy {
-  margin: 0.2rem 0 0;
+.action-note {
+  position: absolute;
+  inset: 0 auto auto 0;
+  max-width: 100%;
+  margin: 0;
+  opacity: 0;
+  overflow: hidden;
+  pointer-events: none;
+  text-overflow: ellipsis;
+  transform: translateY(-0.2rem);
+  transition:
+    opacity 0.16s ease,
+    transform 0.16s ease;
+  visibility: hidden;
+  white-space: nowrap;
 }
 
-.source-note {
-  margin: 0.65rem 0 0;
+.action-note-accent {
   color: var(--tactical-tan);
+}
+
+.action-note-steel {
+  color: var(--steel-blue-text);
+}
+
+.hero-copy:has([aria-describedby="upload-help"]:hover) #upload-help,
+.hero-copy:has([aria-describedby="sample-note"]:hover) #sample-note,
+.hero-copy:has([aria-describedby="showcase-note"]:hover) #showcase-note,
+.hero-copy:not(:has(.actions [aria-describedby]:hover)):has(
+    [aria-describedby="upload-help"] + input:focus-visible
+  )
+  #upload-help,
+.hero-copy:not(:has(.actions [aria-describedby]:hover)):has(
+    [aria-describedby="sample-note"]:focus-visible
+  )
+  #sample-note,
+.hero-copy:not(:has(.actions [aria-describedby]:hover)):has(
+    [aria-describedby="showcase-note"]:focus-visible
+  )
+  #showcase-note {
+  opacity: 1;
+  transform: translateY(0);
+  visibility: visible;
 }
 
 .boundary-card {

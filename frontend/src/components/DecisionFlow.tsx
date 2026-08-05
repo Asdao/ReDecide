@@ -524,7 +524,13 @@ export function DecisionFlow() {
 
   return (
     <main className="shell">
-      <ProductHeader />
+      <ProductHeader
+        brandHref="/"
+        onBrandClick={(event) => {
+          event.preventDefault();
+          reset();
+        }}
+      />
       {content}
     </main>
   );

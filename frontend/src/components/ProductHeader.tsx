@@ -1,15 +1,20 @@
+import type { MouseEventHandler } from "react";
+
 export function ProductHeader({
   brandHref = "#main-content",
   label = "Outcome-blind decision coaching",
+  onBrandClick,
 }: {
   brandHref?: string;
   label?: string;
+  onBrandClick?: MouseEventHandler<HTMLAnchorElement>;
 }) {
   return (
     <nav className="topbar" aria-label="Product">
       <a
         className="brand"
         href={brandHref}
+        onClick={onBrandClick}
         aria-label={brandHref === "#main-content" ? "Skip to main content" : "Back to RE:DECIDE home"}
       >
         <span aria-hidden="true">RE:</span>DECIDE

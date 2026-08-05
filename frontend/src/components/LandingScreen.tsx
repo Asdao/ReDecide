@@ -24,8 +24,26 @@ export function LandingScreen({
         </p>
 
         <div className="actions" aria-label="Choose an analysis source">
-          <button
+          <label
             className="primary"
+            htmlFor="demo-upload"
+            aria-describedby="upload-help"
+          >
+            Upload a *.dem
+          </label>
+          <input
+            id="demo-upload"
+            type="file"
+            accept=".dem"
+            onChange={(event) => {
+              const selectedFile = event.currentTarget.files?.[0];
+              if (selectedFile) {
+                onSelectReplay(selectedFile);
+              }
+            }}
+          />
+          <button
+            className="secondary"
             type="button"
             onClick={onOpenSamples}
             aria-describedby="sample-note"
@@ -40,30 +58,18 @@ export function LandingScreen({
           >
             Open processed showcase
           </button>
-          <label className="secondary" htmlFor="demo-upload" aria-describedby="upload-help">
-            Upload a *.dem
-          </label>
-          <input
-            id="demo-upload"
-            type="file"
-            accept=".dem"
-            onChange={(event) => {
-              const selectedFile = event.currentTarget.files?.[0];
-              if (selectedFile) {
-                onSelectReplay(selectedFile);
-              }
-            }}
-          />
         </div>
-        <p className="source-note" id="sample-note">
-          Choose from the sample matches currently available from the backend.
-        </p>
-        <p className="source-note" id="showcase-note">
-          Or explore the already-processed Mirage showcase and go straight to the replay view.
-        </p>
-        <p className="privacy" id="upload-help">
-          Your replay is uploaded once, then the backend prepares player selection and coaching.
-        </p>
+        <div className="action-notes">
+          <p className="action-note action-note-accent" id="upload-help">
+            Upload once; the backend prepares player selection and coaching.
+          </p>
+          <p className="action-note action-note-steel" id="sample-note">
+            Choose from the sample matches currently available from the backend.
+          </p>
+          <p className="action-note action-note-steel" id="showcase-note">
+            Explore the already-processed Mirage showcase and go straight to the replay view.
+          </p>
+        </div>
       </div>
 
       <aside className="boundary-card" aria-labelledby="boundary-title">
