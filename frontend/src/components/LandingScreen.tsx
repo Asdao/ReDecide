@@ -1,8 +1,9 @@
 type LandingScreenProps = {
   onOpenExample: () => void;
+  onSelectReplay: (file: File) => void;
 };
 
-export function LandingScreen({ onOpenExample }: LandingScreenProps) {
+export function LandingScreen({ onOpenExample, onSelectReplay }: LandingScreenProps) {
   return (
     <section className="hero" id="main-content" aria-labelledby="page-title">
       <div className="hero-copy">
@@ -24,13 +25,23 @@ export function LandingScreen({ onOpenExample }: LandingScreenProps) {
           <label className="secondary" htmlFor="demo-upload" aria-describedby="upload-help">
             Upload a *.dem
           </label>
-          <input id="demo-upload" type="file" accept=".dem" disabled />
+          <input
+            id="demo-upload"
+            type="file"
+            accept=".dem"
+            onChange={(event) => {
+              const selectedFile = event.currentTarget.files?.[0];
+              if (selectedFile) {
+                onSelectReplay(selectedFile);
+              }
+            }}
+          />
         </div>
         <p className="source-note" id="demo-note">
           Choose from the sample matches currently available on the backend.
         </p>
         <p className="privacy" id="upload-help">
-          Replay upload will be enabled after the analysis service is connected.
+          Your replay is uploaded once, then the backend prepares player selection and coaching.
         </p>
       </div>
 

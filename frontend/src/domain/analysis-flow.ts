@@ -69,6 +69,24 @@ export type AnalysisFlowState =
     } & SelectedPlayerContext)
   | ({ status: "result"; result: ReplayAnalysisResult } & SelectedPlayerContext);
 
+export type SampleAnalysisFlowState = Extract<
+  AnalysisFlowState,
+  {
+    status:
+      | "loading-samples"
+      | "samples-error"
+      | "samples-ready"
+      | "selecting-sample"
+      | "sample-selected"
+      | "sample-selection-error";
+  }
+>;
+
+export type ReplayAnalysisFlowState = Exclude<
+  AnalysisFlowState,
+  { status: "choose" } | SampleAnalysisFlowState
+>;
+
 export type AnalysisFlowAction =
   | { type: "OPEN_SAMPLES" }
   | { type: "SAMPLES_LOADED"; samples: SampleSummary[] }
@@ -111,6 +129,7 @@ export type AnalysisFlowAction =
   | { type: "COACHING_FAILED"; requestId: string; error: ReplayFlowError }
   | { type: "RESULT_STILL_PROCESSING"; requestId: string }
   | { type: "RESULT_RECOVERED"; requestId: string; result: ReplayAnalysisResult }
+  | { type: "RESULT_CONFIRMED_ABSENT"; requestId: string; error: ReplayFlowError }
   | { type: "RESULT_RECOVERY_FAILED"; requestId: string; error: ReplayFlowError }
   | { type: "RETRY_RESULT_RECOVERY"; requestId: string }
   | { type: "RETRY_COACHING"; requestId: string }
@@ -356,6 +375,16 @@ export function analysisFlowReducer(
       return state.status === "recovering-result" && state.requestId === action.requestId
         ? finishCoaching(state, action.result)
         : state;
+    case "RESULT_CONFIRMED_ABSENT":
+      if (state.status !== "recovering-result" || state.requestId !== action.requestId) {
+        return state;
+      }
+      return {
+        ...selectedPlayerContext(state),
+        status: "coaching-error",
+        error: action.error,
+        mayHaveCompleted: false,
+      };
     case "RESULT_RECOVERY_FAILED":
       if (state.status !== "recovering-result" || state.requestId !== action.requestId) {
         return state;

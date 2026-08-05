@@ -1,18 +1,89 @@
 "use client";
 
-import { useEffect, useReducer, useRef } from "react";
+import { useCallback, useEffect, useReducer, useRef } from "react";
+import {
+  ReplayApiError,
+  getAnalysisPlayers,
+  getAnalysisResult,
+  getAnalysisStatus,
+  prepareReplayAnalysis,
+  runReplayCoaching,
+  uploadReplay,
+} from "@/adapters/replay-api";
 import { getSamples, selectSample } from "@/adapters/samples-api";
 import {
   analysisFlowReducer,
   initialAnalysisFlowState,
+  type AnalysisFlowState,
+  type ReplayFlowError,
+  type ReplayFlowErrorCode,
+  type SampleAnalysisFlowState,
 } from "@/domain/analysis-flow";
 import { LandingScreen } from "./LandingScreen";
 import { ProductHeader } from "./ProductHeader";
+import { ReplayFlowScreen } from "./ReplayFlowScreen";
 import { SampleSelectorScreen } from "./SampleSelectorScreen";
+
+const PLAYER_PREPARATION_TIMEOUT_MS = 90_000;
+const PLAYER_POLL_INTERVAL_MS = 1_000;
+const COACHING_TIMEOUT_MS = 45_000;
+const RECOVERY_GRACE_MS = 1_500;
+const RECOVERY_TIMEOUT_MS = 45_000;
+
+const sampleStatuses = new Set<AnalysisFlowState["status"]>([
+  "loading-samples",
+  "samples-error",
+  "samples-ready",
+  "selecting-sample",
+  "sample-selected",
+  "sample-selection-error",
+]);
+
+function isSampleState(state: AnalysisFlowState): state is SampleAnalysisFlowState {
+  return sampleStatuses.has(state.status);
+}
+
+function isAbortError(error: unknown): boolean {
+  return error instanceof DOMException && error.name === "AbortError";
+}
+
+function flowError(
+  error: unknown,
+  fallbackCode: ReplayFlowErrorCode,
+  fallbackMessage: string,
+): ReplayFlowError {
+  if (!(error instanceof ReplayApiError)) {
+    return { code: fallbackCode, message: fallbackMessage, retryable: true };
+  }
+
+  const code = error.kind === "invalid-file" ? "invalid-file" : fallbackCode;
+  const retryable =
+    error.kind === "network" ||
+    error.kind === "non-json" ||
+    error.kind === "malformed-json" ||
+    error.kind === "not-ready" ||
+    error.kind === "server";
+  return { code, message: error.message, retryable };
+}
+
+function isAmbiguousCoachingFailure(error: unknown): boolean {
+  return (
+    !(error instanceof ReplayApiError) ||
+    error.kind === "network" ||
+    error.kind === "non-json" ||
+    error.kind === "malformed-json" ||
+    error.kind === "invalid-response"
+  );
+}
 
 export function DecisionFlow() {
   const [state, dispatch] = useReducer(analysisFlowReducer, initialAnalysisFlowState);
   const previousStatus = useRef(state.status);
+  const requestSequence = useRef(0);
+  const nextRequestId = useCallback((operation: string) => {
+    requestSequence.current += 1;
+    return `${operation}-${requestSequence.current}`;
+  }, []);
 
   useEffect(() => {
     if (state.status !== "loading-samples") {
@@ -23,7 +94,7 @@ export function DecisionFlow() {
     getSamples(controller.signal)
       .then((samples) => dispatch({ type: "SAMPLES_LOADED", samples }))
       .catch((error: unknown) => {
-        if (!(error instanceof DOMException && error.name === "AbortError")) {
+        if (!isAbortError(error)) {
           dispatch({ type: "SAMPLES_FAILED" });
         }
       });
@@ -41,7 +112,7 @@ export function DecisionFlow() {
     selectSample(sampleId, controller.signal)
       .then((preparation) => dispatch({ type: "SAMPLE_SELECTED", sampleId, preparation }))
       .catch((error: unknown) => {
-        if (!(error instanceof DOMException && error.name === "AbortError")) {
+        if (!isAbortError(error)) {
           dispatch({ type: "SAMPLE_SELECTION_FAILED", sampleId });
         }
       });
@@ -50,48 +121,352 @@ export function DecisionFlow() {
   }, [state]);
 
   useEffect(() => {
-    const wasOnLanding = previousStatus.current === "choose";
-    const isOnLanding = state.status === "choose";
+    if (state.status !== "uploading") {
+      return;
+    }
 
-    if (wasOnLanding === isOnLanding) {
-      previousStatus.current = state.status;
+    const controller = new AbortController();
+    const requestId = state.requestId;
+    uploadReplay(state.file, controller.signal)
+      .then((manifest) =>
+        dispatch({
+          type: "UPLOAD_SUCCEEDED",
+          requestId,
+          manifest,
+          prepareRequestId: nextRequestId("prepare"),
+        }),
+      )
+      .catch((error: unknown) => {
+        if (!isAbortError(error)) {
+          dispatch({
+            type: "UPLOAD_FAILED",
+            requestId,
+            error: flowError(error, "upload-failed", "The replay could not be uploaded."),
+          });
+        }
+      });
+
+    return () => controller.abort();
+  }, [nextRequestId, state]);
+
+  useEffect(() => {
+    if (state.status !== "preparing-analysis") {
+      return;
+    }
+
+    const controller = new AbortController();
+    const requestId = state.requestId;
+    prepareReplayAnalysis(state.manifest.replay_id, controller.signal)
+      .then((analysis) =>
+        dispatch({
+          type: "ANALYSIS_PREPARED",
+          requestId,
+          analysis,
+          playersRequestId: nextRequestId("players"),
+        }),
+      )
+      .catch((error: unknown) => {
+        if (!isAbortError(error)) {
+          dispatch({
+            type: "ANALYSIS_PREPARE_FAILED",
+            requestId,
+            error: flowError(
+              error,
+              "prepare-failed",
+              "The uploaded replay could not be prepared for analysis.",
+            ),
+          });
+        }
+      });
+
+    return () => controller.abort();
+  }, [nextRequestId, state]);
+
+  useEffect(() => {
+    if (state.status !== "waiting-for-players") {
+      return;
+    }
+
+    const controller = new AbortController();
+    const requestId = state.requestId;
+    const analysisId = state.analysis.analysis_id;
+    const deadline = Date.now() + PLAYER_PREPARATION_TIMEOUT_MS;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    let cancelled = false;
+
+    const poll = async () => {
+      try {
+        const response = await getAnalysisPlayers(analysisId, controller.signal);
+        if (cancelled) {
+          return;
+        }
+        if (response.state === "ready") {
+          dispatch({
+            type: "PLAYERS_LOADED",
+            requestId,
+            analysisId: response.value.analysis_id,
+            players: response.value.players,
+          });
+          return;
+        }
+
+        const status = await getAnalysisStatus(analysisId, controller.signal);
+        if (status.status === "failed") {
+          dispatch({
+            type: "PLAYERS_FAILED",
+            requestId,
+            error: {
+              code: "prepare-failed",
+              message: "The replay could not be prepared for player selection.",
+              retryable: true,
+            },
+          });
+          return;
+        }
+        if (Date.now() >= deadline) {
+          dispatch({
+            type: "PLAYERS_FAILED",
+            requestId,
+            error: {
+              code: "players-failed",
+              message: "Player preparation is taking longer than expected.",
+              retryable: true,
+            },
+          });
+          return;
+        }
+        timer = setTimeout(poll, PLAYER_POLL_INTERVAL_MS);
+      } catch (error: unknown) {
+        if (!isAbortError(error)) {
+          dispatch({
+            type: "PLAYERS_FAILED",
+            requestId,
+            error: flowError(
+              error,
+              "players-failed",
+              "The player list could not be loaded.",
+            ),
+          });
+        }
+      }
+    };
+
+    void poll();
+    return () => {
+      cancelled = true;
+      controller.abort();
+      if (timer) {
+        clearTimeout(timer);
+      }
+    };
+  }, [state]);
+
+  useEffect(() => {
+    if (state.status !== "running-coaching") {
+      return;
+    }
+
+    const controller = new AbortController();
+    const requestId = state.requestId;
+    let timedOut = false;
+    const timeout = setTimeout(() => {
+      timedOut = true;
+      controller.abort();
+    }, COACHING_TIMEOUT_MS);
+
+    runReplayCoaching(
+      state.analysis.analysis_id,
+      state.selectedPlayer.player_id,
+      controller.signal,
+    )
+      .then((result) => dispatch({ type: "COACHING_SUCCEEDED", requestId, result }))
+      .catch((error: unknown) => {
+        if (isAbortError(error) && !timedOut) {
+          return;
+        }
+        if (timedOut || isAmbiguousCoachingFailure(error)) {
+          dispatch({
+            type: "COACHING_REQUEST_UNCERTAIN",
+            requestId,
+            recoveryRequestId: nextRequestId("recovery"),
+          });
+          return;
+        }
+        dispatch({
+          type: "COACHING_FAILED",
+          requestId,
+          error: flowError(error, "coaching-failed", "Coaching could not be completed."),
+        });
+      })
+      .finally(() => clearTimeout(timeout));
+
+    return () => {
+      clearTimeout(timeout);
+      controller.abort();
+    };
+  }, [nextRequestId, state]);
+
+  useEffect(() => {
+    if (state.status !== "recovering-result") {
+      return;
+    }
+
+    const controller = new AbortController();
+    const requestId = state.requestId;
+    const analysisId = state.analysis.analysis_id;
+    const deadline = Date.now() + RECOVERY_TIMEOUT_MS;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    let cancelled = false;
+
+    const checkResult = async () => {
+      try {
+        const recovered = await getAnalysisResult(analysisId, controller.signal);
+        if (cancelled) {
+          return;
+        }
+        if (recovered.state === "ready") {
+          dispatch({ type: "RESULT_RECOVERED", requestId, result: recovered.value });
+          return;
+        }
+
+        const status = await getAnalysisStatus(analysisId, controller.signal);
+        if (status.status === "ready" || status.status === "failed") {
+          dispatch({
+            type: "RESULT_CONFIRMED_ABSENT",
+            requestId,
+            error: {
+              code: "coaching-failed",
+              message:
+                status.status === "failed"
+                  ? "The coaching request failed before producing a result."
+                  : "No completed coaching result was found. You can safely retry coaching.",
+              retryable: true,
+            },
+          });
+          return;
+        }
+        if (status.status === "complete" || Date.now() >= deadline) {
+          dispatch({
+            type: "RESULT_RECOVERY_FAILED",
+            requestId,
+            error: {
+              code: "result-recovery-failed",
+              message: "The completed coaching result could not be retrieved.",
+              retryable: true,
+            },
+          });
+          return;
+        }
+        timer = setTimeout(checkResult, PLAYER_POLL_INTERVAL_MS);
+      } catch (error: unknown) {
+        if (!isAbortError(error)) {
+          dispatch({
+            type: "RESULT_RECOVERY_FAILED",
+            requestId,
+            error: flowError(
+              error,
+              "result-recovery-failed",
+              "The completed coaching result could not be checked.",
+            ),
+          });
+        }
+      }
+    };
+
+    timer = setTimeout(checkResult, RECOVERY_GRACE_MS);
+    return () => {
+      cancelled = true;
+      controller.abort();
+      if (timer) {
+        clearTimeout(timer);
+      }
+    };
+  }, [state]);
+
+  useEffect(() => {
+    if (previousStatus.current === state.status) {
       return;
     }
 
     previousStatus.current = state.status;
-    const headingId = isOnLanding ? "page-title" : "samples-title";
+    const headingId =
+      state.status === "choose" ? "page-title" : isSampleState(state) ? "samples-title" : "replay-title";
     document.getElementById(headingId)?.focus();
-  }, [state.status]);
+  }, [state]);
 
   const openSamples = () => dispatch({ type: "OPEN_SAMPLES" });
   const reset = () => dispatch({ type: "RESET" });
 
+  let content;
+  if (state.status === "choose") {
+    content = (
+      <LandingScreen
+        onOpenExample={openSamples}
+        onSelectReplay={(file) =>
+          dispatch({ type: "SELECT_REPLAY_FILE", file, requestId: nextRequestId("upload") })
+        }
+      />
+    );
+  } else if (isSampleState(state)) {
+    content = (
+      <SampleSelectorScreen
+        status={
+          state.status === "loading-samples"
+            ? "loading"
+            : state.status === "samples-error"
+              ? "error"
+              : "ready"
+        }
+        samples={"samples" in state ? state.samples : []}
+        selectingSampleId={state.status === "selecting-sample" ? state.sampleId : undefined}
+        selectedSampleId={state.status === "sample-selected" ? state.sampleId : undefined}
+        preparation={state.status === "sample-selected" ? state.preparation : undefined}
+        selectionFailedId={
+          state.status === "sample-selection-error" ? state.sampleId : undefined
+        }
+        onBack={reset}
+        onRetry={openSamples}
+        onSelect={(sampleId) => dispatch({ type: "SELECT_SAMPLE", sampleId })}
+      />
+    );
+  } else {
+    content = (
+      <ReplayFlowScreen
+        state={state}
+        onBack={reset}
+        onRetryUpload={() =>
+          dispatch({ type: "RETRY_UPLOAD", requestId: nextRequestId("upload") })
+        }
+        onRetryPrepare={() =>
+          dispatch({ type: "RETRY_ANALYSIS_PREPARE", requestId: nextRequestId("prepare") })
+        }
+        onRetryPlayers={() =>
+          dispatch({ type: "RETRY_PLAYERS", requestId: nextRequestId("players") })
+        }
+        onSelectPlayer={(playerId) =>
+          dispatch({
+            type: "SELECT_PLAYER",
+            playerId,
+            requestId: nextRequestId("coaching"),
+          })
+        }
+        onRetryCoaching={() =>
+          dispatch({ type: "RETRY_COACHING", requestId: nextRequestId("coaching") })
+        }
+        onRetryRecovery={() =>
+          dispatch({
+            type: "RETRY_RESULT_RECOVERY",
+            requestId: nextRequestId("recovery"),
+          })
+        }
+      />
+    );
+  }
+
   return (
     <main className="shell">
       <ProductHeader />
-      {state.status === "choose" ? (
-        <LandingScreen onOpenExample={openSamples} />
-      ) : (
-        <SampleSelectorScreen
-          status={
-            state.status === "loading-samples"
-              ? "loading"
-              : state.status === "samples-error"
-                ? "error"
-                : "ready"
-          }
-          samples={"samples" in state ? state.samples : []}
-          selectingSampleId={state.status === "selecting-sample" ? state.sampleId : undefined}
-          selectedSampleId={state.status === "sample-selected" ? state.sampleId : undefined}
-          preparation={state.status === "sample-selected" ? state.preparation : undefined}
-          selectionFailedId={
-            state.status === "sample-selection-error" ? state.sampleId : undefined
-          }
-          onBack={reset}
-          onRetry={openSamples}
-          onSelect={(sampleId) => dispatch({ type: "SELECT_SAMPLE", sampleId })}
-        />
-      )}
+      {content}
     </main>
   );
 }
