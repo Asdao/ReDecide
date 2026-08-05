@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import backendResult from "../../../backend/tests/fixtures/analysis_api_result.json";
 import { LandingScreen } from "@/components/LandingScreen";
 import { ReplayFlowScreen } from "@/components/ReplayFlowScreen";
+import { SampleSelectorScreen } from "@/components/SampleSelectorScreen";
 import type { ReplayAnalysisFlowState } from "@/domain/analysis-flow";
 import {
   analysisJobSchema,
@@ -82,16 +83,22 @@ describe("uploaded replay screens", () => {
 
   it("renders display names and disables players without a coaching decision", () => {
     const unavailablePlayer = { ...players[0], decision_ids: [] };
+    const nukeManifest = replayManifestSchema.parse({
+      ...manifest,
+      map: { ...manifest.map, name: "de_nuke" },
+    });
     const html = renderReplayState({
       status: "choosing-player",
       file,
-      manifest,
+      manifest: nukeManifest,
       analysis,
       players: [unavailablePlayer, players[1]],
     });
 
     expect(html).toContain("CT One");
     expect(html).toContain("T One");
+    expect(html).toContain("<dt>Map</dt><dd>Nuke</dd>");
+    expect(html).not.toContain("de_nuke");
     expect(html).toContain('<span class="accent-word">player.</span>');
     expect(html).toContain("No coaching moment");
     expect(html).toMatch(/<button[^>]*disabled=""[^>]*>[\s\S]*?CT One/);
@@ -150,5 +157,32 @@ describe("uploaded replay screens", () => {
     expect(html).toContain("Choose a valid .dem replay file.");
     expect(html).not.toContain("Retry upload");
     expect(html).toContain('Choose another <span class="accent-word">replay</span>');
+  });
+});
+
+describe("sample replay screens", () => {
+  it("uses an official map name instead of the backend map identifier", () => {
+    const html = renderToStaticMarkup(
+      createElement(SampleSelectorScreen, {
+        status: "ready",
+        samples: [
+          {
+            sample_id: "nuke-sample",
+            display_name: "Nuke example",
+            description: "A sample coaching moment",
+            map: "de_nuke",
+            players: ["Player One"],
+            recommended_player: "Player One",
+            available: true,
+          },
+        ],
+        onBack: () => undefined,
+        onRetry: () => undefined,
+        onSelect: () => undefined,
+      }),
+    );
+
+    expect(html).toContain('<span class="sample-map-name">Nuke</span>');
+    expect(html).toContain('alt="Nuke map thumbnail"');
   });
 });

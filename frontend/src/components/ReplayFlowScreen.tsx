@@ -1,4 +1,5 @@
 import type { ReplayAnalysisFlowState } from "@/domain/analysis-flow";
+import { mapDisplayName } from "@/domain/maps";
 import type { AnalysisPlayer } from "@/domain/replay";
 
 type ReplayFlowScreenProps = {
@@ -61,7 +62,7 @@ function ReplaySummary({
       </div>
       <div>
         <dt>Map</dt>
-        <dd>{state.manifest.map.name}</dd>
+        <dd>{mapDisplayName(state.manifest.map.name)}</dd>
       </div>
       <div>
         <dt>Rounds</dt>

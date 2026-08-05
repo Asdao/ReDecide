@@ -2,6 +2,7 @@
 
 import Image from "next/image";
 import { useState } from "react";
+import { mapDisplayName } from "@/domain/maps";
 import {
   mapThumbnailUrl,
   type SamplePreparation,
@@ -22,13 +23,14 @@ type SampleSelectorScreenProps = {
 
 function MapThumbnail({ map }: { map: string }) {
   const thumbnailUrl = mapThumbnailUrl(map);
+  const displayName = mapDisplayName(map);
   const [failedUrl, setFailedUrl] = useState<string>();
 
   if (failedUrl === thumbnailUrl) {
     return (
-      <span className="sample-map-fallback" aria-label={`No thumbnail available for ${map}`}>
+      <span className="sample-map-fallback" aria-label={`No thumbnail available for ${displayName}`}>
         <span>Map image unavailable</span>
-        <strong>{map}</strong>
+        <strong>{displayName}</strong>
       </span>
     );
   }
@@ -37,7 +39,7 @@ function MapThumbnail({ map }: { map: string }) {
     <Image
       className="sample-map-image"
       src={thumbnailUrl}
-      alt={`${map} map thumbnail`}
+      alt={`${displayName} map thumbnail`}
       width={320}
       height={180}
       sizes="(max-width: 560px) 100vw, 220px"
@@ -60,6 +62,7 @@ function SampleBar({
   onSelect: (sampleId: string) => void;
 }) {
   const unavailable = !sample.available;
+  const displayMapName = mapDisplayName(sample.map);
   const statusLabel = unavailable
     ? "Unavailable"
     : isSelecting
@@ -85,7 +88,7 @@ function SampleBar({
         <span className="sample-bar-copy">
           <span className="sample-bar-heading">
             <strong>{sample.display_name}</strong>
-            <span className="sample-map-name">{sample.map}</span>
+            <span className="sample-map-name">{displayMapName}</span>
           </span>
           <span className="sample-description">{sample.description}</span>
           <span className="sample-meta">

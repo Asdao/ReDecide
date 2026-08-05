@@ -23,7 +23,10 @@ The current backend sample is Mirage. Its reviewed thumbnail from
 `MurkyYT/cs2-map-icons` is bundled locally so it does not depend on GitHub being
 reachable at runtime. Other canonical map names are normalized to that
 repository's base-thumbnail convention and use a remote image with an explicit
-missing-image fallback. The UI attributes the thumbnail source.
+missing-image fallback. Visible map labels in both the sample selector and
+uploaded-replay flow use official names instead of internal IDs. Unknown future
+or workshop IDs are safely humanized by removing their mode prefix and
+separating their slug. The UI attributes the thumbnail source.
 
 `AnalysisProgressScreen.tsx` and the old saved-fixture loading path are no
 longer part of the rendered flow. The landing page now exposes a labelled,
@@ -87,6 +90,8 @@ outcomes are not rendered in the coaching result.
   status, player selection, coaching, recovery, and visualization retrieval
 - `src/domain/replay.ts` - strict replay manifest, analysis, result, and
   visualization boundary schemas
+- `src/domain/maps.ts` - shared official and fallback display names for CS2 map
+  identifiers
 - `src/domain/samples.ts` - strict API schemas, types, and safe map-asset naming
 - `src/domain/analysis-flow.ts` - explicit sample and uploaded-replay state
   machine, request ownership, scoped retries, and coaching recovery
@@ -119,7 +124,7 @@ folder on `raw.githubusercontent.com` for non-bundled future maps.
 
 From `frontend/`, `pnpm run verify` passes:
 
-- Vitest: 6 files, 41 tests passed
+- Vitest: 6 files, 64 tests passed
 - TypeScript: passed
 - ESLint: passed with no warnings
 - Next.js production build: passed; `/` and `/_not-found` prerendered

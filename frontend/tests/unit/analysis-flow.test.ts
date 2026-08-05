@@ -3,6 +3,7 @@ import {
   analysisFlowReducer,
   initialAnalysisFlowState,
 } from "@/domain/analysis-flow";
+import { mapDisplayName } from "@/domain/maps";
 import { mapAssetKey, mapThumbnailUrl, samplesResponseSchema } from "@/domain/samples";
 
 const sample = {
@@ -88,5 +89,32 @@ describe("backend sample flow", () => {
     expect(mapAssetKey("Office")).toBe("cs_office");
     expect(mapAssetKey("Pool Day")).toBe("ar_pool_day");
     expect(mapThumbnailUrl("de_mirage")).toBe("/maps/de_mirage.png");
+  });
+
+  it.each([
+    ["de_ancient", "Ancient"],
+    ["de_anubis", "Anubis"],
+    ["de_cache", "Cache"],
+    ["de_dust2", "Dust II"],
+    ["de_inferno", "Inferno"],
+    ["de_mirage", "Mirage"],
+    ["de_nuke", "Nuke"],
+    ["de_overpass", "Overpass"],
+    ["de_train", "Train"],
+    ["de_vertigo", "Vertigo"],
+    ["cs_agency", "Agency"],
+    ["cs_italy", "Italy"],
+    ["cs_office", "Office"],
+    ["ar_baggage", "Baggage"],
+    ["ar_pool_day", "Pool Day"],
+    ["ar_shoots", "Shoots"],
+    ["ar_shoots_night", "Shoots (Night)"],
+    ["de_cbble", "Cobblestone"],
+    ["de_eldorado", "El Dorado"],
+    ["de_stmarc", "St. Marc"],
+    ["workshop/123456/de_el_dorado.vpk", "El Dorado"],
+    ["custom_community_map", "Custom Community Map"],
+  ])("formats the CS2 map identifier %s as %s", (mapId, expectedName) => {
+    expect(mapDisplayName(mapId)).toBe(expectedName);
   });
 });
