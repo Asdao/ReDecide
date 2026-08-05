@@ -4,7 +4,7 @@ Last verified: 2026-08-05 (Asia/Singapore)
 
 ## Status
 
-**Backend-driven sample-match selection implemented.**
+**Backend-driven sample-match selection implemented; replay API adapter ready.**
 
 The landing page's `Use a sample match` action now opens a dedicated sample
 selector and calls `GET /api/samples`. Successful responses are validated with
@@ -28,6 +28,16 @@ missing-image fallback. The UI attributes the thumbnail source.
 `AnalysisProgressScreen.tsx` and the old saved-fixture loading path are no
 longer part of the rendered flow. Replay upload remains visibly disabled.
 
+The frontend now also has a typed, UI-independent adapter for the complete
+uploaded-replay API sequence. It uploads one `.dem` through
+`POST /api/replay/upload`, prepares analysis by stable `replay_id`, reads job
+and player status, submits the selected stable `player_id` for coaching,
+recovers completed results without rerunning coaching, and distinguishes
+visualization processing, locked, failed, and ready responses. Every successful
+JSON response is validated before the adapter returns it. Abort errors remain
+distinguishable from normalized network, HTTP, content-type, JSON, and schema
+errors, and backend error details are not exposed through adapter messages.
+
 ## Important paths
 
 - `src/components/DecisionFlow.tsx` - request lifecycle, abort handling, and
@@ -37,6 +47,10 @@ longer part of the rendered flow. Replay upload remains visibly disabled.
 - `src/components/LandingScreen.tsx` - source selection entry point
 - `src/adapters/samples-api.ts` - `GET /api/samples` and `POST /api/analyze`
   transport with JSON/content/status checks
+- `src/adapters/replay-api.ts` - typed transport for upload, preparation,
+  status, player selection, coaching, recovery, and visualization retrieval
+- `src/domain/replay.ts` - strict replay manifest, analysis, result, and
+  visualization boundary schemas
 - `src/domain/samples.ts` - strict API schemas, types, and safe map-asset naming
 - `src/domain/analysis-flow.ts` - explicit sample-list and selection state
   reducer
@@ -44,6 +58,9 @@ longer part of the rendered flow. Replay upload remains visibly disabled.
 - `src/app/globals.css` - horizontal sample bars and responsive layout
 - `tests/unit/analysis-flow.test.ts` - zero/one/many, unavailable, selection,
   error/retry/reset, and map-name coverage
+- `tests/unit/replay-api.test.ts` - multipart upload, endpoint payloads,
+  processing states, coaching recovery, visualization gating, validation,
+  safe failures, and cancellation
 
 ## Configuration
 
@@ -58,7 +75,7 @@ folder on `raw.githubusercontent.com` for non-bundled future maps.
 
 From `frontend/`, `pnpm run verify` passes:
 
-- Vitest: 2 files, 11 tests passed
+- Vitest: 3 files, 20 tests passed
 - TypeScript: passed
 - ESLint: passed with no warnings
 - Next.js production build: passed; `/` and `/_not-found` prerendered
@@ -83,10 +100,12 @@ Browser verification against the documented sample responses confirmed:
   after preserving the validated `analysis_id` and player list returned by
   `/api/analyze`.
 - Replay upload, live replay preparation, coaching, intent, and final result UI
-  remain outside this slice.
+  remain outside the rendered flow. The transport is ready, but the landing
+  upload control remains disabled until the upload state machine and screens
+  are wired.
 
 ## Contract/API impact
 
-No backend contract changes. The frontend now consumes the existing
-compatibility endpoints `GET /api/samples` and `POST /api/analyze` exactly as
-documented.
+No backend contract changes. In addition to the compatibility sample APIs, the
+frontend adapter now implements the documented `/api/replay/*` and
+`/api/analysis/*` contracts without changing the rendered UI.
