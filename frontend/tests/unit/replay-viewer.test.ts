@@ -14,6 +14,7 @@ import {
   worldToRadar,
   type ReplaySnapshot,
 } from "@/domain/replay-viewer";
+import { replayAnalysisResultSchema } from "@/domain/replay";
 
 const snapshot = (tick: number, playerId: string): ReplaySnapshot => ({
   tick,
@@ -44,6 +45,28 @@ describe("processed replay viewer", () => {
     expect(replay.rounds).toHaveLength(rounds);
     expect(replay.ticks.length).toBeGreaterThan(minimumTicks);
     expect(replay.ticks.every(({ player_id, alive }) => player_id && typeof alive === "boolean")).toBe(true);
+  });
+
+  it("validates the Inferno analysis against its processed replay identity", () => {
+    const replay = normalizeBackendReplay(JSON.parse(readFileSync(
+      resolve(process.cwd(), "public/replays/inferno-processed.replay.json"),
+      "utf8",
+    )));
+    const analysis = replayAnalysisResultSchema.parse(JSON.parse(readFileSync(
+      resolve(process.cwd(), "public/replays/inferno-processed.analysis.json"),
+      "utf8",
+    )));
+
+    expect(analysis.replay_id).toBe(replay.replay_id);
+    expect(analysis.source).toBe(replay.source);
+    expect(analysis.map_name).toBe(replay.map.name);
+    expect(replay.players.some(({ player_id }) => player_id === analysis.coach_analysis.player_id)).toBe(true);
+    expect(replay.events.some((event) =>
+      event.tick === analysis.selected_decision.contact_tick &&
+      event.round_num === analysis.selected_decision.round_number &&
+      event.event === analysis.selected_decision.event_category &&
+      event.victim_id === analysis.selected_decision.player_id
+    )).toBe(true);
   });
 
   it("adapts backend snapshot names and derives optional alive state", () => {

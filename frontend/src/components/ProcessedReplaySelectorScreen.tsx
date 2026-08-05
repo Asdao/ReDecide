@@ -25,7 +25,7 @@ export function ProcessedReplaySelectorScreen({
               Choose a <span className="accent-word">replay</span>.
             </h1>
             <p className="sample-summary">
-              Open an already-processed save directly in the synchronized 2D viewer.
+              Choose a processed save, then select the player perspective to open.
             </p>
           </div>
           <button className="secondary" type="button" onClick={onBack}>
@@ -68,7 +68,7 @@ export function ProcessedReplaySelectorScreen({
                       {replay.analysisAvailable ? "Saved analysis included" : "No saved analysis"}
                     </span>
                   </span>
-                  <span className="sample-select-label">Open replay</span>
+                  <span className="sample-select-label">Choose player</span>
                 </button>
               </li>
             );

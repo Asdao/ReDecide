@@ -2,9 +2,9 @@
 
 import Image from "next/image";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { getProcessedReplay } from "@/adapters/processed-replay";
+import { getProcessedReplay, getProcessedReplayAnalysis } from "@/adapters/processed-replay";
 import { mapDisplayName } from "@/domain/maps";
-import { processedReplayById } from "@/domain/processed-replays";
+import type { ReplayAnalysisResult } from "@/domain/replay";
 import {
   buildReplayFrames,
   firstEventCrossed,
@@ -46,6 +46,19 @@ function clamp(value: number, minimum: number, maximum: number): number {
   return Math.min(maximum, Math.max(minimum, value));
 }
 
+function eventMatchesAnalysis(event: ReplayEvent, analysis: ReplayAnalysisResult): boolean {
+  const decision = analysis.selected_decision;
+  const playerMatches = decision.role === "victim"
+    ? event.victim_id === decision.player_id
+    : event.attacker_id === decision.player_id;
+  return (
+    event.tick === decision.contact_tick &&
+    event.round_num === decision.round_number &&
+    event.event === decision.event_category &&
+    playerMatches
+  );
+}
+
 export function ReplayAnalysisScreen({
   initialPlayerId,
   replayId,
@@ -54,6 +67,7 @@ export function ReplayAnalysisScreen({
   replayId?: string;
 }) {
   const [replay, setReplay] = useState<ProcessedReplay>();
+  const [analysis, setAnalysis] = useState<ReplayAnalysisResult>();
   const [loadError, setLoadError] = useState<string>();
   const [loadAttempt, setLoadAttempt] = useState(0);
   const [currentTick, setCurrentTick] = useState(0);
@@ -66,24 +80,41 @@ export function ReplayAnalysisScreen({
 
   useEffect(() => {
     const controller = new AbortController();
-    getProcessedReplay(replayId, controller.signal)
-      .then((value) => {
-        const firstTick = value.ticks[0]?.tick ?? value.rounds[0].start;
-        setReplay(value);
+    let active = true;
+    Promise.all([
+      getProcessedReplay(replayId, controller.signal),
+      getProcessedReplayAnalysis(replayId, controller.signal),
+    ])
+      .then(([replayValue, analysisValue]) => {
+        if (!active) return;
+        if (
+          analysisValue &&
+          (analysisValue.replay_id !== replayValue.replay_id ||
+            analysisValue.source !== replayValue.source ||
+            analysisValue.map_name !== replayValue.map.name)
+        ) {
+          throw new Error("The saved analysis did not match the processed replay.");
+        }
+        const firstTick = replayValue.ticks[0]?.tick ?? replayValue.rounds[0].start;
+        setReplay(replayValue);
+        setAnalysis(analysisValue);
         currentTickRef.current = firstTick;
         setCurrentTick(firstTick);
         setSelectedPlayerId((current) =>
-          value.players.some(({ player_id }) => player_id === current)
+          replayValue.players.some(({ player_id }) => player_id === current)
             ? current
-            : value.players[0].player_id,
+            : replayValue.players[0].player_id,
         );
       })
       .catch((error: unknown) => {
-        if (!(error instanceof DOMException && error.name === "AbortError")) {
+        if (active && !(error instanceof DOMException && error.name === "AbortError")) {
           setLoadError(error instanceof Error ? error.message : "The replay could not be loaded.");
         }
       });
-    return () => controller.abort();
+    return () => {
+      active = false;
+      controller.abort();
+    };
   }, [loadAttempt, replayId]);
 
   const frames = useMemo(() => (replay ? buildReplayFrames(replay.ticks) : []), [replay]);
@@ -99,11 +130,17 @@ export function ReplayAnalysisScreen({
     ({ player_id }) => player_id === selectedPlayerId,
   );
   const selectedEvent = replay?.events.find(({ event_id }) => event_id === selectedEventId);
-  const replaySummary = processedReplayById(replayId);
 
   const timelineEvents = useMemo(
     () => (replay ? playerTimelineEvents(replay.events, selectedPlayerId) : []),
     [replay, selectedPlayerId],
+  );
+  const analysisEventId = useMemo(
+    () => analysis ? timelineEvents.find((event) => eventMatchesAnalysis(event, analysis))?.event_id : undefined,
+    [analysis, timelineEvents],
+  );
+  const selectedEventHasAnalysis = Boolean(
+    analysis && selectedEvent && eventMatchesAnalysis(selectedEvent, analysis),
   );
 
   const namesById = useMemo(
@@ -291,17 +328,13 @@ export function ReplayAnalysisScreen({
                 <div><dt>Tick</dt><dd>{selectedEvent.tick}</dd></div>
                 <div><dt>Weapon</dt><dd>{selectedEvent.weapon?.replaceAll("_", " ") ?? "—"}</dd></div>
               </dl>
-              <button className="secondary inspector-clear" type="button" onClick={() => setSelectedEventId(undefined)}>
-                Clear event
-              </button>
-              <div className="inspector-note">
-                <p className="eyebrow">Saved analysis</p>
-                <p>
-                  {replaySummary?.analysisAvailable
-                    ? "This replay includes saved coaching analysis; no new request is made."
-                    : "This save contains replay facts only and has no saved coaching analysis."}
-                </p>
-              </div>
+              {selectedEventHasAnalysis && analysis ? (
+                <section className="saved-coaching" aria-labelledby="saved-coaching-title">
+                  <p className="eyebrow">Coaching</p>
+                  <h3 id="saved-coaching-title">What could be done better</h3>
+                  <p>{analysis.coach_analysis.what_could_be_done_better}</p>
+                </section>
+              ) : null}
             </aside>
           ) : null}
 
@@ -414,11 +447,11 @@ export function ReplayAnalysisScreen({
               {timelineEvents.map((event) => (
                 <button
                   type="button"
-                  className={`${event.event === "kill" ? "death" : "damage"}${selectedEventId === event.event_id ? " selected" : ""}`}
+                  className={`${event.event === "kill" ? "death" : "damage"}${analysisEventId === event.event_id ? " coaching" : ""}${selectedEventId === event.event_id ? " selected" : ""}`}
                   style={{ left: `${((event.tick - firstTick) / duration) * 100}%` }}
                   key={event.event_id}
-                  title={`Round ${event.round_num}: ${eventLabel(event)}`}
-                  aria-label={`Round ${event.round_num}, ${eventLabel(event)}, ${formatReplayTime(event.tick, firstTick, replay.map.tick_rate)}`}
+                  title={`Round ${event.round_num}: ${eventLabel(event)}${analysisEventId === event.event_id ? " · Saved analysis" : ""}`}
+                  aria-label={`Round ${event.round_num}, ${eventLabel(event)}, ${formatReplayTime(event.tick, firstTick, replay.map.tick_rate)}${analysisEventId === event.event_id ? ", saved analysis" : ""}`}
                   onClick={(clickEvent) => {
                     clickEvent.currentTarget.blur();
                     seek(event.tick, event.event_id);
@@ -431,6 +464,7 @@ export function ReplayAnalysisScreen({
             <span>Round {currentRound?.round_num ?? "—"}</span>
             <span><i className="damage" />Damage received</span>
             <span><i className="death" />Death</span>
+            {analysisEventId ? <span><i className="coaching" />Saved analysis</span> : null}
             <span>Tick {Math.round(currentTick)}</span>
           </div>
         </section>

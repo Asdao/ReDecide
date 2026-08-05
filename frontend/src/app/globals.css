@@ -1636,47 +1636,24 @@ input[type="file"] {
   white-space: nowrap;
 }
 
-.inspector-clear {
-  width: 100%;
-  margin-top: 1rem;
-}
-
-.secondary.inspector-clear::before {
-  --diagonal-run: 1.25rem;
-
-  inset: 0;
-  border: 0;
-  clip-path: polygon(
-    -5rem 0,
-    -1rem 0,
-    calc(-1rem - var(--diagonal-run)) 100%,
-    calc(-5rem - var(--diagonal-run)) 100%
-  );
-  transform: none;
-  transition: clip-path 0.3s cubic-bezier(0.22, 0.61, 0.36, 1);
-}
-
-.secondary.inspector-clear:not(:disabled):is(:hover, :focus-visible)::before {
-  clip-path: polygon(
-    -1rem 0,
-    calc(100% + 4rem) 0,
-    calc(100% + 4rem - var(--diagonal-run)) 100%,
-    calc(-1rem - var(--diagonal-run)) 100%
-  );
-  transform: none;
-}
-
-.inspector-note {
+.saved-coaching {
   margin-top: 1.25rem;
-  background: rgb(247 148 29 / 6%);
-  padding: 0.85rem 1rem;
+  background: rgb(79 156 255 / 8%);
+  padding: 1rem;
 }
 
-.inspector-note p:last-child {
+.saved-coaching h3 {
   margin: 0.35rem 0 0;
-  color: var(--muted);
-  font-size: 0.78rem;
-  line-height: 1.5;
+  color: var(--text);
+  font-family: var(--font-display);
+  font-size: 1.15rem;
+  text-transform: uppercase;
+}
+
+.saved-coaching > p:last-child {
+  margin: 0.7rem 0 0;
+  color: #d9e8ff;
+  line-height: 1.6;
 }
 
 .replay-timeline {
@@ -1883,8 +1860,24 @@ input[type="file"] {
   --event-marker-color: var(--tactical-tan);
 }
 
+.event-track button.coaching {
+  --event-marker-color: #4f9cff;
+
+  z-index: 2;
+}
+
+.event-track button.coaching::before {
+  width: 8px;
+  box-shadow: 0 0 0 2px rgb(220 236 255 / 70%);
+}
+
 .timeline-caption i.damage {
   background: var(--tactical-tan);
+}
+
+.timeline-caption i.coaching {
+  background: #4f9cff;
+  box-shadow: 0 0 0 1px rgb(220 236 255 / 70%);
 }
 
 .event-track button:focus,

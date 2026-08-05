@@ -5,6 +5,7 @@ import backendResult from "../../../backend/tests/fixtures/analysis_api_result.j
 import { LandingScreen } from "@/components/LandingScreen";
 import { ProductHeader } from "@/components/ProductHeader";
 import { ProcessedReplaySelectorScreen } from "@/components/ProcessedReplaySelectorScreen";
+import { ProcessedReplayPlayerScreen } from "@/components/ProcessedReplayPlayerScreen";
 import { ReplayAnalysisScreen } from "@/components/ReplayAnalysisScreen";
 import { ReplayFlowScreen } from "@/components/ReplayFlowScreen";
 import { SampleSelectorScreen } from "@/components/SampleSelectorScreen";
@@ -105,8 +106,17 @@ describe("uploaded replay screens", () => {
     const analysisHtml = renderToStaticMarkup(
       createElement(ReplayAnalysisScreen, {}),
     );
+    const processedPlayerHtml = renderToStaticMarkup(
+      createElement(ProcessedReplayPlayerScreen, {
+        status: "loading",
+        summary: PROCESSED_REPLAYS[0],
+        onBack: () => undefined,
+        onRetry: () => undefined,
+        onSelectPlayer: () => undefined,
+      }),
+    );
 
-    for (const html of [uploadHtml, sampleHtml, analysisHtml]) {
+    for (const html of [uploadHtml, sampleHtml, processedPlayerHtml, analysisHtml]) {
       expect(html).toContain("loading-border");
       expect(html).not.toContain("loading-marker");
       expect(html).not.toContain("progress-marker");
@@ -235,9 +245,75 @@ describe("sample replay screens", () => {
 
     expect(html).toContain("Mirage showcase");
     expect(html).toContain("Inferno processed replay");
-    expect(html.match(/No saved analysis/g)).toHaveLength(2);
-    expect(html.match(/Open replay/g)).toHaveLength(2);
+    expect(html).toContain("No saved analysis");
+    expect(html).toContain("Saved analysis included");
+    expect(html.match(/Choose player/g)).toHaveLength(2);
     expect(html).not.toContain("Choose your");
+  });
+
+  it("shows the selected replay's players before opening the renderer", () => {
+    const replay = {
+      schema_version: "replay_visualization_v1" as const,
+      replay_id: "mirage-showcase",
+      source: "mirage.dem",
+      map: { name: "de_mirage", tick_rate: 64 },
+      players: manifest.players.map((player) => ({
+        ...player,
+        sides: player.sides.map((side) => side.toLowerCase()),
+      })),
+      rounds: [{ round_num: 1, start: 100, end: 300 }],
+      events: [],
+      ticks: [],
+    };
+    const html = renderToStaticMarkup(
+      createElement(ProcessedReplayPlayerScreen, {
+        status: "ready",
+        summary: PROCESSED_REPLAYS[0],
+        replay,
+        onBack: () => undefined,
+        onRetry: () => undefined,
+        onSelectPlayer: () => undefined,
+      }),
+    );
+
+    expect(html).toContain("Choose your");
+    expect(html).toContain("CT One");
+    expect(html).toContain("T One");
+    expect(html).toContain("Open perspective");
+    expect(html).toContain("Back to replays");
+    expect(html).toContain("Not included");
+  });
+
+  it("identifies the player with saved analysis in the Inferno roster", () => {
+    const infernoSummary = PROCESSED_REPLAYS[1];
+    const replay = {
+      schema_version: "replay_visualization_v1" as const,
+      replay_id: "inferno-replay",
+      source: "inferno.dem",
+      map: { name: "de_inferno", tick_rate: 64 },
+      players: [
+        { player_id: infernoSummary.analysisPlayerId!, display_name: "flameZ", sides: ["t"] },
+        { player_id: "other-player", display_name: "Other", sides: ["ct"] },
+      ],
+      rounds: [{ round_num: 1, start: 1, end: 100 }],
+      events: [],
+      ticks: [],
+    };
+    const html = renderToStaticMarkup(
+      createElement(ProcessedReplayPlayerScreen, {
+        status: "ready",
+        summary: infernoSummary,
+        replay,
+        onBack: () => undefined,
+        onRetry: () => undefined,
+        onSelectPlayer: () => undefined,
+      }),
+    );
+
+    expect(html).toContain("Included");
+    expect(html).toContain("Saved analysis");
+    expect(html).toContain("Replay only");
+    expect(html).toContain("Open analysis");
   });
 
   it("uses an official map name instead of the backend map identifier", () => {

@@ -11,10 +11,12 @@ renders the backend-returned list through the compatibility sample selector.
 Selecting an available entry submits its stable `sample_id` to
 `POST /api/analyze`. A separate `Open processed replays` action opens a local
 list containing the bundled Mirage showcase and backend-generated Inferno
-visualization. Selecting either save goes directly to `/analysis`; player
-perspective remains selectable inside the viewer. Neither save currently
-contains a saved coaching-analysis payload, and the list labels that state
-explicitly. The native `.dem` action continues to use the complete backend flow.
+visualization. Selecting a save loads its player roster; selecting a stable
+player ID then opens `/analysis` with that perspective already active. Player
+perspective remains switchable inside the viewer. The Inferno save includes
+saved coaching for flameZ, while Mirage has no analysis artifact; the replay and
+player lists label those states explicitly. The native `.dem` action continues
+to use the complete backend flow.
 
 The `.dem` upload is the primary orange landing action; backend samples and the
 processed replay catalog use the steel-blue secondary treatment. Their concise help
@@ -72,10 +74,8 @@ sticky on narrow screens.
 All event markers use one consistent hit target and a six-pixel visual line,
 with no persistent focus or selected outline after clicking or automatic
 pausing. The wider right-side inspector uses an orange border on all four sides;
-its knowledge-boundary note uses background color without an edge border.
-The inspector's clear action keeps the homepage button's 22-degree diagonal
-edge, using a clipped sweep that extends beyond every corner and guarantees full
-coverage at the end of the transition. Player
+saved coaching uses a borderless blue background. The inspector has no separate
+saved-analysis note or clear button. Player
 and round selectors suppress the browser's native white focus ring while
 retaining the product-colored container state.
 Full-match round segments are labeled buttons: hovering or keyboard focus shows
@@ -85,9 +85,10 @@ background, so the homepage's diagonal stripe treatment continues with its
 original opacity, colors, and 22-degree angle.
 The moment inspector is absent during ordinary playback. Selecting an event
 slides a wider inspector in from the right and shifts the centered radar
-slightly left; clearing the event or resuming playback restores the centered
-map. The inspector also states whether the opened save includes saved coaching
-analysis; it never starts a model request.
+slightly left; resuming playback restores the centered
+map. Inferno's saved coaching is attached to the matching flameZ damage event at
+tick 2579, shown as a distinct blue timeline marker, and rendered in the moment
+inspector. The viewer never starts a model request.
 
 The processed replay adapter accepts the documented backend
 `replay_visualization_v1` output without requiring the sanitized Mirage shape.
@@ -153,7 +154,9 @@ outcomes are not rendered in the coaching result.
   catalog routing, plus uploaded replay polling, timeouts, cancellation, and request
   ownership
 - `src/components/ProcessedReplaySelectorScreen.tsx` - two-save processed replay
-  list, map summaries, analysis-availability labels, and direct viewer selection
+  list, map summaries, analysis-availability labels, and replay selection
+- `src/components/ProcessedReplayPlayerScreen.tsx` - selected-save loading,
+  replay summary, analysis status, and stable player-perspective selection
 - `src/components/ReplayAnalysisScreen.tsx` - map-aware radar, playback clock,
   controls, event inspector, player perspective, and full-match timeline
 - `src/app/analysis/page.tsx` - replay- and player-aware viewer route and metadata
@@ -163,6 +166,8 @@ outcomes are not rendered in the coaching result.
 - `src/domain/replay-viewer.ts` - backend-output normalization, frame indexing,
   deterministic seeking, clock formatting, and reviewed map transforms
 - `public/replays/*.replay.json` - browser-served Mirage and Inferno processed saves
+- `public/replays/inferno-processed.analysis.json` - validated saved coaching
+  result paired with the Inferno replay by replay, map, source, player, and tick
 - `src/components/ReplayFlowScreen.tsx` - upload/preparation progress, player
   selection, coaching/recovery, safe errors, and final coaching result
 - `src/components/SampleSelectorScreen.tsx` - loading, error, empty, list, map
@@ -212,7 +217,8 @@ folder on `raw.githubusercontent.com` for non-bundled future maps.
 
 From `frontend/`, `pnpm run verify` passes:
 
-- Vitest: 7 files, 78 tests passed, including both full processed replay files
+- Vitest: 7 files, 81 tests passed, including both full processed replay files
+  and the matching Inferno analysis
 - TypeScript: passed
 - ESLint: passed with no warnings
 - Next.js production build: passed; `/` and `/_not-found` prerendered and
@@ -257,7 +263,7 @@ Browser verification of the uploaded-replay UI also confirmed:
 - Visualization JSON retrieval for uploaded replays is implemented in the
   adapter but is not yet connected from a completed live coaching result into
   the radar/timeline workspace. The local viewer currently opens only cataloged
-  processed saves. Neither bundled save contains a coaching-analysis payload,
+  processed saves. Only Inferno currently has a paired saved coaching result,
   and player intent remains disabled because no public backend contract exists.
 
 ## Contract/API impact

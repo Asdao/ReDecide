@@ -29,7 +29,9 @@ it. The browser adapter associates snapshots with the stable top-level player
 records by their unique display names and derives alive state from health only
 when the field is absent.
 
-Neither bundled visualization contains a saved coaching-analysis payload. The
-processed-replay selector reports that independently from visualization
-availability so a future save can advertise bundled analysis without changing
-the replay contract.
+`inferno-processed.analysis.json` is the matching validated
+`replay_pipeline_v1` result for the Inferno save. It contains saved coaching for
+flameZ at the round-one damage event on tick 2579. The Mirage save has no
+matching analysis artifact. The selector reports analysis availability
+independently from visualization availability because they remain separate
+backend contracts.

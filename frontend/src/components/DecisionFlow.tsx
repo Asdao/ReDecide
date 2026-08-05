@@ -12,6 +12,7 @@ import {
   uploadReplay,
 } from "@/adapters/replay-api";
 import { getSamples, selectSample } from "@/adapters/samples-api";
+import { getProcessedReplay } from "@/adapters/processed-replay";
 import {
   analysisFlowReducer,
   initialAnalysisFlowState,
@@ -33,7 +34,9 @@ import { ProductHeader } from "./ProductHeader";
 import { ReplayFlowScreen } from "./ReplayFlowScreen";
 import { SampleSelectorScreen } from "./SampleSelectorScreen";
 import { ProcessedReplaySelectorScreen } from "./ProcessedReplaySelectorScreen";
-import { PROCESSED_REPLAYS } from "@/domain/processed-replays";
+import { ProcessedReplayPlayerScreen } from "./ProcessedReplayPlayerScreen";
+import { PROCESSED_REPLAYS, processedReplayById } from "@/domain/processed-replays";
+import type { ProcessedReplay } from "@/domain/replay-viewer";
 
 const PLAYER_PREPARATION_TIMEOUT_MS = 90_000;
 const PLAYER_POLL_INTERVAL_MS = 1_000;
@@ -91,7 +94,17 @@ export function DecisionFlow() {
   const router = useRouter();
   const [state, dispatch] = useReducer(analysisFlowReducer, initialAnalysisFlowState);
   const [processedReplaysOpen, setProcessedReplaysOpen] = useState(false);
-  const currentScreen = processedReplaysOpen ? "processed-replays" : state.status;
+  const [processedReplay, setProcessedReplay] = useState<
+    | { status: "catalog" }
+    | { status: "loading"; replayId: string; attempt: number }
+    | { status: "error"; replayId: string; attempt: number; message: string }
+    | { status: "ready"; replayId: string; attempt: number; replay: ProcessedReplay }
+  >({ status: "catalog" });
+  const currentScreen = processedReplaysOpen
+    ? processedReplay.status === "catalog"
+      ? "processed-replays"
+      : "processed-player"
+    : state.status;
   const previousScreen = useRef(currentScreen);
   const requestSequence = useRef(0);
   const nextRequestId = useCallback((operation: string) => {
@@ -104,17 +117,51 @@ export function DecisionFlow() {
       dispatch({ type: "RESET" });
       if (view === "samples") {
         setProcessedReplaysOpen(false);
+        setProcessedReplay({ status: "catalog" });
         dispatch({ type: "OPEN_SAMPLES" });
         return;
       }
       if (view === "showcase") {
         setProcessedReplaysOpen(true);
+        setProcessedReplay({ status: "catalog" });
         return;
       }
       setProcessedReplaysOpen(false);
+      setProcessedReplay({ status: "catalog" });
     },
     [],
   );
+
+  useEffect(() => {
+    if (processedReplay.status !== "loading") {
+      return;
+    }
+
+    const controller = new AbortController();
+    const { replayId, attempt } = processedReplay;
+    let active = true;
+    getProcessedReplay(replayId, controller.signal)
+      .then((replay) => {
+        if (active) {
+          setProcessedReplay({ status: "ready", replayId, attempt, replay });
+        }
+      })
+      .catch((error: unknown) => {
+        if (active && !isAbortError(error)) {
+          setProcessedReplay({
+            status: "error",
+            replayId,
+            attempt,
+            message: error instanceof Error ? error.message : "The processed replay could not be loaded.",
+          });
+        }
+      });
+
+    return () => {
+      active = false;
+      controller.abort();
+    };
+  }, [processedReplay]);
 
   useEffect(() => {
     const syncFromLocation = () => {
@@ -458,6 +505,8 @@ export function DecisionFlow() {
         ? "page-title"
         : currentScreen === "processed-replays"
           ? "processed-replays-title"
+          : currentScreen === "processed-player"
+            ? "replay-title"
           : isSampleState(state)
             ? "samples-title"
             : "replay-title";
@@ -497,15 +546,40 @@ export function DecisionFlow() {
 
   let content;
   if (processedReplaysOpen) {
-    content = (
-      <ProcessedReplaySelectorScreen
-        replays={PROCESSED_REPLAYS}
-        onBack={returnHome}
-        onSelect={(replayId) =>
-          router.push(`/analysis?replay=${encodeURIComponent(replayId)}`)
-        }
-      />
-    );
+    if (processedReplay.status === "catalog") {
+      content = (
+        <ProcessedReplaySelectorScreen
+          replays={PROCESSED_REPLAYS}
+          onBack={returnHome}
+          onSelect={(replayId) =>
+            setProcessedReplay({ status: "loading", replayId, attempt: 1 })
+          }
+        />
+      );
+    } else {
+      const summary = processedReplayById(processedReplay.replayId);
+      content = summary ? (
+        <ProcessedReplayPlayerScreen
+          status={processedReplay.status}
+          summary={summary}
+          replay={processedReplay.status === "ready" ? processedReplay.replay : undefined}
+          message={processedReplay.status === "error" ? processedReplay.message : undefined}
+          onBack={() => setProcessedReplay({ status: "catalog" })}
+          onRetry={() =>
+            setProcessedReplay({
+              status: "loading",
+              replayId: processedReplay.replayId,
+              attempt: processedReplay.attempt + 1,
+            })
+          }
+          onSelectPlayer={(player) =>
+            router.push(
+              `/analysis?replay=${encodeURIComponent(processedReplay.replayId)}&player=${encodeURIComponent(player.player_id)}`,
+            )
+          }
+        />
+      ) : null;
+    }
   } else if (state.status === "choose") {
     content = (
       <LandingScreen
