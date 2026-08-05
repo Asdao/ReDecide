@@ -10,6 +10,8 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import json
+import random
 import sys
 from collections.abc import Mapping, Sequence
 from pathlib import Path
@@ -46,6 +48,11 @@ def _parser() -> argparse.ArgumentParser:
         help="normalized JSON fallback (defaults to the local replay JSONL)",
     )
     parser.add_argument("--player-id", help="select a player without prompting")
+    parser.add_argument(
+        "--output",
+        type=Path,
+        help="where to save the final analysis JSON (default: data/runtime/analysis/<analysis_id>.json)",
+    )
     return parser
 
 
@@ -176,15 +183,15 @@ def _choose_player(players: list[Mapping[str, Any]], requested_id: str | None) -
         if selected is None:
             raise RuntimeError(f"player {requested_id!r} has no eligible decision")
         return selected
-    print("\nPlayers available:")
-    for index, item in enumerate(eligible, start=1):
-        print(f"  {index}. {item.get('display_name') or item.get('player_id')} ({item.get('player_id')})")
-    answer = input("Select player [1]: ").strip() or "1"
-    try:
-        selected = eligible[int(answer) - 1]
-    except (ValueError, IndexError) as exc:
-        raise RuntimeError("invalid player selection") from exc
-    return selected
+    return random.choice(eligible)
+
+
+def _save_analysis(result: Mapping[str, Any], output_path: Path) -> None:
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_text(
+        json.dumps(dict(result), ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+    )
 
 
 async def _run_api(
@@ -193,6 +200,7 @@ async def _run_api(
     source: str,
     player_id: str | None,
     source_path: Path | None = None,
+    output_path: Path | None = None,
 ) -> None:
     """Run the split Replay API -> Coaching API flow through public routes."""
 
@@ -259,9 +267,14 @@ async def _run_api(
         _raise_for_status(players_response)
         players = players_response.json().get("players", [])
         selected = _choose_player(players, player_id)
+        selected_player_id = str(selected["player_id"])
+        print(
+            f"Selected player: {selected.get('display_name') or selected_player_id} ({selected_player_id})",
+            file=sys.stderr,
+        )
         run = await client.post(
             f"/api/analysis/{analysis_id}/run",
-            json={"player_id": selected["player_id"]},
+            json={"player_id": selected_player_id},
         )
         _raise_for_status(run)
         events = await client.get(f"/api/analysis/{analysis_id}/events")
@@ -269,6 +282,9 @@ async def _run_api(
         result_response = await client.get(f"/api/analysis/{analysis_id}/result")
         _raise_for_status(result_response)
         result = result_response.json()
+        saved_path = output_path or (_repo_root() / "data" / "runtime" / "analysis" / f"{analysis_id}.json")
+        _save_analysis(result, saved_path)
+        print(f"Analysis JSON saved: {saved_path}")
 
         if is_native_demo and replay_id is not None:
             while True:
@@ -310,6 +326,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 source=source,
                 player_id=args.player_id,
                 source_path=input_path,
+                output_path=args.output,
             )
         )
         return 0
