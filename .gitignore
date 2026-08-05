@@ -34,9 +34,11 @@ data/*
 model/artifacts/*.json
 model/artifacts/*.txt
 
-# Track only the empty RE:DECIDE data ownership skeleton.
+# Track the RE:DECIDE data ownership skeleton and reviewed public assets.
 !data/
 data/*
+!data/public/
+!data/public/**
 !data/samples/
 data/samples/*
 !data/samples/.gitkeep
