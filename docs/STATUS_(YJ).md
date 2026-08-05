@@ -9,10 +9,10 @@ Branch: `05/evidence_I_think`
 ## Current status
 
 **Person 5 workspace setup, the initial secondary-research review, the masked
-human-review protocol, the review-data schema, the QA test plan, and the first
-third-party disclosure audit are complete. Formal human review, QA execution,
-deck, demo, disclosure approval, and final submission verification have not yet
-been completed.**
+human-review protocol, the review-data schema, the QA test plan, the first
+third-party disclosure audit, and the 14-slide deck outline are complete.
+Formal human review, QA execution, slide production, demo, disclosure approval,
+and final submission verification have not yet been completed.**
 
 The research draft compares public CS2 analytics, demo-review, and training
 workflows; reviews outcome-bias research and explainable-AI guidance; and keeps
@@ -52,6 +52,11 @@ and input.
       fonts, and visual-asset sources.
 - [x] Recorded disclosure blockers without treating attribution or a package
       licence as permission for separately owned data or game assets.
+- [x] Created `docs/DECK_OUTLINE_(YJ).md` with a 14-slide narrative mapped to
+      the judging criteria, available evidence, visual suggestions, safe claims,
+      and slide-specific completion states.
+- [x] Registered 15 missing-information items (`M01`-`M15`) with the owner,
+      affected slides, and evidence required to resolve each one.
 
 ## In progress
 
@@ -63,12 +68,14 @@ and input.
 - [ ] Obtaining component-owner confirmations for the final AI model, replay
       and training-data rights, model provenance, visual assets, deployment,
       and repository-licence decision.
+- [ ] Building slides from the approved outline and replacing missing-content
+      markers only when their required evidence is supplied.
 
 ## Not started
 
 - [ ] Populated anonymized review cases and formal human-review results
 - [ ] QA execution and issue reporting
-- [ ] Pitch deck content
+- [ ] Final pitch deck content, screenshots, results, and PDF export
 - [ ] Timed demo script and rehearsals
 - [ ] Final third-party disclosure approval and final-commit re-audit
 - [ ] README evidence/disclosure handoff to Person 1
@@ -144,13 +151,15 @@ severity, and supporting evidence.
 | `data/eval/human/review_cases_(YJ).csv` | YJ | Master anonymized result table with one row per reviewer-decision pair; populated only from genuine cases and responses | Supplies raw counts and denominators for evaluation metrics; remains header-only if review is not executed |
 | `docs/QA_MATRIX_(YJ).md` | YJ and component owners | Freezes scope, prioritizes tests, records actual results/evidence, assigns failures, and preserves retests | Supports build-quality claims, demo readiness, known limitations, and the final release decision |
 | `docs/THIRD_PARTY_DISCLOSURES_(YJ).md` | YJ, component owners, and Person 1 | Living inventory of software, services, models, data, fonts, and assets; assigns verification owners and records unresolved rights or provenance | Supplies approved README/submission disclosures and prevents the team from treating attribution as permission |
+| `docs/DECK_OUTLINE_(YJ).md` | YJ, Person 1, and slide contributors | Provides the 14-slide narrative, draft copy, visual direction, evidence mapping, missing-information register, and slide completion gates | Becomes the controlled content source for the final PDF while keeping unsupported, proposed, and future claims visible |
 
 These files have different purposes. The roadmap plans the work, this status
 file summarizes it, the research supports the problem narrative, the protocol
 defines human evaluation, the CSV stores responses, the QA matrix verifies the
-application and submission, and the disclosure inventory tracks third-party
-inputs and owner approvals. A prepared template is not evidence of a passed
-test, completed evaluation, cleared asset, or approved disclosure.
+application and submission, the disclosure inventory tracks third-party inputs
+and owner approvals, and the deck outline converts verified material into a
+slide plan. A prepared template is not evidence of a passed test, completed
+evaluation, cleared asset, implemented feature, or approved disclosure.
 
 ## Dependencies and handoffs
 
@@ -190,7 +199,10 @@ test, completed evaluation, cleared asset, or approved disclosure.
 7. Review the research claims with the team before using them in the deck.
 8. Send the disclosure blockers to their named owners and record their evidence.
 9. Re-audit disclosures against the exact final submission commit.
-10. Update this file whenever a blocker or deliverable materially changes.
+10. Build slides 1-4 and the reusable visual layouts for slides 6, 8, 9, 11,
+    13, and 14 from the deck outline.
+11. Resolve deck missing-information IDs as owners provide final evidence.
+12. Update this file whenever a blocker or deliverable materially changes.
 
 ## Update log
 
@@ -201,3 +213,4 @@ test, completed evaluation, cleared asset, or approved disclosure.
 | 2026-08-05 | Completed masked review protocol and empty 45-column evaluation schema | Obtain genuine cases and reviewers; do not fabricate rows |
 | 2026-08-06 | Completed 60-check QA plan and documented how each YJ file is utilised | Freeze the final demo scope, obtain test inputs, and execute P0 checks |
 | 2026-08-06 | Completed the initial third-party disclosure audit and documented its update triggers | Obtain owner confirmations and re-audit the exact final submission commit |
+| 2026-08-06 | Completed the 14-slide deck outline with 15 owned missing-information items | Build stable slides now and fill final product/results content only from verified evidence |
