@@ -172,15 +172,12 @@ exist yet.
   contract does not guarantee this data. Never substitute movement direction
   as player aim.
 
-### Flat 2D and planned 2.5D stacked-layer presentation
+### Flat 2D stacked-layer presentation
 
 The required implementation is a flat 2D radar. It is practical with the
 current position snapshots and the overview metadata, and it provides the best
 base for reliable playback, seeking, key-point synchronization, and responsive
 layout.
-
-Add a decorative 2.5D "stacked pancakes" mode after the flat viewer is stable
-for maps with separate radar layers:
 
 - Render every radar floor as an aligned textured plane with vertical spacing
   derived from floor order, not as true game geometry.
@@ -216,8 +213,6 @@ Recommended order:
 3. Responsive map-to-left and analysis-panel transition.
 4. Contextual intent flow after the backend contract is available.
 5. Conditional field-of-view wedges after view direction is available.
-6. The planned 2.5D stacked radar mode only after the complete 2D flow passes
-   functional, responsive, accessibility, and performance checks.
 
 ## Public API endpoints
 
