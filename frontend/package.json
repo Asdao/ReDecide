@@ -13,12 +13,16 @@
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "verify": "pnpm test && pnpm typecheck && pnpm lint && pnpm build"
+    "verify": "pnpm test && pnpm typecheck && pnpm lint && pnpm build",
+    "security:check": "node ../security/check-lockfiles.mjs",
+    "security:audit": "pnpm audit --audit-level=high",
+    "security": "pnpm run security:check && pnpm run security:audit"
   },
   "dependencies": {
     "@fontsource-variable/noto-sans": "^5.3.0",
     "@fontsource-variable/saira": "^5.3.0",
     "@fontsource/saira-condensed": "^5.3.0",
+    "@vercel/blob": "^2.6.1",
     "next": "^16.2.12",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",

@@ -8,7 +8,7 @@ data/
 ├── public/
 │   ├── metadata/             # public Parquet metadata, subject to license
 │   ├── processed/            # sanitized derived snapshots
-│   ├── radar-info/           # raw and normalized overview metadata
+│   ├── maps/           # raw and normalized overview metadata
 │   ├── benchmark_manifest.json
 │   └── benchmark_evaluation.json
 └── private/

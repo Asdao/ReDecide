@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  analysisJobSchema,
   analysisPlayersSchema,
   replayAnalysisResultSchema,
   replayManifestSchema,
@@ -28,6 +29,12 @@ const player = {
   event_ids: ["event-1"],
   key_event_ids: ["event-1"],
   decision_ids: ["decision-1"],
+};
+
+const selectablePlayer = {
+  ...player,
+  analysis_available: true,
+  analysis_status: "not_started",
 };
 
 const candidate = {
@@ -154,9 +161,43 @@ describe("uploaded replay contracts", () => {
       analysisPlayersSchema.parse({
         analysis_id: "analysis-1",
         status: "ready",
-        players: [player, player],
+        players: [selectablePlayer, selectablePlayer],
       }),
     ).toThrow("analysis player_id values must be unique");
+  });
+
+  it("accepts backend per-player run metadata and the coaching status", () => {
+    expect(
+      analysisJobSchema.parse({
+        analysis_id: "analysis-1",
+        status: "coaching",
+        players_available: true,
+        result_available: false,
+        selected_player_id: "p1",
+        player_runs: {
+          p1: {
+            status: "running",
+            result_available: false,
+            run_id: "run-1",
+          },
+        },
+        logs_url: "/api/analysis/analysis-1/logs",
+        events_url: "/api/analysis/analysis-1/events",
+        result_url: "/api/analysis/analysis-1/result",
+      }).player_runs.p1.status,
+    ).toBe("running");
+
+    expect(
+      analysisPlayersSchema.parse({
+        analysis_id: "analysis-1",
+        status: "ready",
+        players: [selectablePlayer],
+      }).players[0],
+    ).toMatchObject({
+      player_id: "p1",
+      analysis_available: true,
+      analysis_status: "not_started",
+    });
   });
 
   it("accepts a consistent result and rejects mismatched coaching ownership", () => {

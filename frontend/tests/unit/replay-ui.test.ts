@@ -40,6 +40,8 @@ const analysis = analysisJobSchema.parse({
   status: "ready",
   players_available: true,
   result_available: false,
+  selected_player_id: null,
+  player_runs: {},
   logs_url: "/api/analysis/analysis-1/logs",
   events_url: "/api/analysis/analysis-1/events",
   result_url: "/api/analysis/analysis-1/result",
@@ -47,7 +49,11 @@ const analysis = analysisJobSchema.parse({
 const players = analysisPlayersSchema.parse({
   analysis_id: "analysis-1",
   status: "ready",
-  players: backendResult.players,
+  players: backendResult.players.map((player) => ({
+    ...player,
+    analysis_available: player.decision_ids.length > 0,
+    analysis_status: "not_started",
+  })),
 }).players;
 const result = replayAnalysisResultSchema.parse({
   ...backendResult,
@@ -115,7 +121,7 @@ describe("uploaded replay screens", () => {
     expect(html).toContain('accept=".dem"');
     expect(html).not.toContain('id="demo-upload" type="file" accept=".dem" disabled');
     expect(html).toContain('<label class="primary" for="demo-upload"');
-    expect(html).toContain("Upload once");
+    expect(html).toContain("Upload your match and view its analysis.");
   });
 
   it("uses the animated border without square markers on every loading screen", () => {
@@ -220,6 +226,47 @@ describe("uploaded replay screens", () => {
     expect(html).not.toContain("round_score");
   });
 
+  it("renders an attacker analysis point ahead of same-tick damage or death", () => {
+    const attackerReplay: ProcessedReplay = {
+      ...uploadedReplay,
+      events: [
+        {
+          event_id: "analysis-damage",
+          event: "damage",
+          tick: result.selected_decision.contact_tick,
+          round_num: result.selected_decision.round_number,
+          attacker_id: result.selected_decision.player_id,
+          victim_id: result.selected_decision.opponent_id,
+          damage_health: 100,
+        },
+        {
+          event_id: "same-tick-kill",
+          event: "kill",
+          tick: result.selected_decision.contact_tick,
+          round_num: result.selected_decision.round_number,
+          attacker_id: result.selected_decision.player_id,
+          victim_id: result.selected_decision.opponent_id,
+        },
+      ],
+      ticks: [
+        uploadedReplay.ticks[0],
+        { ...uploadedReplay.ticks[0], tick: 300 },
+      ],
+    };
+    const html = renderToStaticMarkup(createElement(ReplayAnalysisScreen, {
+      initialPlayerId: result.selected_decision.player_id,
+      initialReplay: attackerReplay,
+      initialAnalysis: result,
+      uploaded: true,
+      onChoosePlayer: () => undefined,
+    }));
+
+    expect(html.match(/<button type="button" class="coaching"/g)).toHaveLength(1);
+    expect(html).toContain("Damage dealt · Saved analysis");
+    expect(html).toContain('<span><i class="coaching"></i>Analysis</span>');
+    expect(html).not.toContain('<button type="button" class="death"');
+  });
+
   it("labels time between rounds without repeating the round in the timeline legend", () => {
     const waitingReplay: ProcessedReplay = {
       ...uploadedReplay,
@@ -293,6 +340,7 @@ describe("uploaded replay screens", () => {
     expect(html.match(/role="alert"/g)).toHaveLength(1);
     expect(html).toContain("Choose a valid .dem replay file.");
     expect(html).not.toContain("Retry upload");
+    expect(html).toContain('class="secondary replay-reset-button"');
     expect(html).toContain('Choose another <span class="accent-word">replay</span>');
   });
 });
@@ -312,7 +360,7 @@ describe("sample replay screens", () => {
     expect(html).toContain("currently available from the backend");
     expect(html).toContain("Open processed replays");
     expect(html).toContain("already-processed replay");
-    expect(html).toContain("2D viewer");
+    expect(html).toContain("go straight to its analysis");
     expect(html).toContain('class="action-note action-note-accent"');
     expect(html.match(/class="action-note action-note-steel"/g)).toHaveLength(2);
   });

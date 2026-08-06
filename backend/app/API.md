@@ -62,7 +62,7 @@ accepts only `https://<store-id>.public.blob.vercel-storage.com/...` URLs.
 ### `GET /api/analysis/{analysis_id}`
 
 - **Input:** `analysis_id` in the URL.
-- **Output:** JSON containing job status, `players_available`, `result_available`, and progress URLs.
+- **Output:** JSON containing job status, `players_available`, `result_available`, per-player run statuses, and progress URLs.
 - **Summary:** Checks whether player selection or the final coaching result is ready.
 
 ### `GET /api/analysis/{analysis_id}/players`
@@ -75,13 +75,13 @@ accepts only `https://<store-id>.public.blob.vercel-storage.com/...` URLs.
 
 - **Input:** `analysis_id` in the URL and JSON: `{"player_id":"<player_id>"}`.
 - **Output:** JSON containing the selected player's events, decision moments, win timeline, and coaching advice.
-- **Summary:** Selects one player, runs the live coach, and returns the completed analysis.
+- **Summary:** Selects one player, runs the live coach, and returns the completed analysis. Calling it again with another player reuses replay preparation and creates a separate per-player run.
 
 ### `GET /api/analysis/{analysis_id}/result`
 
-- **Input:** `analysis_id` in the URL.
+- **Input:** `analysis_id` in the URL. Optionally pass `?player_id=<player_id>` to retrieve that player's saved result.
 - **Output:** JSON containing the completed analysis, or a status response if it is not ready.
-- **Summary:** Retrieves the coaching result again without running the coach a second time.
+- **Summary:** Retrieves a saved coaching result again without running the coach a second time. Results are retained separately for each analyzed player.
 
 ### `GET /api/analysis/{analysis_id}/events`
 

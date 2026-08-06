@@ -1,19 +1,27 @@
 "use client";
 
 import Image from "next/image";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
 import { getProcessedReplay, getProcessedReplayAnalysis } from "@/adapters/processed-replay";
 import { mapDisplayName } from "@/domain/maps";
+import {
+  momentIntentReducer,
+  type MomentIntentSubmission,
+} from "@/domain/moment-intent";
 import type { ReplayAnalysisResult } from "@/domain/replay";
 import {
+  analysisTimelineEvents,
   buildReplayFrames,
+  eventMatchesAnalysis,
   firstEventCrossed,
   formatReplayTime,
   interpolatedSnapshotsAtTick,
   playerDisplayName,
-  playerTimelineEvents,
   radarOverviewForMap,
+  replayEventIsDeath,
   roundAtTick,
+  winProbabilityAtMoment,
+  winRateForPerspective,
   worldToRadar,
   type ProcessedReplay,
   type ReplayEvent,
@@ -23,10 +31,20 @@ import { ProductHeader } from "./ProductHeader";
 
 const PLAYBACK_RATES = [0.5, 1, 2, 4, 8];
 
-function eventLabel(event: ReplayEvent): string {
+function eventLabel(
+  event: ReplayEvent,
+  analysis?: ReplayAnalysisResult,
+): string {
+  if (analysis && eventMatchesAnalysis(event, analysis)) {
+    if (analysis.selected_decision.event_category === "damage") {
+      return analysis.selected_decision.role === "attacker" ? "Damage dealt" : "Damage received";
+    }
+    return "Analysis point";
+  }
+  if (replayEventIsDeath(event)) {
+    return event.headshot ? "Headshot death" : "Death";
+  }
   switch (event.event) {
-    case "kill":
-      return event.headshot ? "Headshot death" : "Death";
     case "damage":
       return "Damage received";
     default:
@@ -47,33 +65,28 @@ function clamp(value: number, minimum: number, maximum: number): number {
   return Math.min(maximum, Math.max(minimum, value));
 }
 
-function eventMatchesAnalysis(event: ReplayEvent, analysis: ReplayAnalysisResult): boolean {
-  const decision = analysis.selected_decision;
-  const playerMatches = decision.role === "victim"
-    ? event.victim_id === decision.player_id
-    : event.attacker_id === decision.player_id;
-  return (
-    event.tick === decision.contact_tick &&
-    event.round_num === decision.round_number &&
-    event.event === decision.event_category &&
-    playerMatches
-  );
+function formatProbability(value: number): string {
+  return `${(value * 100).toFixed(1)}%`;
 }
 
 export function ReplayAnalysisScreen({
   initialPlayerId,
   replayId,
+  analysisId,
   initialReplay,
   initialAnalysis,
   uploaded = false,
   onChoosePlayer,
+  submitMomentIntent,
 }: {
   initialPlayerId?: string;
   replayId?: string;
+  analysisId?: string;
   initialReplay?: ProcessedReplay;
   initialAnalysis?: ReplayAnalysisResult;
   uploaded?: boolean;
   onChoosePlayer?: () => void;
+  submitMomentIntent?: MomentIntentSubmission;
 }) {
   const initialTick = initialReplay?.ticks[0]?.tick ?? initialReplay?.rounds[0]?.start ?? 0;
   const [replay, setReplay] = useState<ProcessedReplay | undefined>(initialReplay);
@@ -85,9 +98,20 @@ export function ReplayAnalysisScreen({
   const [playbackRate, setPlaybackRate] = useState(1);
   const [selectedPlayerId, setSelectedPlayerId] = useState(initialPlayerId ?? "");
   const [selectedEventId, setSelectedEventId] = useState<string>();
+  const [intentDrafts, setIntentDrafts] = useState<Readonly<Record<string, string>>>({});
+  const [intentStates, dispatchIntent] = useReducer(momentIntentReducer, {});
   const currentTickRef = useRef(initialTick);
   const lastAnimationTime = useRef<number | undefined>(undefined);
   const eventMarkerRefs = useRef(new Map<string, HTMLButtonElement>());
+  const intentRequestId = useRef(0);
+  const intentControllers = useRef(new Map<string, AbortController>());
+
+  useEffect(() => () => {
+    for (const controller of intentControllers.current.values()) {
+      controller.abort();
+    }
+    intentControllers.current.clear();
+  }, []);
 
   useEffect(() => {
     if (initialReplay) {
@@ -144,18 +168,46 @@ export function ReplayAnalysisScreen({
   const selectedSnapshot = currentSnapshots.find(
     ({ player_id }) => player_id === selectedPlayerId,
   );
-  const selectedEvent = replay?.events.find(({ event_id }) => event_id === selectedEventId);
-
   const timelineEvents = useMemo(
-    () => (replay ? playerTimelineEvents(replay.events, selectedPlayerId) : []),
-    [replay, selectedPlayerId],
+    () => (replay ? analysisTimelineEvents(replay.events, selectedPlayerId, analysis) : []),
+    [analysis, replay, selectedPlayerId],
   );
+  const selectedEvent = timelineEvents.find(({ event_id }) => event_id === selectedEventId);
   const analysisEventId = useMemo(
     () => analysis ? timelineEvents.find((event) => eventMatchesAnalysis(event, analysis))?.event_id : undefined,
     [analysis, timelineEvents],
   );
   const selectedEventHasAnalysis = Boolean(
     analysis && selectedEvent && eventMatchesAnalysis(selectedEvent, analysis),
+  );
+  const selectedEventKind = selectedEventHasAnalysis
+    ? "analysis"
+    : selectedEvent && replayEventIsDeath(selectedEvent)
+      ? "death"
+      : "damage";
+  const selectedIntentState = selectedEventId ? intentStates[selectedEventId] : undefined;
+  const selectedIntentDraft = selectedEventId ? intentDrafts[selectedEventId] ?? "" : "";
+  const currentWinProbability = useMemo(
+    () => currentRound && analysis
+      ? winProbabilityAtMoment(
+          analysis.win_estimator.timeline,
+          currentRound.round_num,
+          currentTick,
+        )
+      : undefined,
+    [analysis, currentRound, currentTick],
+  );
+  const selectedAnalysisPlayer = analysis?.players.find(
+    ({ player_id }) => player_id === selectedPlayerId,
+  );
+  const selectedSide = (
+    currentRound
+      ? selectedAnalysisPlayer?.side_by_round[String(currentRound.round_num)]
+      : undefined
+  ) ?? selectedSnapshot?.side ?? "ct";
+  const winRate = winRateForPerspective(
+    currentWinProbability,
+    selectedSide,
   );
 
   const namesById = useMemo(
@@ -242,6 +294,47 @@ export function ReplayAnalysisScreen({
     },
     [seek, timelineEvents],
   );
+
+  const requestContextualAnalysis = useCallback((keyPointId: string, intent: string) => {
+    if (!submitMomentIntent || !analysisId || !replay || !selectedPlayerId) return;
+
+    intentControllers.current.get(keyPointId)?.abort();
+    const controller = new AbortController();
+    const requestId = ++intentRequestId.current;
+    intentControllers.current.set(keyPointId, controller);
+    dispatchIntent({ type: "SUBMIT", keyPointId, intent, requestId });
+
+    submitMomentIntent({
+      replayId: replay.replay_id,
+      analysisId,
+      playerId: selectedPlayerId,
+      keyPointId,
+      intent,
+    }, controller.signal)
+      .then((coaching) => {
+        const normalizedCoaching = coaching.trim();
+        if (!normalizedCoaching) {
+          throw new Error("The contextual analysis response was empty.");
+        }
+        dispatchIntent({ type: "SUCCEED", keyPointId, coaching: normalizedCoaching, requestId });
+      })
+      .catch((error: unknown) => {
+        if (controller.signal.aborted) return;
+        dispatchIntent({
+          type: "FAIL",
+          keyPointId,
+          requestId,
+          message: error instanceof Error
+            ? error.message
+            : "The new analysis could not be generated.",
+        });
+      })
+      .finally(() => {
+        if (intentControllers.current.get(keyPointId) === controller) {
+          intentControllers.current.delete(keyPointId);
+        }
+      });
+  }, [analysisId, replay, selectedPlayerId, submitMomentIntent]);
 
   if (!replay) {
     return (
@@ -358,13 +451,20 @@ export function ReplayAnalysisScreen({
           </ul>
 
           {selectedEvent ? (
-            <aside className="analysis-inspector" aria-labelledby="inspector-title">
+            <aside
+              className={`analysis-inspector ${selectedEventKind}`}
+              aria-labelledby="inspector-title"
+            >
               <div className="inspector-heading">
                 <p className="eyebrow">Moment inspector</p>
-                <h2 id="inspector-title">{eventLabel(selectedEvent)}</h2>
+                <h2 id="inspector-title">
+                  {eventLabel(selectedEvent, selectedEventHasAnalysis ? analysis : undefined)}
+                </h2>
               </div>
               <p className="inspector-summary">
-                {selectedEvent.event === "kill"
+                {selectedEventHasAnalysis && analysis?.selected_decision.role === "attacker"
+                  ? `${namesById.get(selectedEvent.attacker_id ?? "") ?? "The selected player"} dealt ${selectedEvent.damage_health ?? "unknown"} damage to ${namesById.get(selectedEvent.victim_id ?? "") ?? "an opponent"}.`
+                  : replayEventIsDeath(selectedEvent)
                   ? `${namesById.get(selectedEvent.victim_id ?? "") ?? "The selected player"} was eliminated by ${namesById.get(selectedEvent.attacker_id ?? "") ?? "an opponent"}.`
                   : `${namesById.get(selectedEvent.victim_id ?? "") ?? "The selected player"} took ${selectedEvent.damage_health ?? "unknown"} damage from ${namesById.get(selectedEvent.attacker_id ?? "") ?? "an opponent"}.`}
               </p>
@@ -375,10 +475,91 @@ export function ReplayAnalysisScreen({
                 <div><dt>Weapon</dt><dd>{selectedEvent.weapon?.replaceAll("_", " ") ?? "—"}</dd></div>
               </dl>
               {selectedEventHasAnalysis && analysis ? (
-                <section className="saved-coaching" aria-labelledby="saved-coaching-title">
+                <section
+                  className={`saved-coaching${selectedIntentState?.status === "generating" ? " loading-border" : ""}`}
+                  aria-labelledby="saved-coaching-title"
+                  aria-busy={selectedIntentState?.status === "generating"}
+                >
                   <p className="eyebrow">Coaching</p>
                   <h3 id="saved-coaching-title">What could be done better</h3>
-                  <p>{analysis.coach_analysis.what_could_be_done_better}</p>
+                  <p>
+                    {selectedIntentState?.status === "complete"
+                      ? selectedIntentState.coaching
+                      : analysis.coach_analysis.what_could_be_done_better}
+                  </p>
+                  {selectedIntentState?.status === "generating" ? (
+                    <p className="coaching-generation-status" role="status">
+                      Generating new analysis...
+                    </p>
+                  ) : null}
+                </section>
+              ) : null}
+              {selectedEventHasAnalysis && selectedEvent && analysis ? (
+                <section className="moment-intent" aria-labelledby="moment-intent-title">
+                  <p id="moment-intent-title">
+                    Want to add more context for your analysis? Send us your intent at this moment.
+                  </p>
+                  {selectedIntentState ? (
+                    <div className="submitted-intent">
+                      <p className="eyebrow">Your intent</p>
+                      <blockquote>{selectedIntentState.intent}</blockquote>
+                    </div>
+                  ) : null}
+                  <form
+                    onSubmit={(event) => {
+                      event.preventDefault();
+                      const intent = selectedIntentDraft.trim();
+                      if (!intent || selectedIntentState || !submitMomentIntent || !analysisId) return;
+                      requestContextualAnalysis(selectedEvent.event_id, intent);
+                    }}
+                  >
+                    <label className="sr-only" htmlFor={`moment-intent-${selectedEvent.event_id}`}>
+                      Your intent at this moment
+                    </label>
+                    <textarea
+                      id={`moment-intent-${selectedEvent.event_id}`}
+                      value={selectedIntentState ? "" : selectedIntentDraft}
+                      placeholder={selectedIntentState ? "Intent sent" : "What were you trying to do?"}
+                      disabled={Boolean(selectedIntentState) || !submitMomentIntent || !analysisId}
+                      onChange={(event) => {
+                        const value = event.currentTarget.value;
+                        setIntentDrafts((current) => ({
+                          ...current,
+                          [selectedEvent.event_id]: value,
+                        }));
+                      }}
+                    />
+                    <button
+                      type="submit"
+                      disabled={
+                        Boolean(selectedIntentState) ||
+                        !selectedIntentDraft.trim() ||
+                        !submitMomentIntent ||
+                        !analysisId
+                      }
+                    >
+                      Send
+                    </button>
+                  </form>
+                  {!submitMomentIntent || !analysisId ? (
+                    <p className="moment-intent-unavailable">
+                      Intent follow-up will be enabled when backend support is connected.
+                    </p>
+                  ) : null}
+                  {selectedIntentState?.status === "error" ? (
+                    <div className="moment-intent-error" role="alert">
+                      <p>{selectedIntentState.message}</p>
+                      <button
+                        type="button"
+                        onClick={() => requestContextualAnalysis(
+                          selectedEvent.event_id,
+                          selectedIntentState.intent,
+                        )}
+                      >
+                        Try analysis again
+                      </button>
+                    </div>
+                  ) : null}
                 </section>
               ) : null}
             </aside>
@@ -399,6 +580,36 @@ export function ReplayAnalysisScreen({
                 <strong>{selectedSnapshot?.side.toUpperCase() ?? "—"}</strong>
               </div>
             </div>
+            <section
+              className={`radar-win-rate${winRate.isBaseline ? " baseline" : ""}`}
+              aria-label="Win rate"
+            >
+              <div className="radar-win-rate-values">
+                <strong className="friendly-team">
+                  <span>{winRate.friendlyTeam}</span>
+                  {formatProbability(winRate.friendlyProbability)}
+                </strong>
+                <p>Win rate</p>
+                <strong className="enemy-team">
+                  {formatProbability(winRate.enemyProbability)}
+                  <span>{winRate.enemyTeam}</span>
+                </strong>
+              </div>
+              <div
+                className="win-rate-track"
+                role="img"
+                aria-label={`${winRate.friendlyTeam} ${formatProbability(winRate.friendlyProbability)}, ${winRate.enemyTeam} ${formatProbability(winRate.enemyProbability)}${winRate.isBaseline ? ", baseline estimate" : ""}`}
+              >
+                <span
+                  className="win-rate-friendly"
+                  style={{ width: formatProbability(winRate.friendlyProbability) }}
+                />
+                <span
+                  className="win-rate-enemy"
+                  style={{ width: formatProbability(winRate.enemyProbability) }}
+                />
+              </div>
+            </section>
             <div className="radar-frame">
               <Image
                 src={radarOverview.image}
@@ -509,7 +720,7 @@ export function ReplayAnalysisScreen({
               {timelineEvents.map((event, eventIndex) => (
                 <button
                   type="button"
-                  className={`${event.event === "kill" ? "death" : "damage"}${analysisEventId === event.event_id ? " coaching" : ""}${selectedEventId === event.event_id ? " selected" : ""}`}
+                  className={`${analysisEventId === event.event_id ? "coaching" : replayEventIsDeath(event) ? "death" : "damage"}${selectedEventId === event.event_id ? " selected" : ""}`}
                   style={{ left: `${((event.tick - firstTick) / duration) * 100}%` }}
                   key={event.event_id}
                   ref={(element) => {
@@ -525,8 +736,8 @@ export function ReplayAnalysisScreen({
                       ? 0
                       : -1
                   }
-                  title={`Round ${event.round_num}: ${eventLabel(event)}${analysisEventId === event.event_id ? " · Saved analysis" : ""}`}
-                  aria-label={`Round ${event.round_num}, ${eventLabel(event)}, ${formatReplayTime(event.tick, firstTick, replay.map.tick_rate)}${analysisEventId === event.event_id ? ", saved analysis" : ""}`}
+                  title={`Round ${event.round_num}: ${eventLabel(event, analysisEventId === event.event_id ? analysis : undefined)}${analysisEventId === event.event_id ? " · Saved analysis" : ""}`}
+                  aria-label={`Round ${event.round_num}, ${eventLabel(event, analysisEventId === event.event_id ? analysis : undefined)}, ${formatReplayTime(event.tick, firstTick, replay.map.tick_rate)}${analysisEventId === event.event_id ? ", saved analysis" : ""}`}
                   onClick={(clickEvent) => {
                     clickEvent.currentTarget.blur();
                     seek(event.tick, event.event_id);

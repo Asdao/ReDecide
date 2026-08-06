@@ -21,7 +21,8 @@ from fastapi import APIRouter, HTTPException
 from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from backend.replay_api.main import _load_native_demo, _start_replay
+from backend.replay_api.ingestion import load_native_demo as _load_native_demo
+from backend.replay_api.ingestion import start_replay as _start_replay
 
 
 PUBLIC_BLOB_HOST_SUFFIX = ".public.blob.vercel-storage.com"

@@ -1,4 +1,19 @@
+minimumReleaseAge: 4320
+minimumReleaseAgeStrict: true
+blockExoticSubdeps: true
+trustPolicy: no-downgrade
+verifyDepsBeforeRun: error
+
+minimumReleaseAgeExclude:
+  - undici@8.9.0
+
+trustPolicyExclude:
+  - undici-types@6.21.0
+
+overrides:
+  undici: 8.9.0
+
 allowBuilds:
-  '@google/genai': set this to true or false
-  esbuild: set this to true or false
-  protobufjs: set this to true or false
+  '@google/genai': false
+  esbuild: true
+  protobufjs: false

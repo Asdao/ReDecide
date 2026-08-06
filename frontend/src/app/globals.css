@@ -975,6 +975,10 @@ input[type="file"] {
   justify-content: center;
 }
 
+.replay-reset-button {
+  column-gap: 0.28em;
+}
+
 .replay-player-section {
   margin-top: 2rem;
 }
@@ -1322,7 +1326,7 @@ input[type="file"] {
   min-width: 0;
   min-height: 0;
   display: grid;
-  grid-template-rows: auto minmax(0, 1fr);
+  grid-template-rows: auto auto minmax(0, 1fr);
   padding: 0.8rem 1.25rem 0.65rem;
 }
 
@@ -1515,6 +1519,8 @@ input[type="file"] {
 .legend-dot.dead { opacity: 0.32; }
 
 .analysis-inspector {
+  --inspector-border-color: var(--tactical-tan);
+
   position: absolute;
   z-index: 8;
   top: 7.5rem;
@@ -1522,8 +1528,10 @@ input[type="file"] {
   right: 1.25rem;
   width: min(33rem, calc(100% - 2.5rem));
   min-height: 0;
+  display: flex;
+  flex-direction: column;
   overflow-y: auto;
-  border: 2px solid var(--accent);
+  border: 2px solid var(--inspector-border-color);
   background: rgb(14 18 25 / 94%);
   padding: 1.25rem;
   opacity: 0;
@@ -1594,6 +1602,89 @@ input[type="file"] {
   white-space: nowrap;
 }
 
+.analysis-inspector.death {
+  --inspector-border-color: #ee5f5f;
+}
+
+.analysis-inspector.analysis {
+  --inspector-border-color: #4f9cff;
+}
+
+.radar-win-rate {
+  width: min(16.5rem, 100%);
+  justify-self: end;
+  padding-bottom: 0.7rem;
+}
+
+.radar-win-rate-values {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  gap: 0.65rem;
+  align-items: baseline;
+}
+
+.radar-win-rate-values p {
+  justify-self: center;
+  margin: 0;
+  color: var(--muted);
+  font-family: var(--font-display);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.radar-win-rate-values strong {
+  display: inline-flex;
+  gap: 0.45rem;
+  align-items: baseline;
+  color: var(--text);
+  font-family: var(--font-interface);
+  font-size: 1rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.radar-win-rate-values .friendly-team {
+  justify-self: start;
+  color: var(--verified);
+}
+
+.radar-win-rate-values .enemy-team {
+  justify-self: end;
+  color: #ee5f5f;
+}
+
+.radar-win-rate-values span {
+  font-family: var(--font-display);
+  font-size: 0.72rem;
+  letter-spacing: 0.08em;
+}
+
+.win-rate-track {
+  height: 0.55rem;
+  display: flex;
+  overflow: hidden;
+  margin-top: 0.2rem;
+  background: var(--surface-raised);
+}
+
+.radar-win-rate.baseline .win-rate-track {
+  opacity: 0.48;
+}
+
+.win-rate-track span {
+  display: block;
+  height: 100%;
+}
+
+.win-rate-friendly {
+  background: var(--verified);
+}
+
+.win-rate-enemy {
+  background: #ee5f5f;
+}
+
 .saved-coaching {
   margin-top: 1.25rem;
   background: rgb(79 156 255 / 8%);
@@ -1608,10 +1699,129 @@ input[type="file"] {
   text-transform: uppercase;
 }
 
-.saved-coaching > p:last-child {
+.saved-coaching > p:nth-of-type(2) {
   margin: 0.7rem 0 0;
   color: #d9e8ff;
   line-height: 1.6;
+}
+
+.saved-coaching .coaching-generation-status {
+  margin: 0.85rem 0 0;
+  color: var(--steel-blue-text);
+  font-family: var(--font-interface);
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+
+.moment-intent {
+  margin-top: auto;
+  border-top: 1px solid var(--line);
+  padding-top: 1.25rem;
+}
+
+.moment-intent > p:first-child {
+  margin: 0 0 0.75rem;
+  color: #d9dde4;
+  font-family: var(--font-interface);
+  font-size: 0.85rem;
+  line-height: 1.55;
+}
+
+.moment-intent form {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.55rem;
+  align-items: stretch;
+}
+
+.moment-intent textarea {
+  height: 5.5rem;
+  min-height: 5.5rem;
+  max-height: 5.5rem;
+  overflow-y: auto;
+  resize: none;
+  border: 1px solid var(--line);
+  border-radius: 0;
+  background: #090d12;
+  padding: 0.75rem;
+  color: var(--text);
+  font: 0.88rem/1.5 var(--font-interface);
+}
+
+.moment-intent textarea:focus-visible {
+  border-color: var(--focus);
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+.moment-intent textarea:disabled {
+  cursor: not-allowed;
+  opacity: 0.52;
+}
+
+.moment-intent form button,
+.moment-intent-error button {
+  min-width: 5rem;
+  border: 1px solid var(--accent);
+  background: var(--accent);
+  padding: 0.65rem 0.85rem;
+  color: #090b0f;
+  font-family: var(--font-display);
+  font-weight: 800;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
+.moment-intent form button:disabled {
+  border-color: var(--line);
+  background: var(--surface-raised);
+  color: var(--muted);
+  cursor: not-allowed;
+}
+
+.submitted-intent {
+  margin-bottom: 0.75rem;
+  border-left: 3px solid var(--accent);
+  background: rgb(238 133 47 / 7%);
+  padding: 0.75rem 0.85rem;
+}
+
+.submitted-intent p,
+.submitted-intent blockquote {
+  margin: 0;
+}
+
+.submitted-intent blockquote {
+  margin-top: 0.35rem;
+  color: var(--text);
+  font-family: var(--font-interface);
+  font-size: 0.9rem;
+  line-height: 1.5;
+}
+
+.moment-intent .moment-intent-unavailable,
+.moment-intent-error p {
+  margin: 0.65rem 0 0;
+  color: var(--muted);
+  font-family: var(--font-interface);
+  font-size: 0.75rem;
+  line-height: 1.45;
+}
+
+.moment-intent-error {
+  margin-top: 0.75rem;
+}
+
+.moment-intent-error p {
+  color: #f2aaaa;
+}
+
+.moment-intent-error button {
+  margin-top: 0.55rem;
+  border-color: var(--line);
+  background: transparent;
+  color: var(--text);
 }
 
 .replay-timeline {
@@ -1857,9 +2067,12 @@ input[type="file"] {
   z-index: 2;
 }
 
+.event-track button.damage::before,
+.event-track button.death::before,
 .event-track button.coaching::before {
-  width: 8px;
-  box-shadow: 0 0 0 2px rgb(220 236 255 / 70%);
+  width: 6px;
+  height: 0.9rem;
+  box-shadow: none;
 }
 
 .timeline-caption i.damage {
@@ -1868,7 +2081,6 @@ input[type="file"] {
 
 .timeline-caption i.coaching {
   background: #4f9cff;
-  box-shadow: 0 0 0 1px rgb(220 236 255 / 70%);
 }
 
 .event-track button:focus,
@@ -2040,6 +2252,10 @@ input[type="file"] {
 
   .radar-frame {
     min-width: 0;
+  }
+
+  .radar-win-rate {
+    width: min(16.5rem, calc(100% - 1rem));
   }
 
   .playback-controls {
