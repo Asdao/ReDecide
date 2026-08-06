@@ -293,6 +293,7 @@ describe("uploaded replay screens", () => {
     expect(html.match(/role="alert"/g)).toHaveLength(1);
     expect(html).toContain("Choose a valid .dem replay file.");
     expect(html).not.toContain("Retry upload");
+    expect(html).toContain('class="secondary replay-reset-button"');
     expect(html).toContain('Choose another <span class="accent-word">replay</span>');
   });
 });

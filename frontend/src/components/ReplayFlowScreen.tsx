@@ -114,7 +114,7 @@ function ErrorPanel({
             {retryLabel}
           </button>
         ) : null}
-        <button className="secondary" type="button" onClick={onBack}>
+        <button className="secondary replay-reset-button" type="button" onClick={onBack}>
           Choose another <span className="accent-word">replay</span>
         </button>
       </div>

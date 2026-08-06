@@ -975,6 +975,10 @@ input[type="file"] {
   justify-content: center;
 }
 
+.replay-reset-button {
+  column-gap: 0.28em;
+}
+
 .replay-player-section {
   margin-top: 2rem;
 }
