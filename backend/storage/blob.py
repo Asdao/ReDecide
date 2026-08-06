@@ -67,10 +67,11 @@ class BlobArtifactStore:
     """JSON artifact persistence using Vercel's official Python SDK.
 
     The SDK currently requires a Blob read/write token for direct server-side
-    operations.  ``BlobClient()`` is used without an explicit token so the SDK
-    can resolve its supported runtime authentication (for example
-    ``BLOB_READ_WRITE_TOKEN`` or Vercel OIDC).  A token may be supplied through
-    ``BLOB_READ_WRITE_TOKEN`` when running outside Vercel.
+    operations. New Vercel Blob project connections expose a short-lived OIDC
+    token instead of ``BLOB_READ_WRITE_TOKEN``; the Python SDK exposes both
+    features but does not yet wire them together, so this adapter passes the
+    runtime OIDC token explicitly. Legacy read/write-token connections remain
+    supported by the SDK's normal environment-variable lookup.
     """
 
     def __init__(
@@ -103,7 +104,7 @@ class BlobArtifactStore:
                 "add vercel>=0.5.0 to the backend runtime dependencies"
             ) from exc
         try:
-            return BlobClient()
+            return BlobClient(token=_blob_oidc_token())
         except Exception as exc:  # pragma: no cover - depends on runtime credentials
             raise BlobStorageConfigurationError(
                 "Blob storage is enabled but BlobClient could not initialize; "
@@ -147,7 +148,9 @@ class BlobArtifactStore:
             raise BlobStorageNotFound(f"Blob artifact not found: {name_or_url}")
         payload = json.loads(_read_stream(_value(result, "stream")))
         if not isinstance(payload, dict):
-            raise ValueError("Blob JSON artifact must be an object")
+            raise ValueError(  # noqa: TRY004 - invalid persisted JSON shape
+                "Blob JSON artifact must be an object"
+            )
         return payload
 
     def url(self, name_or_url: str) -> str:
@@ -160,6 +163,24 @@ class BlobArtifactStore:
 
 def replay_blob_store() -> BlobArtifactStore:
     return BlobArtifactStore(prefix=os.getenv("REDECIDE_BLOB_REPLAY_PREFIX", "replays"))
+
+
+def _blob_oidc_token() -> str | None:
+    """Return the connected store's short-lived OIDC token when applicable."""
+
+    if os.getenv("BLOB_READ_WRITE_TOKEN") or os.getenv("VERCEL_BLOB_READ_WRITE_TOKEN"):
+        return None
+    if not os.getenv("BLOB_STORE_ID"):
+        return None
+    try:
+        from vercel.oidc import VercelOidcTokenError, get_vercel_oidc_token_sync
+    except ImportError:  # pragma: no cover - deployment dependency boundary
+        return None
+
+    try:
+        return get_vercel_oidc_token_sync()
+    except VercelOidcTokenError:  # pragma: no cover - SDK reports auth on Blob use
+        return None
 
 
 def analysis_blob_store() -> BlobArtifactStore:

@@ -98,3 +98,50 @@ def test_blob_store_rejects_non_object_json() -> None:
 
     with pytest.raises(ValueError, match="must be an object"):
         store.get_json("replays/bad.json")
+
+
+def test_blob_store_bridges_connected_project_oidc(monkeypatch: pytest.MonkeyPatch) -> None:
+    import vercel.blob
+    import vercel.oidc
+
+    captured: dict[str, str | None] = {}
+
+    class FakeClient:
+        def __init__(self, token: str | None = None) -> None:
+            captured["token"] = token
+
+    monkeypatch.delenv("BLOB_READ_WRITE_TOKEN", raising=False)
+    monkeypatch.delenv("VERCEL_BLOB_READ_WRITE_TOKEN", raising=False)
+    monkeypatch.setenv("BLOB_STORE_ID", "store_123")
+    monkeypatch.setattr(vercel.oidc, "get_vercel_oidc_token_sync", lambda: "oidc-token")
+    monkeypatch.setattr(vercel.blob, "BlobClient", FakeClient)
+
+    BlobArtifactStore(prefix="replays")
+
+    assert captured["token"] == "oidc-token"
+
+
+def test_blob_store_leaves_legacy_token_resolution_to_sdk(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import vercel.blob
+    import vercel.oidc
+
+    captured: dict[str, str | None] = {}
+
+    class FakeClient:
+        def __init__(self, token: str | None = None) -> None:
+            captured["token"] = token
+
+    monkeypatch.setenv("BLOB_STORE_ID", "store_123")
+    monkeypatch.setenv("BLOB_READ_WRITE_TOKEN", "legacy-token")
+    monkeypatch.setattr(
+        vercel.oidc,
+        "get_vercel_oidc_token_sync",
+        lambda: pytest.fail("OIDC should not be resolved when a legacy token exists"),
+    )
+    monkeypatch.setattr(vercel.blob, "BlobClient", FakeClient)
+
+    BlobArtifactStore(prefix="replays")
+
+    assert captured["token"] is None
