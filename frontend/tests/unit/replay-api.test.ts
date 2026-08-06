@@ -32,6 +32,8 @@ const job = {
   status: "processing",
   players_available: false,
   result_available: false,
+  selected_player_id: null,
+  player_runs: {},
   logs_url: "/api/analysis/analysis-1/logs",
   events_url: "/api/analysis/analysis-1/events",
   result_url: "/api/analysis/analysis-1/result",
@@ -45,6 +47,12 @@ const player = {
   event_ids: ["event-1"],
   key_event_ids: ["event-1"],
   decision_ids: ["decision-1"],
+};
+
+const selectablePlayer = {
+  ...player,
+  analysis_available: true,
+  analysis_status: "not_started",
 };
 
 const candidate = {
@@ -300,14 +308,14 @@ describe("replay API adapter", () => {
     const fetchMock = vi
       .fn()
       .mockResolvedValueOnce(
-        jsonResponse({ analysis_id: "analysis-1", status: "ready", players: [player] }),
+        jsonResponse({ analysis_id: "analysis-1", status: "ready", players: [selectablePlayer] }),
       )
       .mockResolvedValueOnce(jsonResponse(result));
     vi.stubGlobal("fetch", fetchMock);
 
     await expect(getAnalysisPlayers("analysis-1")).resolves.toEqual({
       state: "ready",
-      value: { analysis_id: "analysis-1", status: "ready", players: [player] },
+      value: { analysis_id: "analysis-1", status: "ready", players: [selectablePlayer] },
     });
     await expect(runReplayCoaching("analysis-1", "p1")).resolves.toEqual(result);
     const [, init] = fetchMock.mock.calls[1] as [string, RequestInit];

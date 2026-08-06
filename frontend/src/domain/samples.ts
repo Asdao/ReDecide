@@ -1,16 +1,38 @@
 import { z } from "zod";
+import { decisionPacketSchema } from "@/domain/contracts";
+
+const requiredString = z.string().trim().min(1);
 
 export const sampleSummarySchema = z
   .object({
-    sample_id: z.string().min(1),
-    display_name: z.string().min(1),
-    description: z.string().min(1),
-    map: z.string().min(1),
-    players: z.array(z.string().min(1)),
-    recommended_player: z.string().min(1).nullable(),
+    sample_id: requiredString,
+    display_name: requiredString,
+    description: requiredString,
+    map: requiredString,
+    players: z.array(requiredString),
+    recommended_player: requiredString.nullable(),
     available: z.boolean(),
   })
-  .strict();
+  .strict()
+  .superRefine((sample, context) => {
+    if (new Set(sample.players).size !== sample.players.length) {
+      context.addIssue({
+        code: "custom",
+        message: "sample players must be unique",
+        path: ["players"],
+      });
+    }
+    if (
+      sample.recommended_player !== null &&
+      !sample.players.includes(sample.recommended_player)
+    ) {
+      context.addIssue({
+        code: "custom",
+        message: "recommended_player must appear in players",
+        path: ["recommended_player"],
+      });
+    }
+  });
 
 export const samplesResponseSchema = z
   .object({
@@ -18,15 +40,36 @@ export const samplesResponseSchema = z
   })
   .strict();
 
-export const samplePreparationSchema = z
+const samplePreparationBase = {
+  analysis_id: requiredString,
+  players: z.array(requiredString),
+};
+
+const neutralDecisionSummarySchema = z
   .object({
-    stage: z.enum(["PLAYER_SELECTION_REQUIRED", "INTENT_REQUIRED"]),
-    analysis_id: z.string().min(1),
-    players: z.array(z.string().min(1)),
-    decision_packet: z.unknown().nullable(),
-    neutral_summary: z.unknown().nullable(),
+    timestamp_seconds: z.number().nonnegative(),
+    text: requiredString,
   })
   .strict();
+
+export const samplePreparationSchema = z.discriminatedUnion("stage", [
+  z
+    .object({
+      ...samplePreparationBase,
+      stage: z.literal("PLAYER_SELECTION_REQUIRED"),
+      decision_packet: z.null(),
+      neutral_summary: z.null(),
+    })
+    .strict(),
+  z
+    .object({
+      ...samplePreparationBase,
+      stage: z.literal("INTENT_REQUIRED"),
+      decision_packet: decisionPacketSchema,
+      neutral_summary: neutralDecisionSummarySchema,
+    })
+    .strict(),
+]);
 
 export type SampleSummary = z.infer<typeof sampleSummarySchema>;
 export type SamplePreparation = z.infer<typeof samplePreparationSchema>;

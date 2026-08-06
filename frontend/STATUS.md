@@ -129,6 +129,13 @@ returns it. Abort errors remain distinguishable from normalized network, HTTP,
 content-type, JSON, and schema errors, and provider details are not exposed
 through adapter messages.
 
+The uploaded-replay boundary now matches the backend's repeatable per-player
+run contract. Analysis metadata accepts the `coaching` state, nullable
+`selected_player_id`, and keyed `player_runs`; selectable players require the
+backend-provided `analysis_available` and `analysis_status` fields. Completed
+analysis results retain their separate unadorned player shape, so selector-only
+run state is not incorrectly required in saved or live result artifacts.
+
 The main reducer now models the complete supported upload lifecycle without UI
 coupling: uploading, preparing analysis, waiting for players, choosing a stable
 player ID, running coaching, recovering an ambiguously completed request, and
@@ -150,6 +157,10 @@ shapes, including unique stable player IDs, valid round boundaries, selected
 decision ownership, and agreement between the selected decision and coaching
 analysis. Manifest validation also keeps visualization failures, coaching
 completion, and visualization unlock state internally consistent.
+Compatibility sample contracts now mirror the backend's unique-player and
+recommended-player rules and enforce the payload associated with each
+preparation stage. Both bundled processed replay JSON files and the Inferno
+saved-analysis JSON remain validated directly from disk in the test suite.
 
 The replay state machine is now connected to the adapter and rendered screens.
 Choosing a `.dem` uploads it once, prepares analysis by `replay_id`, polls the
@@ -271,7 +282,8 @@ folder on `raw.githubusercontent.com` for non-bundled future maps.
 
 From `frontend/`, `pnpm run verify` passes:
 
-- Vitest: 8 files and 95 tests passed, including 20 upload adapter and Blob
+- Vitest: 8 files and 97 tests passed, including backend-shaped per-player run
+  metadata, sample invariants, both bundled processed saves, and 20 upload adapter and Blob
   token-route tests covering direct and public-Blob transports, multipart
   selection, limits, cancellation, safe failures, same-origin checks, and token
   constraints. Landing-page assertions match the current upload and processed-
