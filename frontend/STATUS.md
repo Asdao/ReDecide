@@ -1,6 +1,6 @@
 # Frontend Status
 
-Last verified: 2026-08-06 (Asia/Singapore)
+Last verified: 2026-08-07 (Asia/Singapore)
 
 ## Vercel Services deployment
 
@@ -15,10 +15,9 @@ obtain exact-operation, exact-path, five-minute Blob URLs for durable analysis
 and replay JSON; artifact bodies transfer directly between FastAPI and Blob.
 Local development remains filesystem-backed unless explicitly opted into Blob.
 
-Validation after this routing change: 117 Vitest tests, TypeScript, ESLint,
-and the production Next.js build (Webpack) pass. The default Turbopack build
-exited without diagnostics in the local sandbox, so Webpack was used for the
-verified build.
+The latest validation state for the merged frontend is recorded under
+Verification. TypeScript, ESLint, and the production Turbopack build pass; one
+SSE adapter test still carries the pre-merge absolute-URL expectation.
 
 ## Status
 
@@ -355,30 +354,19 @@ folder on `raw.githubusercontent.com` for non-bundled future maps.
 
 ## Verification
 
-From `frontend/`, `pnpm run verify` passes:
+From `frontend/`, the latest checks report:
 
-- Vitest: 9 files and 108 tests passed, including backend-shaped per-player run
-  metadata, sample invariants, both bundled processed saves, and 20 upload adapter and Blob
-  token-route tests covering direct and public-Blob transports, multipart
-  selection, limits, cancellation, safe failures, same-origin checks, and token
-  constraints. The intent tests cover per-moment isolation, loading-to-success,
-  same-text retry state, stale response rejection, same-round win-estimate
-  selection, CT/T perspective swaps, lethal-damage deduplication, attacker-side
-  analysis precedence, synthetic analysis markers, analysis-event cleanup, and
-  validated SSE progress delivery. Landing-
-  page assertions match the current upload and processed-replay wording.
-- Vitest: 12 files and 117 tests passed, including backend-shaped per-player run
-  metadata, sample invariants, both bundled processed saves, and 34 upload and
-  Blob bridge tests covering direct and
-  public-Blob transports, multipart selection, limits, cancellation, safe
-  failures, same-origin checks, token constraints, temporary-prefix isolation,
-  and success-only deletion. The intent tests cover per-moment isolation, loading-to-success,
-  same-text retry state, and stale response rejection. Landing-page assertions
-  match the current upload and processed-replay wording.
+- Vitest: 12 files and 126 tests collected; 125 passed and 1 failed. The only
+  failure is `validates and forwards SSE analysis progress` in
+  `tests/unit/replay-api.test.ts`: the merged same-origin implementation opens
+  `/api/analysis/analysis-1/events`, while the test still expects the old
+  `http://127.0.0.1:8000/api/analysis/analysis-1/events` URL. Because the test
+  stage fails, the combined `pnpm run verify` command exits before its later
+  stages.
 - TypeScript: passed
 - ESLint: passed with no warnings
-- Next.js production build: passed in both default direct mode and explicit
-  Blob mode; `/` and `/_not-found` prerendered, with `/analysis`,
+- Next.js 16.2.12 production build: passed with Turbopack in the default direct
+  mode; `/` and `/_not-found` prerendered, with `/analysis`,
   `/api/blob/upload`, `/api/blob/cleanup`, and the private
   `/service-internal/blob-artifacts` signer rendered on demand
 
@@ -438,24 +426,18 @@ viewer and event inspector remain free of horizontal overflow.
 
 ## Contract/API impact
 
-No backend contract changes and no intent endpoint was invented. The local
-processed-replay adapter and uploaded
-flow consume the documented `replay_visualization_v1` shape directly. In
-addition to the compatibility sample APIs, the frontend adapter implements the
-documented `/api/replay/*` and `/api/analysis/*` contracts, including the
-disabled-by-default public Blob URL import. The rendered upload flow now
-consumes preparation, player selection, repeat coaching, result recovery, SSE
-progress, visualization unlock, and replay playback endpoints end to end. No
-backend files or contracts were changed.
-No intent endpoint was invented. The sample adapter now consumes the backend's
-real replay envelope from `POST /api/analyze` (`sample_id`, `replay_id`,
-`manifest`, and `analysis`). The local processed-replay adapter and uploaded
-flow consume the documented `replay_visualization_v1` shape directly. The
-frontend implements the `/api/replay/*` and `/api/analysis/*` contracts,
-including the disabled-by-default public Blob URL import, and the sample and
-upload flows share preparation, player selection, repeat coaching, result
-recovery, visualization unlock, and replay playback endpoints end to end.
-The internal Next.js `/api/blob/cleanup` route does not change the FastAPI
-contract; it removes only temporary raw uploads after successful import. The
-`/service-internal/blob-artifacts` route is not a browser API. It is reachable by the
-FastAPI service binding and returns only narrowly scoped signed Blob URLs.
+No backend contract changes and no intent endpoint were introduced. The sample
+adapter consumes the backend replay envelope from `POST /api/analyze`
+(`sample_id`, `replay_id`, `manifest`, and `analysis`), while the local
+processed-replay adapter and uploaded flow consume the documented
+`replay_visualization_v1` shape directly. The frontend implements the
+documented `/api/replay/*` and `/api/analysis/*` contracts, including SSE
+progress and the disabled-by-default public Blob URL import. Sample and upload
+flows share preparation, player selection, repeat coaching, result recovery,
+visualization unlock, and replay playback.
+
+The internal Next.js `/api/blob/cleanup` route removes only temporary raw
+uploads after successful import and does not change the FastAPI contract. The
+`/service-internal/blob-artifacts` route is not a browser API; the FastAPI
+service binding uses it only to obtain narrowly scoped signed Blob URLs. No
+backend files or contracts were changed by the merged frontend work.
