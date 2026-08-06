@@ -26,6 +26,7 @@ packages = [
     "backend.app.coach",
     "backend.app.replay",
     "backend.replay_api",
+    "backend.storage",
     "backend.replay_engine",
     "backend.replay_engine.training",
     "backend.replay_engine.training.tests",

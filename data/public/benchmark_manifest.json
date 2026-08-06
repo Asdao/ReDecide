@@ -1,0 +1,23 @@
+{
+  "schema_version": 1,
+  "type": "held_out_native_demo_benchmark",
+  "dataset_id": "blanchon/cs2_dataset_demo",
+  "revision": "main",
+  "training_database": "private:databases/cs2_replays_v2.sqlite",
+  "training_excluded": true,
+  "files": [
+    {
+      "repo_path": "demos/shard-europe-1574a6a2/2393084/3dmax-vs-falcons-m2-ancient.dem",
+      "match_id": "2393084",
+      "map_name": "de_ancient",
+      "demo_bytes": 321584788,
+      "rounds": 14,
+      "kills": 92,
+      "stars": 2,
+      "match_date": "2026-04-13",
+      "local_path": "private:benchmark_cache/demos/shard-europe-1574a6a2/2393084/3dmax-vs-falcons-m2-ancient.dem",
+      "bytes": 321584788,
+      "sha256": "59a7b7145da41a0c86f60bb59cb6c033790a76595cae26ef642c9a9db815cd96"
+    }
+  ]
+}

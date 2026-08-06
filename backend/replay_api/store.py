@@ -9,6 +9,12 @@ import re
 from typing import Any, Mapping
 from uuid import uuid4
 
+from backend.storage.blob import (
+    BlobStorageNotFound,
+    blob_storage_enabled,
+    replay_blob_store,
+)
+
 
 _REPLAY_ID = re.compile(r"^[0-9a-f]{32}$")
 
@@ -22,33 +28,44 @@ def save_replay_artifacts(
     *,
     visualization: Mapping[str, Any],
     coaching: Mapping[str, Any],
-) -> Path:
+) -> Path | str:
     """Persist the two outputs produced after one native-demo parse."""
 
     _validate_replay_id(replay_id)
+    if blob_storage_enabled():
+        store = replay_blob_store()
+        store.put_json(f"{replay_id}/visualization.json", visualization)
+        store.put_json(f"{replay_id}/coaching.json", coaching)
+        return store.url(f"{replay_id}/visualization.json")
     directory = save_visualization_artifact(replay_id, visualization)
     save_coaching_artifact(replay_id, coaching)
     return directory
 
 
-def save_visualization_artifact(replay_id: str, payload: Mapping[str, Any]) -> Path:
+def save_visualization_artifact(replay_id: str, payload: Mapping[str, Any]) -> Path | str:
     _validate_replay_id(replay_id)
+    if blob_storage_enabled():
+        return replay_blob_store().put_json(f"{replay_id}/visualization.json", payload).url
     directory = replay_root() / replay_id
     directory.mkdir(parents=True, exist_ok=True)
     _atomic_json_write(directory / "visualization.json", payload)
     return directory
 
 
-def save_coaching_artifact(replay_id: str, payload: Mapping[str, Any]) -> Path:
+def save_coaching_artifact(replay_id: str, payload: Mapping[str, Any]) -> Path | str:
     _validate_replay_id(replay_id)
+    if blob_storage_enabled():
+        return replay_blob_store().put_json(f"{replay_id}/coaching.json", payload).url
     directory = replay_root() / replay_id
     directory.mkdir(parents=True, exist_ok=True)
     _atomic_json_write(directory / "coaching.json", payload)
     return directory
 
 
-def save_replay_manifest(replay_id: str, payload: Mapping[str, Any]) -> Path:
+def save_replay_manifest(replay_id: str, payload: Mapping[str, Any]) -> Path | str:
     _validate_replay_id(replay_id)
+    if blob_storage_enabled():
+        return replay_blob_store().put_json(f"{replay_id}/manifest.json", payload).url
     directory = replay_root() / replay_id
     directory.mkdir(parents=True, exist_ok=True)
     _atomic_json_write(directory / "manifest.json", payload)
@@ -67,6 +84,11 @@ def unlock_visualization(replay_id: str) -> dict[str, Any]:
 
 def load_replay_manifest(replay_id: str) -> dict[str, Any]:
     _validate_replay_id(replay_id)
+    if blob_storage_enabled():
+        try:
+            return replay_blob_store().get_json(f"{replay_id}/manifest.json")
+        except BlobStorageNotFound as exc:
+            raise FileNotFoundError(f"replay manifest not found: {replay_id}") from exc
     path = replay_root() / replay_id / "manifest.json"
     if not path.is_file():
         raise FileNotFoundError(f"replay manifest not found: {replay_id}")
@@ -76,8 +98,13 @@ def load_replay_manifest(replay_id: str) -> dict[str, Any]:
     return payload
 
 
-def visualization_path(replay_id: str) -> Path:
+def visualization_path(replay_id: str) -> Path | str:
     _validate_replay_id(replay_id)
+    if blob_storage_enabled():
+        try:
+            return replay_blob_store().url(f"{replay_id}/visualization.json")
+        except Exception as exc:
+            raise FileNotFoundError(f"replay artifact not found: {replay_id}") from exc
     return replay_root() / replay_id / "visualization.json"
 
 
@@ -85,6 +112,11 @@ def load_coaching_replay(replay_id: str) -> dict[str, Any]:
     """Load only the coaching branch for the coaching FastAPI."""
 
     _validate_replay_id(replay_id)
+    if blob_storage_enabled():
+        try:
+            return replay_blob_store().get_json(f"{replay_id}/coaching.json")
+        except BlobStorageNotFound as exc:
+            raise FileNotFoundError(f"replay artifact not found: {replay_id}") from exc
     path = replay_root() / replay_id / "coaching.json"
     if not path.is_file():
         raise FileNotFoundError(f"replay artifact not found: {replay_id}")

@@ -153,7 +153,7 @@ describe("replay API adapter", () => {
 
     await expect(uploadReplay(file)).resolves.toEqual(manifest);
     const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
-    expect(url).toBe("http://127.0.0.1:8000/api/replay/upload");
+    expect(url).toBe("/backend/api/replay/upload");
     expect(init.method).toBe("POST");
     expect(init.body).toBeInstanceOf(FormData);
     expect((init.body as FormData).get("file")).toBe(file);
@@ -182,7 +182,7 @@ describe("replay API adapter", () => {
       }),
     );
     const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
-    expect(url).toBe("http://127.0.0.1:8000/api/replay/import-url");
+    expect(url).toBe("/backend/api/replay/import-url");
     expect(init.method).toBe("POST");
     expect(JSON.parse(String(init.body))).toEqual({
       url: "https://store.public.blob.vercel-storage.com/replays/match-123.dem",
@@ -291,10 +291,10 @@ describe("replay API adapter", () => {
     await expect(prepareReplayWorkspace("replay-1")).resolves.toEqual(job);
     expect(fetchMock).toHaveBeenCalledTimes(2);
     expect(fetchMock.mock.calls[0][0]).toBe(
-      "http://127.0.0.1:8000/api/analysis/prepare",
+      "/backend/api/analysis/prepare",
     );
     expect(fetchMock.mock.calls[1][0]).toBe(
-      "http://127.0.0.1:8000/api/replay/replay-1/json",
+      "/backend/api/replay/replay-1/json",
     );
   });
 

@@ -1,0 +1,17 @@
+{
+  "source": "Awpy public artifact mirror",
+  "patch": 17595823,
+  "urls": {
+    "navs": "https://awpycs.com/17595823/navs.zip",
+    "maps": "https://awpycs.com/17595823/maps.zip"
+  },
+  "maps": [
+    {"map": "de_ancient", "nav": "data/maps/de_ancient/de_ancient.json", "overview": "data/maps/de_ancient/de_ancient.png", "nav_sha256": "716ae7fffebe077bd4d51c8fc91b68d8d54dc0e1430ded86287cc61ad1fd1bd3", "overview_sha256": "a2f7b0f4af985fdc4985589a55ec0dc424dfd6dea65cb4a1b42a966b891d6aa4"},
+    {"map": "de_anubis", "nav": "data/maps/de_anubis/de_anubis.json", "overview": "data/maps/de_anubis/de_anubis.png", "nav_sha256": "3b97eb16535a69975e007b94539222739f2ab9cd09f07366ca51c2f82fae3afa", "overview_sha256": "b325c840db6a639965c035a542a329b2ef46cef24908a6f1a3a927d946e28955"},
+    {"map": "de_dust2", "nav": "data/maps/de_dust2/de_dust2.json", "overview": "data/maps/de_dust2/de_dust2.png", "nav_sha256": "6b8bdd2a7da741ae4a95fb4eb5f029702b2866c721642cfde519f1004259b7d6", "overview_sha256": "6515ab4ba319187b2130edb0c2f60ba64c9d422e75de113c65bdf37c2db1479b"},
+    {"map": "de_inferno", "nav": "data/maps/de_inferno/de_inferno.json", "overview": "data/maps/de_inferno/de_inferno.png", "nav_sha256": "244c8be8c39eac8a3ad454cb278bec7e0e6ffcd06188497431b4988872a6496b", "overview_sha256": "66f980acabd90d9b0da12819a605f24440e4adb3f59f006d6fd98e891922c575"},
+    {"map": "de_mirage", "nav": "data/maps/de_mirage/de_mirage.json", "overview": "data/maps/de_mirage/de_mirage.png", "nav_sha256": "2a0f4a298598b312897d93d43627bc696a22793804a95b66388feea132bf7157", "overview_sha256": "af139a92cf929214f7c0ac35e2d8c82bad385d83e71eeaf7b955dac96467a136"},
+    {"map": "de_nuke", "nav": "data/maps/de_nuke/de_nuke.json", "overview": "data/maps/de_nuke/de_nuke.png", "overview_lower": "data/maps/de_nuke/de_nuke_lower.png", "nav_sha256": "9b4e89e6158a0f78d5f8dae695e5ea0a39624e3402dc456fd4153e4efe86ab19", "overview_sha256": "edab1b53b1c475d33032d5ceff5bd4debf35d0f77bd8d57fe9675a619f2355bc", "overview_lower_sha256": "86c289e8cfbc9b0fc2c24d0f4e704254366aa8052b0b123f4773d4da1d6b5867"},
+    {"map": "de_overpass", "nav": "data/maps/de_overpass/de_overpass.json", "overview": "data/maps/de_overpass/de_overpass.png", "nav_sha256": "fd25e7a846fa667412180c7fed923deaa492607a57743aa4cea5e90278952d07", "overview_sha256": "304352068bdd1e8337b73962481659956f691dddb756d7943bcfe89c37630308"}
+  ]
+}

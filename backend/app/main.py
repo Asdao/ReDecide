@@ -31,7 +31,7 @@ from backend.app.contracts import (
     SamplesResponse,
 )
 from backend.app.errors import IntegrationError
-from backend.app.coach import PiCoachAdapter
+from backend.app.coach import HttpCoachAdapter, PiCoachAdapter
 from backend.app.orchestration import (
     AnalysisNotFound,
     AnalysisNotReady,
@@ -154,7 +154,7 @@ def create_fixture_app(
 
 
 def create_analysis_app(*, service: AnalysisService | None = None) -> FastAPI:
-    """Create the asynchronous replay-analysis transport.
+    """Create the request-contained replay-analysis transport.
 
     The transport accepts either normalized replay JSON or a ``replay_id``
     created by the upload API. Tests may inject a deterministic service;
@@ -162,7 +162,7 @@ def create_analysis_app(*, service: AnalysisService | None = None) -> FastAPI:
     """
 
     analysis_app = FastAPI(title="RE:DECIDE Replay Pipeline API", version="1.0")
-    analysis = service or AnalysisService(coach_adapter=PiCoachAdapter())
+    analysis = service or AnalysisService(coach_adapter=_default_coach_adapter())
 
     @analysis_app.get("/api/health")
     def health() -> dict[str, str]:
@@ -269,7 +269,7 @@ def create_analysis_app(*, service: AnalysisService | None = None) -> FastAPI:
                     )
                     yield f"event: {event_name}\ndata: {json.dumps(update)}\n\n"
                 state = analysis.metadata(analysis_id)
-                if state["status"] in {"complete", "failed"} and index >= len(
+                if state["status"] in {"ready", "complete", "failed"} and index >= len(
                     updates
                 ):
                     break
@@ -278,6 +278,15 @@ def create_analysis_app(*, service: AnalysisService | None = None) -> FastAPI:
         return StreamingResponse(stream(), media_type="text/event-stream")
 
     return analysis_app
+
+
+def _default_coach_adapter() -> Any:
+    """Choose a deployable adapter without changing local Pi behavior."""
+
+    mode = os.getenv("REDECIDE_COACH_MODE", "").strip().lower()
+    if mode == "http" or os.getenv("VERCEL") == "1":
+        return HttpCoachAdapter()
+    return PiCoachAdapter()
 
 
 def _copy_api_routes(
