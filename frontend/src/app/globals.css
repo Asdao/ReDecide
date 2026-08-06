@@ -2067,9 +2067,12 @@ input[type="file"] {
   z-index: 2;
 }
 
+.event-track button.damage::before,
+.event-track button.death::before,
 .event-track button.coaching::before {
-  width: 8px;
-  box-shadow: 0 0 0 2px rgb(220 236 255 / 70%);
+  width: 6px;
+  height: 0.9rem;
+  box-shadow: none;
 }
 
 .timeline-caption i.damage {
