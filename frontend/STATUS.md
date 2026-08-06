@@ -271,13 +271,11 @@ folder on `raw.githubusercontent.com` for non-bundled future maps.
 
 From `frontend/`, `pnpm run verify` passes:
 
-- Focused Vitest: 20 upload adapter and Blob token-route tests passed, covering
-  direct and public-Blob transports, multipart selection, limits, cancellation,
-  safe failures, same-origin checks, and token constraints
-- Full Vitest rerun: 93 tests passed and 2 pre-existing landing-copy assertions
-  failed after `LandingScreen.tsx` changed concurrently to replace “Upload once”
-  and “2D viewer”; the unrelated component change was preserved and its tests
-  were not changed as part of the Blob work
+- Vitest: 8 files and 95 tests passed, including 20 upload adapter and Blob
+  token-route tests covering direct and public-Blob transports, multipart
+  selection, limits, cancellation, safe failures, same-origin checks, and token
+  constraints. Landing-page assertions match the current upload and processed-
+  replay wording.
 - TypeScript: passed
 - ESLint: passed with no warnings
 - Next.js production build: passed in both default direct mode and explicit
