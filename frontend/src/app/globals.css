@@ -1601,19 +1601,20 @@ input[type="file"] {
 }
 
 .radar-win-rate {
-  width: min(33rem, 100%);
+  width: min(16.5rem, 100%);
   justify-self: end;
   padding-bottom: 0.7rem;
 }
 
 .radar-win-rate-values {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto auto;
-  gap: 1rem;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  gap: 0.65rem;
   align-items: baseline;
 }
 
 .radar-win-rate-values p {
+  justify-self: center;
   margin: 0;
   color: var(--muted);
   font-family: var(--font-display);
@@ -1633,12 +1634,14 @@ input[type="file"] {
   font-variant-numeric: tabular-nums;
 }
 
-.radar-win-rate-values strong:nth-child(2) span {
-  color: var(--steel-blue-text);
+.radar-win-rate-values .friendly-team {
+  justify-self: start;
+  color: var(--verified);
 }
 
-.radar-win-rate-values strong:last-child span {
-  color: var(--accent);
+.radar-win-rate-values .enemy-team {
+  justify-self: end;
+  color: #ee5f5f;
 }
 
 .radar-win-rate-values span {
@@ -1648,10 +1651,10 @@ input[type="file"] {
 }
 
 .win-rate-track {
-  height: 0.65rem;
+  height: 0.55rem;
   display: flex;
   overflow: hidden;
-  margin-top: 0.45rem;
+  margin-top: 0.2rem;
   background: var(--surface-raised);
 }
 
@@ -1664,12 +1667,12 @@ input[type="file"] {
   height: 100%;
 }
 
-.win-rate-ct {
-  background: var(--steel-blue-text);
+.win-rate-friendly {
+  background: var(--verified);
 }
 
-.win-rate-t {
-  background: var(--accent);
+.win-rate-enemy {
+  background: #ee5f5f;
 }
 
 .saved-coaching {
@@ -2240,7 +2243,7 @@ input[type="file"] {
   }
 
   .radar-win-rate {
-    width: min(33rem, calc(100% - 1rem));
+    width: min(16.5rem, calc(100% - 1rem));
   }
 
   .playback-controls {

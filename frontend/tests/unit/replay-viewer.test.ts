@@ -12,6 +12,7 @@ import {
   radarOverviewForMap,
   roundAtTick,
   winProbabilityAtMoment,
+  winRateForPerspective,
   worldToRadar,
   type ReplaySnapshot,
 } from "@/domain/replay-viewer";
@@ -153,6 +154,37 @@ describe("processed replay viewer", () => {
     expect(winProbabilityAtMoment(timeline, 1, 125)).toEqual(timeline[2]);
     expect(winProbabilityAtMoment(timeline, 2, 119)).toBeUndefined();
     expect(winProbabilityAtMoment(timeline, 2, 120)).toEqual(timeline[1]);
+  });
+
+  it("orders win rate from the selected player's team perspective", () => {
+    const point = {
+      round_number: 1,
+      tick: 100,
+      ct_probability: 0.7,
+      t_probability: 0.3,
+      uncertainty: 0.1,
+    };
+
+    expect(winRateForPerspective(point, "ct")).toMatchObject({
+      friendlyTeam: "CT",
+      friendlyProbability: 0.7,
+      enemyTeam: "T",
+      enemyProbability: 0.3,
+      isBaseline: false,
+    });
+    expect(winRateForPerspective(point, "t")).toMatchObject({
+      friendlyTeam: "T",
+      friendlyProbability: 0.3,
+      enemyTeam: "CT",
+      enemyProbability: 0.7,
+    });
+    expect(winRateForPerspective(undefined, "t")).toMatchObject({
+      friendlyTeam: "T",
+      friendlyProbability: 0.5,
+      enemyTeam: "CT",
+      enemyProbability: 0.5,
+      isBaseline: true,
+    });
   });
 
   it("shows only damage received and deaths for the selected player", () => {

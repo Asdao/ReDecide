@@ -107,12 +107,16 @@ The composer remains visibly disabled in the running app until the backend
 provides a documented endpoint and a submission function is connected; the
 viewer does not invent or call an unsupported API.
 The radar workspace always renders a compact win-rate strip directly under the
-live radar status and above the moment inspector. Its maximum width matches the
-inspector, and it contains only the `Win rate` label, explicit CT/T percentages,
-and the labelled split bar. Playback carries forward the latest backend estimate
-at or before the current tick in the same round. Before a fresh round receives
-its first estimate, or when analysis data is unavailable, the strip shows a
-muted 50/50 baseline instead of borrowing from another round or a future tick.
+live radar status and above the moment inspector. The strip is capped at half
+the inspector's maximum width. The selected player's current team is flushed
+left in the legend's green, `Win rate` is centered, and the opposing team is
+flushed right in the legend's red with its team name after the percentage. The
+split bar uses the same perspective-aware colors, matches the round indicator's
+thickness, and sits close beneath the values. Playback carries forward the
+latest backend estimate at or before the current tick in the same round. Before
+a fresh round receives its first estimate,
+or when analysis data is unavailable, the strip shows a muted 50/50 baseline
+instead of borrowing from another round or a future tick.
 
 The processed replay adapter accepts the documented backend
 `replay_visualization_v1` output without requiring the sanitized Mirage shape.
@@ -297,14 +301,14 @@ folder on `raw.githubusercontent.com` for non-bundled future maps.
 
 From `frontend/`, `pnpm run verify` passes:
 
-- Vitest: 9 files and 102 tests passed, including backend-shaped per-player run
+- Vitest: 9 files and 103 tests passed, including backend-shaped per-player run
   metadata, sample invariants, both bundled processed saves, and 20 upload adapter and Blob
   token-route tests covering direct and public-Blob transports, multipart
   selection, limits, cancellation, safe failures, same-origin checks, and token
   constraints. The intent tests cover per-moment isolation, loading-to-success,
-  same-text retry state, stale response rejection, and same-round win-estimate
-  selection. Landing-page assertions match the current upload and processed-
-  replay wording.
+  same-text retry state, stale response rejection, same-round win-estimate
+  selection, and CT/T perspective swaps. Landing-page assertions match the
+  current upload and processed-replay wording.
 - TypeScript: passed
 - ESLint: passed with no warnings
 - Next.js production build: passed in both default direct mode and explicit

@@ -418,6 +418,29 @@ export function winProbabilityAtMoment(
   return latest;
 }
 
+export function winRateForPerspective(
+  point: WinTimelinePoint | undefined,
+  selectedSide: "ct" | "t",
+) {
+  const ctProbability = point?.ct_probability ?? 0.5;
+  const tProbability = point?.t_probability ?? 0.5;
+  return selectedSide === "t"
+    ? {
+        friendlyTeam: "T" as const,
+        friendlyProbability: tProbability,
+        enemyTeam: "CT" as const,
+        enemyProbability: ctProbability,
+        isBaseline: !point,
+      }
+    : {
+        friendlyTeam: "CT" as const,
+        friendlyProbability: ctProbability,
+        enemyTeam: "T" as const,
+        enemyProbability: tProbability,
+        isBaseline: !point,
+      };
+}
+
 export function playerDisplayName(player: ReplayPlayer): string {
   return player.display_name ?? "Unnamed player";
 }

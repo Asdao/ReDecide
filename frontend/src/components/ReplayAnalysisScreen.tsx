@@ -19,6 +19,7 @@ import {
   radarOverviewForMap,
   roundAtTick,
   winProbabilityAtMoment,
+  winRateForPerspective,
   worldToRadar,
   type ProcessedReplay,
   type ReplayEvent,
@@ -193,9 +194,18 @@ export function ReplayAnalysisScreen({
       : undefined,
     [analysis, currentRound, currentTick],
   );
-  const ctWinProbability = currentWinProbability?.ct_probability ?? 0.5;
-  const tWinProbability = currentWinProbability?.t_probability ?? 0.5;
-  const winRateIsBaseline = !currentWinProbability;
+  const selectedAnalysisPlayer = analysis?.players.find(
+    ({ player_id }) => player_id === selectedPlayerId,
+  );
+  const selectedSide = (
+    currentRound
+      ? selectedAnalysisPlayer?.side_by_round[String(currentRound.round_num)]
+      : undefined
+  ) ?? selectedSnapshot?.side ?? "ct";
+  const winRate = winRateForPerspective(
+    currentWinProbability,
+    selectedSide,
+  );
 
   const namesById = useMemo(
     () =>
@@ -561,26 +571,32 @@ export function ReplayAnalysisScreen({
               </div>
             </div>
             <section
-              className={`radar-win-rate${winRateIsBaseline ? " baseline" : ""}`}
+              className={`radar-win-rate${winRate.isBaseline ? " baseline" : ""}`}
               aria-label="Win rate"
             >
               <div className="radar-win-rate-values">
+                <strong className="friendly-team">
+                  <span>{winRate.friendlyTeam}</span>
+                  {formatProbability(winRate.friendlyProbability)}
+                </strong>
                 <p>Win rate</p>
-                <strong><span>CT</span>{formatProbability(ctWinProbability)}</strong>
-                <strong><span>T</span>{formatProbability(tWinProbability)}</strong>
+                <strong className="enemy-team">
+                  {formatProbability(winRate.enemyProbability)}
+                  <span>{winRate.enemyTeam}</span>
+                </strong>
               </div>
               <div
                 className="win-rate-track"
                 role="img"
-                aria-label={`CT ${formatProbability(ctWinProbability)}, T ${formatProbability(tWinProbability)}${winRateIsBaseline ? ", baseline estimate" : ""}`}
+                aria-label={`${winRate.friendlyTeam} ${formatProbability(winRate.friendlyProbability)}, ${winRate.enemyTeam} ${formatProbability(winRate.enemyProbability)}${winRate.isBaseline ? ", baseline estimate" : ""}`}
               >
                 <span
-                  className="win-rate-ct"
-                  style={{ width: formatProbability(ctWinProbability) }}
+                  className="win-rate-friendly"
+                  style={{ width: formatProbability(winRate.friendlyProbability) }}
                 />
                 <span
-                  className="win-rate-t"
-                  style={{ width: formatProbability(tWinProbability) }}
+                  className="win-rate-enemy"
+                  style={{ width: formatProbability(winRate.enemyProbability) }}
                 />
               </div>
             </section>
