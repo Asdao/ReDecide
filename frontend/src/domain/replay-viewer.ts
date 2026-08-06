@@ -137,6 +137,14 @@ export type ReplayFrame = {
   snapshots: ReplaySnapshot[];
 };
 
+export type WinTimelinePoint = {
+  round_number: number;
+  tick: number;
+  ct_probability: number;
+  t_probability: number;
+  uncertainty: number;
+};
+
 export type RadarOverview = {
   positionX: number;
   positionY: number;
@@ -390,6 +398,24 @@ export function formatReplayTime(tick: number, firstTick: number, tickRate: numb
   const minutes = Math.floor(seconds / 60);
   const remaining = Math.floor(seconds % 60);
   return `${minutes}:${remaining.toString().padStart(2, "0")}`;
+}
+
+export function winProbabilityAtMoment(
+  timeline: readonly WinTimelinePoint[],
+  roundNumber: number,
+  tick: number,
+): WinTimelinePoint | undefined {
+  let latest: WinTimelinePoint | undefined;
+  for (const point of timeline) {
+    if (
+      point.round_number === roundNumber &&
+      point.tick <= tick &&
+      (!latest || point.tick > latest.tick)
+    ) {
+      latest = point;
+    }
+  }
+  return latest;
 }
 
 export function playerDisplayName(player: ReplayPlayer): string {

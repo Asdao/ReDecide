@@ -100,13 +100,19 @@ tick 2579, shown as a distinct blue timeline marker, and rendered in the moment
 inspector. Analysis-backed moments now also render the intent follow-up composer
 pinned to the bottom of the inspector. The textbox keeps its base height and
 scrolls internally instead of resizing. Its typed, per-moment request lifecycle
-keeps a
-one-time submitted intent attached to the stable event ID, disables editing,
+keeps a one-time submitted intent attached to the stable event ID, disables editing,
 preserves the old coaching behind the rotating loading border, ignores stale
 responses, and replaces only that moment's coaching after a successful response.
 The composer remains visibly disabled in the running app until the backend
 provides a documented endpoint and a submission function is connected; the
 viewer does not invent or call an unsupported API.
+The radar workspace always renders a compact win-rate strip directly under the
+live radar status and above the moment inspector. Its maximum width matches the
+inspector, and it contains only the `Win rate` label, explicit CT/T percentages,
+and the labelled split bar. Playback carries forward the latest backend estimate
+at or before the current tick in the same round. Before a fresh round receives
+its first estimate, or when analysis data is unavailable, the strip shows a
+muted 50/50 baseline instead of borrowing from another round or a future tick.
 
 The processed replay adapter accepts the documented backend
 `replay_visualization_v1` output without requiring the sanitized Mirage shape.
@@ -291,13 +297,14 @@ folder on `raw.githubusercontent.com` for non-bundled future maps.
 
 From `frontend/`, `pnpm run verify` passes:
 
-- Vitest: 9 files and 101 tests passed, including backend-shaped per-player run
+- Vitest: 9 files and 102 tests passed, including backend-shaped per-player run
   metadata, sample invariants, both bundled processed saves, and 20 upload adapter and Blob
   token-route tests covering direct and public-Blob transports, multipart
   selection, limits, cancellation, safe failures, same-origin checks, and token
   constraints. The intent tests cover per-moment isolation, loading-to-success,
-  same-text retry state, and stale response rejection. Landing-page assertions
-  match the current upload and processed-replay wording.
+  same-text retry state, stale response rejection, and same-round win-estimate
+  selection. Landing-page assertions match the current upload and processed-
+  replay wording.
 - TypeScript: passed
 - ESLint: passed with no warnings
 - Next.js production build: passed in both default direct mode and explicit

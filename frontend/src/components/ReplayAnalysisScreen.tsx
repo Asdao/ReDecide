@@ -18,6 +18,7 @@ import {
   playerTimelineEvents,
   radarOverviewForMap,
   roundAtTick,
+  winProbabilityAtMoment,
   worldToRadar,
   type ProcessedReplay,
   type ReplayEvent,
@@ -49,6 +50,10 @@ function markerLabel(displayName: string | null): string {
 
 function clamp(value: number, minimum: number, maximum: number): number {
   return Math.min(maximum, Math.max(minimum, value));
+}
+
+function formatProbability(value: number): string {
+  return `${(value * 100).toFixed(1)}%`;
 }
 
 function eventMatchesAnalysis(event: ReplayEvent, analysis: ReplayAnalysisResult): boolean {
@@ -178,6 +183,19 @@ export function ReplayAnalysisScreen({
   );
   const selectedIntentState = selectedEventId ? intentStates[selectedEventId] : undefined;
   const selectedIntentDraft = selectedEventId ? intentDrafts[selectedEventId] ?? "" : "";
+  const currentWinProbability = useMemo(
+    () => currentRound && analysis
+      ? winProbabilityAtMoment(
+          analysis.win_estimator.timeline,
+          currentRound.round_num,
+          currentTick,
+        )
+      : undefined,
+    [analysis, currentRound, currentTick],
+  );
+  const ctWinProbability = currentWinProbability?.ct_probability ?? 0.5;
+  const tWinProbability = currentWinProbability?.t_probability ?? 0.5;
+  const winRateIsBaseline = !currentWinProbability;
 
   const namesById = useMemo(
     () =>
@@ -542,6 +560,30 @@ export function ReplayAnalysisScreen({
                 <strong>{selectedSnapshot?.side.toUpperCase() ?? "—"}</strong>
               </div>
             </div>
+            <section
+              className={`radar-win-rate${winRateIsBaseline ? " baseline" : ""}`}
+              aria-label="Win rate"
+            >
+              <div className="radar-win-rate-values">
+                <p>Win rate</p>
+                <strong><span>CT</span>{formatProbability(ctWinProbability)}</strong>
+                <strong><span>T</span>{formatProbability(tWinProbability)}</strong>
+              </div>
+              <div
+                className="win-rate-track"
+                role="img"
+                aria-label={`CT ${formatProbability(ctWinProbability)}, T ${formatProbability(tWinProbability)}${winRateIsBaseline ? ", baseline estimate" : ""}`}
+              >
+                <span
+                  className="win-rate-ct"
+                  style={{ width: formatProbability(ctWinProbability) }}
+                />
+                <span
+                  className="win-rate-t"
+                  style={{ width: formatProbability(tWinProbability) }}
+                />
+              </div>
+            </section>
             <div className="radar-frame">
               <Image
                 src={radarOverview.image}

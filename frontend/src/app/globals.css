@@ -1326,7 +1326,7 @@ input[type="file"] {
   min-width: 0;
   min-height: 0;
   display: grid;
-  grid-template-rows: auto minmax(0, 1fr);
+  grid-template-rows: auto auto minmax(0, 1fr);
   padding: 0.8rem 1.25rem 0.65rem;
 }
 
@@ -1598,6 +1598,78 @@ input[type="file"] {
   text-overflow: ellipsis;
   text-transform: capitalize;
   white-space: nowrap;
+}
+
+.radar-win-rate {
+  width: min(33rem, 100%);
+  justify-self: end;
+  padding-bottom: 0.7rem;
+}
+
+.radar-win-rate-values {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  gap: 1rem;
+  align-items: baseline;
+}
+
+.radar-win-rate-values p {
+  margin: 0;
+  color: var(--muted);
+  font-family: var(--font-display);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.radar-win-rate-values strong {
+  display: inline-flex;
+  gap: 0.45rem;
+  align-items: baseline;
+  color: var(--text);
+  font-family: var(--font-interface);
+  font-size: 1rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.radar-win-rate-values strong:nth-child(2) span {
+  color: var(--steel-blue-text);
+}
+
+.radar-win-rate-values strong:last-child span {
+  color: var(--accent);
+}
+
+.radar-win-rate-values span {
+  font-family: var(--font-display);
+  font-size: 0.72rem;
+  letter-spacing: 0.08em;
+}
+
+.win-rate-track {
+  height: 0.65rem;
+  display: flex;
+  overflow: hidden;
+  margin-top: 0.45rem;
+  background: var(--surface-raised);
+}
+
+.radar-win-rate.baseline .win-rate-track {
+  opacity: 0.48;
+}
+
+.win-rate-track span {
+  display: block;
+  height: 100%;
+}
+
+.win-rate-ct {
+  background: var(--steel-blue-text);
+}
+
+.win-rate-t {
+  background: var(--accent);
 }
 
 .saved-coaching {
@@ -2165,6 +2237,10 @@ input[type="file"] {
 
   .radar-frame {
     min-width: 0;
+  }
+
+  .radar-win-rate {
+    width: min(33rem, calc(100% - 1rem));
   }
 
   .playback-controls {

@@ -11,6 +11,7 @@ import {
   playerTimelineEvents,
   radarOverviewForMap,
   roundAtTick,
+  winProbabilityAtMoment,
   worldToRadar,
   type ReplaySnapshot,
 } from "@/domain/replay-viewer";
@@ -139,6 +140,19 @@ describe("processed replay viewer", () => {
     expect(roundAtTick(rounds, 220)?.round_num).toBe(2);
     expect(roundAtTick(rounds, 300)?.round_num).toBe(2);
     expect(formatReplayTime(3_940, 100, 64)).toBe("1:00");
+  });
+
+  it("uses the latest same-round win estimate at or before an inspected moment", () => {
+    const timeline = [
+      { round_number: 1, tick: 80, ct_probability: 0.4, t_probability: 0.6, uncertainty: 0.3 },
+      { round_number: 2, tick: 120, ct_probability: 0.5, t_probability: 0.5, uncertainty: 0.2 },
+      { round_number: 1, tick: 100, ct_probability: 0.7, t_probability: 0.3, uncertainty: 0.1 },
+      { round_number: 1, tick: 140, ct_probability: 0.8, t_probability: 0.2, uncertainty: 0.1 },
+    ];
+
+    expect(winProbabilityAtMoment(timeline, 1, 125)).toEqual(timeline[2]);
+    expect(winProbabilityAtMoment(timeline, 2, 119)).toBeUndefined();
+    expect(winProbabilityAtMoment(timeline, 2, 120)).toEqual(timeline[1]);
   });
 
   it("shows only damage received and deaths for the selected player", () => {
