@@ -1519,6 +1519,8 @@ input[type="file"] {
 .legend-dot.dead { opacity: 0.32; }
 
 .analysis-inspector {
+  --inspector-border-color: var(--tactical-tan);
+
   position: absolute;
   z-index: 8;
   top: 7.5rem;
@@ -1529,7 +1531,7 @@ input[type="file"] {
   display: flex;
   flex-direction: column;
   overflow-y: auto;
-  border: 2px solid var(--accent);
+  border: 2px solid var(--inspector-border-color);
   background: rgb(14 18 25 / 94%);
   padding: 1.25rem;
   opacity: 0;
@@ -1598,6 +1600,14 @@ input[type="file"] {
   text-overflow: ellipsis;
   text-transform: capitalize;
   white-space: nowrap;
+}
+
+.analysis-inspector.death {
+  --inspector-border-color: #ee5f5f;
+}
+
+.analysis-inspector.analysis {
+  --inspector-border-color: #4f9cff;
 }
 
 .radar-win-rate {
@@ -2068,7 +2078,6 @@ input[type="file"] {
 
 .timeline-caption i.coaching {
   background: #4f9cff;
-  box-shadow: 0 0 0 1px rgb(220 236 255 / 70%);
 }
 
 .event-track button:focus,

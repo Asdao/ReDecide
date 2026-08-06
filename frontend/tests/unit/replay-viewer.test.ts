@@ -10,6 +10,7 @@ import {
   normalizeBackendReplay,
   playerTimelineEvents,
   radarOverviewForMap,
+  replayEventIsDeath,
   roundAtTick,
   winProbabilityAtMoment,
   winRateForPerspective,
@@ -204,5 +205,34 @@ describe("processed replay viewer", () => {
     expect(firstEventCrossed(selectedEvents, 90, 105)?.event_id).toBe("damage-in");
     expect(firstEventCrossed(selectedEvents, 100, 119)).toBeUndefined();
     expect(firstEventCrossed(selectedEvents, 100, 120)?.event_id).toBe("death");
+  });
+
+  it("labels 100 damage as death and removes its duplicate kill marker", () => {
+    const events = [
+      {
+        event_id: "lethal-damage",
+        event: "damage",
+        tick: 200,
+        round_num: 2,
+        attacker_id: "p2",
+        victim_id: "p1",
+        damage_health: 100,
+        weapon: "ak47",
+      },
+      {
+        event_id: "duplicate-kill",
+        event: "kill",
+        tick: 200,
+        round_num: 2,
+        attacker_id: "p2",
+        victim_id: "p1",
+        headshot: true,
+      },
+    ];
+
+    const selectedEvents = playerTimelineEvents(events, "p1");
+    expect(selectedEvents.map(({ event_id }) => event_id)).toEqual(["lethal-damage"]);
+    expect(replayEventIsDeath(selectedEvents[0])).toBe(true);
+    expect(selectedEvents[0]).toMatchObject({ headshot: true, weapon: "ak47" });
   });
 });

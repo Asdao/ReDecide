@@ -445,15 +445,47 @@ export function playerDisplayName(player: ReplayPlayer): string {
   return player.display_name ?? "Unnamed player";
 }
 
+export function replayEventIsDeath(event: ReplayEvent): boolean {
+  return event.event === "kill" || (
+    event.event === "damage" && (event.damage_health ?? 0) >= 100
+  );
+}
+
 export function playerTimelineEvents(
   events: ReplayEvent[],
   playerId: string,
 ): ReplayEvent[] {
-  return events.filter(
+  const relevantEvents = events.filter(
     (event) =>
       (event.event === "damage" || event.event === "kill") &&
       event.victim_id === playerId,
   );
+  const lethalDamageMoments = new Set(
+    relevantEvents
+      .filter((event) => event.event === "damage" && replayEventIsDeath(event))
+      .map((event) => `${event.round_num}:${event.tick}:${event.victim_id}`),
+  );
+  const killByMoment = new Map(
+    relevantEvents
+      .filter((event) => event.event === "kill")
+      .map((event) => [`${event.round_num}:${event.tick}:${event.victim_id}`, event]),
+  );
+
+  return relevantEvents.flatMap((event) => {
+    const moment = `${event.round_num}:${event.tick}:${event.victim_id}`;
+    if (event.event === "kill" && lethalDamageMoments.has(moment)) {
+      return [];
+    }
+    if (event.event === "damage" && lethalDamageMoments.has(moment)) {
+      const killEvent = killByMoment.get(moment);
+      return [{
+        ...event,
+        headshot: killEvent?.headshot ?? event.headshot,
+        weapon: event.weapon ?? killEvent?.weapon,
+      }];
+    }
+    return [event];
+  });
 }
 
 export function firstEventCrossed(

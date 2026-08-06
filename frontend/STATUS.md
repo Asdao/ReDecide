@@ -79,8 +79,12 @@ with no persistent focus or selected outline after clicking or automatic
 pausing. The marker track now uses a roving keyboard tab stop, so it contributes
 one stop instead of every replay event to the page tab order; Left/Right and
 Home/End move between markers and keyboard focus remains visibly outlined. The
-wider right-side inspector uses an orange border on all four sides;
-saved coaching uses a borderless blue background. The inspector has no separate
+wider right-side inspector matches its border to the selected marker: tan for
+damage, red for death, and blue for an analysis-backed moment. A 100-damage
+event is classified as death, and a same-tick duplicate kill marker is folded
+into that stable damage event. The analysis legend swatch has the same visual
+thickness as the damage and death swatches.
+Saved coaching uses a borderless blue background. The inspector has no separate
 saved-analysis note or clear button. Player
 and round selectors suppress the browser's native white focus ring while
 retaining the product-colored container state.
@@ -301,14 +305,14 @@ folder on `raw.githubusercontent.com` for non-bundled future maps.
 
 From `frontend/`, `pnpm run verify` passes:
 
-- Vitest: 9 files and 103 tests passed, including backend-shaped per-player run
+- Vitest: 9 files and 104 tests passed, including backend-shaped per-player run
   metadata, sample invariants, both bundled processed saves, and 20 upload adapter and Blob
   token-route tests covering direct and public-Blob transports, multipart
   selection, limits, cancellation, safe failures, same-origin checks, and token
   constraints. The intent tests cover per-moment isolation, loading-to-success,
   same-text retry state, stale response rejection, same-round win-estimate
-  selection, and CT/T perspective swaps. Landing-page assertions match the
-  current upload and processed-replay wording.
+  selection, CT/T perspective swaps, and lethal-damage deduplication. Landing-
+  page assertions match the current upload and processed-replay wording.
 - TypeScript: passed
 - ESLint: passed with no warnings
 - Next.js production build: passed in both default direct mode and explicit

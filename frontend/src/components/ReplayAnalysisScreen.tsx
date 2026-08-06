@@ -17,6 +17,7 @@ import {
   playerDisplayName,
   playerTimelineEvents,
   radarOverviewForMap,
+  replayEventIsDeath,
   roundAtTick,
   winProbabilityAtMoment,
   winRateForPerspective,
@@ -30,9 +31,10 @@ import { ProductHeader } from "./ProductHeader";
 const PLAYBACK_RATES = [0.5, 1, 2, 4, 8];
 
 function eventLabel(event: ReplayEvent): string {
+  if (replayEventIsDeath(event)) {
+    return event.headshot ? "Headshot death" : "Death";
+  }
   switch (event.event) {
-    case "kill":
-      return event.headshot ? "Headshot death" : "Death";
     case "damage":
       return "Damage received";
     default:
@@ -182,6 +184,11 @@ export function ReplayAnalysisScreen({
   const selectedEventHasAnalysis = Boolean(
     analysis && selectedEvent && eventMatchesAnalysis(selectedEvent, analysis),
   );
+  const selectedEventKind = selectedEventHasAnalysis
+    ? "analysis"
+    : selectedEvent && replayEventIsDeath(selectedEvent)
+      ? "death"
+      : "damage";
   const selectedIntentState = selectedEventId ? intentStates[selectedEventId] : undefined;
   const selectedIntentDraft = selectedEventId ? intentDrafts[selectedEventId] ?? "" : "";
   const currentWinProbability = useMemo(
@@ -448,13 +455,16 @@ export function ReplayAnalysisScreen({
           </ul>
 
           {selectedEvent ? (
-            <aside className="analysis-inspector" aria-labelledby="inspector-title">
+            <aside
+              className={`analysis-inspector ${selectedEventKind}`}
+              aria-labelledby="inspector-title"
+            >
               <div className="inspector-heading">
                 <p className="eyebrow">Moment inspector</p>
                 <h2 id="inspector-title">{eventLabel(selectedEvent)}</h2>
               </div>
               <p className="inspector-summary">
-                {selectedEvent.event === "kill"
+                {replayEventIsDeath(selectedEvent)
                   ? `${namesById.get(selectedEvent.victim_id ?? "") ?? "The selected player"} was eliminated by ${namesById.get(selectedEvent.attacker_id ?? "") ?? "an opponent"}.`
                   : `${namesById.get(selectedEvent.victim_id ?? "") ?? "The selected player"} took ${selectedEvent.damage_health ?? "unknown"} damage from ${namesById.get(selectedEvent.attacker_id ?? "") ?? "an opponent"}.`}
               </p>
@@ -710,7 +720,7 @@ export function ReplayAnalysisScreen({
               {timelineEvents.map((event, eventIndex) => (
                 <button
                   type="button"
-                  className={`${event.event === "kill" ? "death" : "damage"}${analysisEventId === event.event_id ? " coaching" : ""}${selectedEventId === event.event_id ? " selected" : ""}`}
+                  className={`${replayEventIsDeath(event) ? "death" : "damage"}${analysisEventId === event.event_id ? " coaching" : ""}${selectedEventId === event.event_id ? " selected" : ""}`}
                   style={{ left: `${((event.tick - firstTick) / duration) * 100}%` }}
                   key={event.event_id}
                   ref={(element) => {
