@@ -147,8 +147,15 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 import threading
 from typing import Any
+from urllib.parse import unquote
 from uuid import uuid4
 
+from backend.app.analysis_store import (
+    load_analysis_result,
+    load_analysis_state,
+    save_analysis_result,
+    save_analysis_state,
+)
 from backend.app.coach.pi_connector import PiCoachError
 from backend.app.replay.pipeline import merge_pi_output, stream_replay_pipeline
 
@@ -180,12 +187,17 @@ class AnalysisJob:
     result: dict[str, Any] | None = None
     selected_player_id: str | None = None
     error: str | None = None
+    player_runs: dict[str, dict[str, Any]] = field(default_factory=dict)
     updates: list[dict[str, Any]] = field(default_factory=list)
     lock: threading.RLock = field(default_factory=threading.RLock, repr=False)
 
 
 class AnalysisService:
-    """In-memory job store with durable per-job JSONL progress logs."""
+    """Replay preparation plus repeatable per-player coaching runs.
+
+    Jobs stay in memory for active requests, while prepared state and completed
+    player results are cached as atomic JSON artifacts for restart recovery.
+    """
 
     def __init__(
         self,
@@ -202,6 +214,8 @@ class AnalysisService:
         self._jobs: dict[str, AnalysisJob] = {}
         self._jobs_lock = threading.RLock()
         self._executor = executor or ThreadPoolExecutor(max_workers=2, thread_name_prefix="replay-analysis")
+        self.analysis_store_dir = self.log_dir / "analysis-state"
+        self._restore_persisted_jobs()
 
     def prepare(self, replay: Mapping[str, Any], *, source_replay_id: str | None = None) -> dict[str, Any]:
         if not isinstance(replay, Mapping):
@@ -216,6 +230,7 @@ class AnalysisService:
         with self._jobs_lock:
             self._jobs[analysis_id] = job
         self._write_log(job, {"stage": "received", "progress": 0, "message": "Replay accepted."})
+        self._persist_job(job)
         self._executor.submit(self._prepare_worker, job)
         return self.metadata(analysis_id)
 
@@ -225,11 +240,23 @@ class AnalysisService:
     def metadata(self, analysis_id: str) -> dict[str, Any]:
         job = self.get_job(analysis_id)
         with job.lock:
+            player_runs = {
+                player_id: {
+                    "status": str(run.get("status") or "unknown"),
+                    "result_available": run.get("result") is not None,
+                    **({"run_id": run["run_id"]} if run.get("run_id") else {}),
+                }
+                for player_id, run in job.player_runs.items()
+            }
             return {
                 "analysis_id": job.analysis_id,
                 "status": job.status,
                 "players_available": job.selector is not None,
-                "result_available": job.result is not None,
+                "result_available": any(
+                    run.get("result") is not None for run in job.player_runs.values()
+                ) or job.result is not None,
+                "selected_player_id": job.selected_player_id,
+                "player_runs": player_runs,
                 "logs_url": f"/api/analysis/{job.analysis_id}/logs",
                 "events_url": f"/api/analysis/{job.analysis_id}/events",
                 "result_url": f"/api/analysis/{job.analysis_id}/result",
@@ -240,10 +267,20 @@ class AnalysisService:
         with job.lock:
             if job.selector is None:
                 raise AnalysisNotReady("player selector is not ready")
+            selectable = []
+            for item in job.selector.get("players", []):
+                if not isinstance(item, Mapping):
+                    continue
+                player = dict(item)
+                player["analysis_available"] = bool(player.get("decision_ids"))
+                player["analysis_status"] = job.player_runs.get(
+                    str(player.get("player_id")), {}
+                ).get("status", "not_started")
+                selectable.append(player)
             return {
                 "analysis_id": analysis_id,
                 "status": job.status,
-                "players": job.selector.get("players", []),
+                "players": selectable,
             }
 
     def select_player(self, analysis_id: str, *, player_id: str | None = None, player_name: str | None = None) -> dict[str, Any]:
@@ -261,44 +298,106 @@ class AnalysisService:
             ]
             if not candidates:
                 raise PlayerSelectionError("selected player has no first-contact decision candidate")
+            if self.coach_adapter is None:
+                raise RuntimeError("coach adapter is not configured")
+            selected_player_id = str(selected["player_id"])
+            previous_run = job.player_runs.get(selected_player_id)
+            if previous_run and previous_run.get("status") == "running":
+                raise AnalysisNotReady("coaching is already running for this player")
             candidate = dict(candidates[0])
-            filtered = self._filter_for_player(job.prepared_result, str(selected["player_id"]))
+            filtered = self._filter_for_player(job.prepared_result, selected_player_id)
             filtered["selected_decision"] = candidate
-            job.selected_player_id = str(selected["player_id"])
+            run_id = uuid4().hex
+            job.selected_player_id = selected_player_id
+            job.status = "coaching"
+            job.error = None
+            job.result = None
+            job.player_runs[selected_player_id] = {
+                "run_id": run_id,
+                "status": "running",
+                "result": None,
+                "error": None,
+            }
+            self._persist_job(job)
             self._write_log(job, {
                 "stage": "player_selected",
                 "progress": 55,
-                "player_id": str(selected["player_id"]),
+                "player_id": selected_player_id,
+                "run_id": run_id,
                 "message": "Player selection accepted.",
             })
-            if self.coach_adapter is None:
-                raise RuntimeError("coach adapter is not configured")
-            self._write_log(job, {"stage": "calling_pi", "progress": 85, "message": "Generating coaching analysis."})
-            try:
-                pi_output = self.coach_adapter(filtered)
-                merged = merge_pi_output(filtered, pi_output)
-            except Exception as exc:  # noqa: BLE001 - stable API-facing failure
-                # A prepared replay result is not a completed coaching result.
-                # Clear it so /result cannot expose a partial success after Pi
-                # fails and callers receive the stable failure response.
-                job.result = None
-                job.status = "failed"
-                job.error = (
+            self._write_log(job, {
+                "stage": "calling_pi",
+                "progress": 85,
+                "player_id": selected_player_id,
+                "run_id": run_id,
+                "message": "Generating coaching analysis.",
+            })
+            coach_adapter = self.coach_adapter
+
+        # Provider calls can take seconds or minutes. Do not hold the job lock
+        # while waiting, so metadata/events and other player runs remain live.
+        try:
+            pi_output = coach_adapter(filtered)
+            merged = merge_pi_output(filtered, pi_output)
+        except Exception as exc:  # noqa: BLE001 - stable API-facing failure
+            with job.lock:
+                error = (
                     f"coaching analysis failed: {exc}"
                     if isinstance(exc, PiCoachError)
                     else "coaching analysis failed"
                 )
-                self._write_log(job, {"stage": "error", "progress": 100, "message": job.error})
-                raise RuntimeError(job.error) from exc
+                job.player_runs[selected_player_id] = {
+                    "run_id": run_id,
+                    "status": "failed",
+                    "result": None,
+                    "error": error,
+                }
+                job.error = error
+                job.status = "failed"
+                self._persist_job(job)
+                self._write_log(job, {
+                    "stage": "error",
+                    "progress": 100,
+                    "player_id": selected_player_id,
+                    "run_id": run_id,
+                    "message": error,
+                })
+                raise RuntimeError(error) from exc
+        with job.lock:
             job.result = merged
             merged["replay_outcome"] = _replay_outcome(job.replay)
+            job.player_runs[selected_player_id] = {
+                "run_id": run_id,
+                "status": "complete",
+                "result": merged,
+                "error": None,
+            }
             job.status = "complete"
-            self._write_log(job, {"stage": "complete", "progress": 100, "message": "Analysis complete.", "result_available": True})
+            self._persist_job(job)
+            self._write_log(job, {
+                "stage": "complete",
+                "progress": 100,
+                "player_id": selected_player_id,
+                "run_id": run_id,
+                "message": "Analysis complete.",
+                "result_available": True,
+            })
             return dict(merged)
 
-    def result(self, analysis_id: str) -> dict[str, Any]:
+    def result(self, analysis_id: str, *, player_id: str | None = None) -> dict[str, Any]:
         job = self.get_job(analysis_id)
         with job.lock:
+            if player_id is not None:
+                player_run = job.player_runs.get(str(player_id))
+                if player_run is None:
+                    raise PlayerSelectionError("no analysis run exists for this player")
+                player_result = player_run.get("result")
+                if player_result is not None:
+                    return dict(player_result)
+                if player_run.get("status") == "failed":
+                    raise RuntimeError(str(player_run.get("error") or "analysis failed"))
+                raise AnalysisNotReady("analysis result is not ready")
             if job.result is None:
                 if job.status == "failed":
                     raise RuntimeError(job.error or "analysis failed")
@@ -315,6 +414,114 @@ class AnalysisService:
         job = self.get_job(analysis_id)
         with job.lock:
             return [dict(item) for item in job.updates]
+
+    def _persist_job(self, job: AnalysisJob) -> None:
+        """Persist restart-safe state without making the cache a hard dependency."""
+
+        with job.lock:
+            state = {
+                "schema_version": "analysis_state_v1",
+                "analysis_id": job.analysis_id,
+                "replay": dict(job.replay),
+                "source_replay_id": job.source_replay_id,
+                "status": job.status,
+                "selector": job.selector,
+                "prepared_result": job.prepared_result,
+                "selected_player_id": job.selected_player_id,
+                "error": job.error,
+                "player_runs": {
+                    player_id: {
+                        "run_id": run.get("run_id"),
+                        "status": run.get("status"),
+                        "error": run.get("error"),
+                        "result_available": run.get("result") is not None,
+                    }
+                    for player_id, run in job.player_runs.items()
+                },
+            }
+            try:
+                save_analysis_state(job.analysis_id, state, root=self.analysis_store_dir)
+                save_analysis_result(
+                    job.analysis_id,
+                    {
+                        "schema_version": "analysis_results_v1",
+                        "analysis_id": job.analysis_id,
+                        "results_by_player": {
+                            player_id: run["result"]
+                            for player_id, run in job.player_runs.items()
+                            if run.get("result") is not None
+                        },
+                    },
+                    root=self.analysis_store_dir,
+                )
+            except (OSError, TypeError, ValueError):
+                # A local cache must not turn a successful coach invocation into
+                # an API failure. The in-memory job remains authoritative.
+                return
+
+    def _restore_persisted_jobs(self) -> None:
+        """Restore prepared/completed jobs when the service process restarts."""
+
+        if not self.analysis_store_dir.is_dir():
+            return
+        for state_path in self.analysis_store_dir.glob("*/state.json"):
+            analysis_id = unquote(state_path.parent.name)
+            try:
+                state = load_analysis_state(analysis_id, root=self.analysis_store_dir)
+                replay = state.get("replay")
+                if not isinstance(replay, Mapping):
+                    continue
+                job = AnalysisJob(
+                    analysis_id=analysis_id,
+                    replay=dict(replay),
+                    log_path=self.log_dir / f"{analysis_id}.jsonl",
+                    source_replay_id=state.get("source_replay_id"),
+                    status=str(state.get("status") or "ready"),
+                    selector=state.get("selector") if isinstance(state.get("selector"), dict) else None,
+                    prepared_result=(
+                        state.get("prepared_result")
+                        if isinstance(state.get("prepared_result"), dict)
+                        else None
+                    ),
+                    selected_player_id=state.get("selected_player_id"),
+                    error=state.get("error"),
+                )
+                persisted_runs = state.get("player_runs")
+                if isinstance(persisted_runs, Mapping):
+                    for player_id, run in persisted_runs.items():
+                        if not isinstance(run, Mapping):
+                            continue
+                        job.player_runs[str(player_id)] = {
+                            "run_id": run.get("run_id"),
+                            "status": run.get("status"),
+                            "result": None,
+                            "error": run.get("error"),
+                        }
+                try:
+                    results = load_analysis_result(
+                        analysis_id, root=self.analysis_store_dir
+                    )
+                except (FileNotFoundError, ValueError):
+                    results = {}
+                results_by_player = results.get("results_by_player")
+                if isinstance(results_by_player, Mapping):
+                    for player_id, result in results_by_player.items():
+                        if player_id in job.player_runs:
+                            job.player_runs[player_id]["result"] = result
+                if job.selected_player_id in job.player_runs:
+                    job.result = job.player_runs[job.selected_player_id].get("result")
+                if job.status == "coaching":
+                    # A process restart cannot resume a live provider call.
+                    # Prepared replay data remains reusable for a fresh run.
+                    for run in job.player_runs.values():
+                        if run.get("status") == "running":
+                            run["status"] = "failed"
+                            run["error"] = "coaching run interrupted by restart"
+                    job.status = "ready" if job.prepared_result is not None else "failed"
+                with self._jobs_lock:
+                    self._jobs[analysis_id] = job
+            except (OSError, TypeError, ValueError, json.JSONDecodeError):
+                continue
 
     def get_job(self, analysis_id: str) -> AnalysisJob:
         with self._jobs_lock:
@@ -344,10 +551,12 @@ class AnalysisService:
                             "players": job.prepared_result.get("players", []),
                         }
                         job.status = "ready"
+                        self._persist_job(job)
         except Exception as exc:  # noqa: BLE001 - converted to stable job state
             with job.lock:
                 job.status = "failed"
                 job.error = "replay preparation failed"
+                self._persist_job(job)
             self._write_log(job, {"stage": "error", "progress": 100, "message": job.error})
 
     @staticmethod
