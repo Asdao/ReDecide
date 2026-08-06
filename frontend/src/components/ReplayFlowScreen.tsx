@@ -1,6 +1,6 @@
 import type { ReplayAnalysisFlowState } from "@/domain/analysis-flow";
 import { mapDisplayName } from "@/domain/maps";
-import type { AnalysisPlayer } from "@/domain/replay";
+import type { AnalysisPlayer, AnalysisProgressEvent } from "@/domain/replay";
 
 type ReplayFlowScreenProps = {
   state: ReplayAnalysisFlowState;
@@ -13,6 +13,7 @@ type ReplayFlowScreenProps = {
   onRetryRecovery: () => void;
   onRetryVisualization: () => void;
   onReturnToPlayers: () => void;
+  progress?: AnalysisProgressEvent;
 };
 
 function playerName(player: AnalysisPlayer): string {
@@ -81,12 +82,21 @@ function ReplaySummary({
   );
 }
 
-function ProgressPanel({ title, copy }: { title: string; copy: string }) {
+function ProgressPanel({
+  title,
+  copy,
+  progress,
+}: {
+  title: string;
+  copy: string;
+  progress?: AnalysisProgressEvent;
+}) {
   return (
     <div className="replay-progress-card loading-border" aria-busy="true">
       <div>
         <h2>{title}</h2>
-        <p>{copy}</p>
+        <p>{progress?.message ?? copy}</p>
+        {progress ? <small>{Math.round(progress.progress)}% complete</small> : null}
       </div>
     </div>
   );
@@ -133,8 +143,10 @@ export function ReplayFlowScreen({
   onRetryRecovery,
   onRetryVisualization,
   onReturnToPlayers,
+  progress,
 }: ReplayFlowScreenProps) {
   const progressMessage = replayProgressMessage(state);
+  const announcedProgressMessage = progress?.message ?? progressMessage;
   const heading =
     state.status === "choosing-player"
       ? { prefix: "Choose your", accent: "player." }
@@ -150,9 +162,9 @@ export function ReplayFlowScreen({
 
   return (
     <section className="replay-screen" id="main-content" aria-labelledby="replay-title">
-      {progressMessage ? (
+      {announcedProgressMessage ? (
         <p className="sr-only" aria-live="polite" aria-atomic="true">
-          {progressMessage}
+          {announcedProgressMessage}
         </p>
       ) : null}
       <div className="replay-panel">
@@ -187,6 +199,7 @@ export function ReplayFlowScreen({
           <ProgressPanel
             title="Preparing the analysis"
             copy="Player identities and decision moments are being indexed from the uploaded replay."
+            progress={progress}
           />
         ) : null}
 
@@ -194,6 +207,7 @@ export function ReplayFlowScreen({
           <ProgressPanel
             title="Finding selectable players"
             copy="This list comes from the analysis service and may take a little while to become available."
+            progress={progress}
           />
         ) : null}
 
@@ -201,6 +215,7 @@ export function ReplayFlowScreen({
           <ProgressPanel
             title={`Coaching ${playerName(state.selectedPlayer)}`}
             copy="The coaching request can take around 30 seconds."
+            progress={progress}
           />
         ) : null}
 
@@ -208,6 +223,7 @@ export function ReplayFlowScreen({
           <ProgressPanel
             title="Checking for completed coaching"
             copy="The request ended before a response arrived. We are checking the saved result."
+            progress={progress}
           />
         ) : null}
 

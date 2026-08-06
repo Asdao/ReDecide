@@ -1,4 +1,5 @@
 import { z } from "zod";
+import type { ReplayAnalysisResult } from "./replay";
 
 const requiredString = z.string().trim().min(1);
 const nonnegativeInteger = z.number().int().nonnegative();
@@ -486,6 +487,99 @@ export function playerTimelineEvents(
     }
     return [event];
   });
+}
+
+export function eventMatchesAnalysis(
+  event: ReplayEvent,
+  analysis: ReplayAnalysisResult,
+): boolean {
+  const decision = analysis.selected_decision;
+  const playerMatches = decision.role === "victim"
+    ? event.victim_id === decision.player_id
+    : decision.role === "attacker"
+      ? event.attacker_id === decision.player_id
+      : event.victim_id === decision.player_id || event.attacker_id === decision.player_id;
+  const opponentMatches = decision.role === "victim"
+    ? event.attacker_id === decision.opponent_id
+    : decision.role === "attacker"
+      ? event.victim_id === decision.opponent_id
+      : event.attacker_id === decision.opponent_id || event.victim_id === decision.opponent_id;
+  return (
+    event.tick === decision.contact_tick &&
+    event.round_num === decision.round_number &&
+    event.event === decision.event_category &&
+    playerMatches &&
+    opponentMatches
+  );
+}
+
+export function cleanAnalysisEvents(
+  events: readonly ReplayAnalysisResult["events"][number][],
+): ReplayAnalysisResult["events"] {
+  const seen = new Set<string>();
+  return events.filter((event) => {
+    if (event.round_number <= 0) {
+      return false;
+    }
+    const fingerprint = [
+      event.event_type,
+      event.round_number,
+      event.tick,
+      [...event.participant_ids].sort().join(","),
+    ].join(":");
+    if (seen.has(fingerprint)) {
+      return false;
+    }
+    seen.add(fingerprint);
+    return true;
+  });
+}
+
+function syntheticAnalysisEvent(analysis: ReplayAnalysisResult): ReplayEvent {
+  const decision = analysis.selected_decision;
+  const cleanEvents = cleanAnalysisEvents([...analysis.events, ...analysis.key_events]);
+  const anchor = cleanEvents.find((event) =>
+    event.is_coaching_anchor &&
+    event.round_number === decision.round_number &&
+    event.tick === decision.contact_tick &&
+    event.event_type === decision.event_category &&
+    event.participant_ids.includes(decision.player_id),
+  );
+  return {
+    event_id: `analysis:${anchor?.event_id ?? decision.decision_id}`,
+    event: decision.event_category,
+    tick: decision.contact_tick,
+    round_num: decision.round_number,
+    attacker_id: decision.role === "attacker" ? decision.player_id : decision.opponent_id,
+    victim_id: decision.role === "victim" ? decision.player_id : decision.opponent_id,
+    player_id: null,
+    weapon: null,
+    headshot: false,
+    bomb_site: null,
+  };
+}
+
+export function analysisTimelineEvents(
+  events: ReplayEvent[],
+  playerId: string,
+  analysis?: ReplayAnalysisResult,
+): ReplayEvent[] {
+  const playerEvents = playerTimelineEvents(events, playerId);
+  if (!analysis || analysis.selected_decision.player_id !== playerId) {
+    return playerEvents;
+  }
+
+  const analysisEvent = events.find((event) => eventMatchesAnalysis(event, analysis))
+    ?? syntheticAnalysisEvent(analysis);
+  const withoutCompetingMoment = playerEvents.filter((event) => !(
+    event.round_num === analysisEvent.round_num &&
+    event.tick === analysisEvent.tick &&
+    event.attacker_id === analysisEvent.attacker_id &&
+    event.victim_id === analysisEvent.victim_id
+  ));
+  return [...withoutCompetingMoment, analysisEvent].sort(
+    (left, right) => left.tick - right.tick || left.event_id.localeCompare(right.event_id),
+  );
 }
 
 export function firstEventCrossed(

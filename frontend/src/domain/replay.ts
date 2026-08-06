@@ -128,6 +128,21 @@ export const analysisJobSchema = z
   })
   .strict();
 
+export const analysisProgressEventSchema = z
+  .object({
+    analysis_id: requiredString,
+    schema_version: z.literal("pipeline_progress_v1").optional(),
+    stage: requiredString,
+    progress: z.number().min(0).max(100),
+    message: requiredString,
+    done: z.boolean().optional(),
+    preparation_progress: z.number().min(0).max(100).optional(),
+    player_id: requiredString.optional(),
+    run_id: requiredString.optional(),
+    result_available: z.boolean().optional(),
+  })
+  .passthrough();
+
 const analysisResultPlayerSchema = z
   .object({
     player_id: requiredString,
@@ -338,6 +353,7 @@ export const replayVisualizationSchema = z
 
 export type ReplayManifest = z.infer<typeof replayManifestSchema>;
 export type AnalysisJob = z.infer<typeof analysisJobSchema>;
+export type AnalysisProgressEvent = z.infer<typeof analysisProgressEventSchema>;
 export type AnalysisPlayer = z.infer<typeof analysisPlayerSchema>;
 export type AnalysisPlayers = z.infer<typeof analysisPlayersSchema>;
 export type ReplayAnalysisResult = z.infer<typeof replayAnalysisResultSchema>;

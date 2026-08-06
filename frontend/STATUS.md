@@ -49,6 +49,11 @@ and all uploaded-replay progress states. The former
 floating square markers and pulse animations were removed. The moving border is
 a solid, hard-edged orange segment without a translucent gradient ramp, and the
 global reduced-motion treatment still collapses it to a static border state.
+Uploaded analysis preparation and coaching now subscribe to the backend-provided
+`events_url`. Validated SSE messages replace static loading copy with the latest
+backend stage and percentage; malformed stream records are ignored, request
+identity remains scoped to the active analysis, and polling continues to own
+completion and failure recovery when streaming is unavailable.
 
 The analysis route renders the reviewed local radar for the selected replay with the
 selected player in blue, same-side players in green, and opponents in red.
@@ -66,9 +71,16 @@ timeline, scrubber, elapsed time, and event inspector. The viewer supports
 play/pause, five-second rewind/fast-forward, 0.5x through 8x playback, direct
 scrubbing, round jumps, and stable kill/objective event markers. Selecting a
 marker seeks to its exact tick and exposes the known event facts without
-starting another model call. Timeline markers are perspective-specific: they
-show only damage received and deaths where the selected player is the victim,
-and refresh immediately when the perspective changes. Playback detects the
+starting another model call. Timeline markers are perspective-specific:
+ordinary markers show damage received and deaths where the selected player is
+the victim, while the selected analysis point is always included for its
+analyzed player even when that player was the attacker. An analysis point
+replaces competing damage or death markers for the same replay event, uses the blue
+analysis treatment, and opens the same coaching inspector for uploaded and
+processed saves. If the visualization omits the exact event row, the frontend
+synthesizes the marker from the validated selected decision. Round-zero analysis
+aliases and duplicate event facts are discarded when resolving that fallback
+marker. Markers refresh immediately when the perspective changes. Playback detects the
 first selected-player event crossed by the authoritative clock, seeks to its
 exact tick, opens the event inspector, and pauses automatically. Event and round
 tracks use the range thumb's usable inset so markers align with the playback
@@ -305,13 +317,15 @@ folder on `raw.githubusercontent.com` for non-bundled future maps.
 
 From `frontend/`, `pnpm run verify` passes:
 
-- Vitest: 9 files and 104 tests passed, including backend-shaped per-player run
+- Vitest: 9 files and 108 tests passed, including backend-shaped per-player run
   metadata, sample invariants, both bundled processed saves, and 20 upload adapter and Blob
   token-route tests covering direct and public-Blob transports, multipart
   selection, limits, cancellation, safe failures, same-origin checks, and token
   constraints. The intent tests cover per-moment isolation, loading-to-success,
   same-text retry state, stale response rejection, same-round win-estimate
-  selection, CT/T perspective swaps, and lethal-damage deduplication. Landing-
+  selection, CT/T perspective swaps, lethal-damage deduplication, attacker-side
+  analysis precedence, synthetic analysis markers, analysis-event cleanup, and
+  validated SSE progress delivery. Landing-
   page assertions match the current upload and processed-replay wording.
 - TypeScript: passed
 - ESLint: passed with no warnings
@@ -378,5 +392,6 @@ flow consume the documented `replay_visualization_v1` shape directly. In
 addition to the compatibility sample APIs, the frontend adapter implements the
 documented `/api/replay/*` and `/api/analysis/*` contracts, including the
 disabled-by-default public Blob URL import. The rendered upload flow now
-consumes preparation, player selection, repeat coaching, result recovery,
-visualization unlock, and replay playback endpoints end to end.
+consumes preparation, player selection, repeat coaching, result recovery, SSE
+progress, visualization unlock, and replay playback endpoints end to end. No
+backend files or contracts were changed.

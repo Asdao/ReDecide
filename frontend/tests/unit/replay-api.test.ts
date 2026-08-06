@@ -12,6 +12,7 @@ import {
   prepareReplayAnalysis,
   prepareReplayWorkspace,
   runReplayCoaching,
+  subscribeToAnalysisProgress,
   uploadReplay,
 } from "@/adapters/replay-api";
 
@@ -146,6 +147,57 @@ afterEach(() => {
 });
 
 describe("replay API adapter", () => {
+  it("validates and forwards SSE analysis progress", () => {
+    class FakeEventSource {
+      static instance: FakeEventSource | undefined;
+      readonly listeners = new Map<string, EventListener>();
+      readonly close = vi.fn();
+      onerror: ((event: Event) => void) | null = null;
+
+      constructor(readonly url: string) {
+        FakeEventSource.instance = this;
+      }
+
+      addEventListener(type: string, listener: EventListenerOrEventListenerObject) {
+        if (typeof listener === "function") {
+          this.listeners.set(type, listener);
+        }
+      }
+
+      emit(type: string, data: unknown) {
+        this.listeners.get(type)?.(new MessageEvent(type, { data: JSON.stringify(data) }));
+      }
+    }
+    vi.stubGlobal("EventSource", FakeEventSource);
+    const onProgress = vi.fn();
+    const unsubscribe = subscribeToAnalysisProgress(job.events_url, { onProgress });
+    const source = FakeEventSource.instance;
+
+    expect(source?.url).toBe("http://127.0.0.1:8000/api/analysis/analysis-1/events");
+    source?.emit("log", {
+      analysis_id: "analysis-1",
+      schema_version: "pipeline_progress_v1",
+      stage: "calling_pi",
+      progress: 85,
+      message: "Generating coaching analysis.",
+      done: false,
+    });
+    source?.emit("log", { analysis_id: "analysis-1", stage: "invalid" });
+    expect(onProgress).toHaveBeenCalledTimes(1);
+    expect(onProgress).toHaveBeenCalledWith(expect.objectContaining({ stage: "calling_pi", progress: 85 }));
+
+    source?.emit("complete", {
+      analysis_id: "analysis-1",
+      stage: "complete",
+      progress: 100,
+      message: "Analysis complete.",
+    });
+    source?.onerror?.(new Event("error"));
+    expect(source?.close).toHaveBeenCalledTimes(1);
+    unsubscribe();
+    expect(source?.close).toHaveBeenCalledTimes(2);
+  });
+
   it("uploads one .dem in the documented multipart field and validates the manifest", async () => {
     const fetchMock = vi.fn().mockResolvedValue(jsonResponse(manifest, 202));
     vi.stubGlobal("fetch", fetchMock);

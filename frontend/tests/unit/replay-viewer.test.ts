@@ -2,7 +2,9 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
+  analysisTimelineEvents,
   buildReplayFrames,
+  cleanAnalysisEvents,
   firstEventCrossed,
   formatReplayTime,
   frameAtTick,
@@ -205,6 +207,59 @@ describe("processed replay viewer", () => {
     expect(firstEventCrossed(selectedEvents, 90, 105)?.event_id).toBe("damage-in");
     expect(firstEventCrossed(selectedEvents, 100, 119)).toBeUndefined();
     expect(firstEventCrossed(selectedEvents, 100, 120)?.event_id).toBe("death");
+  });
+
+  it("adds an attacker analysis point and removes a competing same-tick death marker", () => {
+    const analysis = replayAnalysisResultSchema.parse(JSON.parse(readFileSync(
+      resolve(process.cwd(), "public/replays/inferno-processed.analysis.json"),
+      "utf8",
+    )));
+    const attackerAnalysis = {
+      ...analysis,
+      selected_decision: {
+        ...analysis.selected_decision,
+        player_id: "p1",
+        opponent_id: "p2",
+        role: "attacker",
+        round_number: 1,
+        contact_tick: 110,
+        event_category: "damage",
+      },
+    };
+    const events = [
+      { event_id: "incoming", event: "damage", tick: 100, round_num: 1, attacker_id: "p2", victim_id: "p1" },
+      { event_id: "analysis-damage", event: "damage", tick: 110, round_num: 1, attacker_id: "p1", victim_id: "p2", damage_health: 100 },
+      { event_id: "same-tick-kill", event: "kill", tick: 110, round_num: 1, attacker_id: "p1", victim_id: "p2" },
+    ];
+
+    expect(analysisTimelineEvents(events, "p1", attackerAnalysis).map(({ event_id }) => event_id)).toEqual([
+      "incoming",
+      "analysis-damage",
+    ]);
+  });
+
+  it("synthesizes a selected analysis point and filters unusable analysis aliases", () => {
+    const analysis = replayAnalysisResultSchema.parse(JSON.parse(readFileSync(
+      resolve(process.cwd(), "public/replays/inferno-processed.analysis.json"),
+      "utf8",
+    )));
+    const validEvent = analysis.events.find(({ round_number }) => round_number > 0);
+    expect(validEvent).toBeDefined();
+    const dirtyEvents = [
+      { ...validEvent!, round_number: 0 },
+      validEvent!,
+      { ...validEvent!, event_id: "duplicate-event-id" },
+    ];
+
+    expect(cleanAnalysisEvents(dirtyEvents)).toEqual([validEvent]);
+    expect(analysisTimelineEvents([], analysis.selected_decision.player_id, analysis)).toMatchObject([
+      {
+        event: analysis.selected_decision.event_category,
+        tick: analysis.selected_decision.contact_tick,
+        round_num: analysis.selected_decision.round_number,
+        victim_id: analysis.selected_decision.player_id,
+      },
+    ]);
   });
 
   it("labels 100 damage as death and removes its duplicate kill marker", () => {

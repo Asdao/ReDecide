@@ -2,11 +2,13 @@ import { upload } from "@vercel/blob/client";
 import { z } from "zod";
 import {
   analysisJobSchema,
+  analysisProgressEventSchema,
   analysisPlayersSchema,
   replayAnalysisResultSchema,
   replayManifestSchema,
   replayVisualizationSchema,
   type AnalysisJob,
+  type AnalysisProgressEvent,
   type AnalysisPlayers,
   type ReplayAnalysisResult,
   type ReplayManifest,
@@ -32,6 +34,10 @@ type ReplayOperation =
   | "result"
   | "replay-status"
   | "visualization";
+
+type AnalysisProgressHandlers = {
+  onProgress: (progress: AnalysisProgressEvent) => void;
+};
 
 export type ReplayApiErrorKind =
   | "invalid-file"
@@ -89,6 +95,44 @@ async function request(
       operation,
     });
   }
+}
+
+export function subscribeToAnalysisProgress(
+  eventsUrl: string,
+  { onProgress }: AnalysisProgressHandlers,
+): () => void {
+  const normalizedPath = eventsUrl.startsWith("/") ? eventsUrl : `/${eventsUrl}`;
+  const source = new EventSource(`${apiBaseUrl}${normalizedPath}`);
+  let terminalEventReceived = false;
+
+  const receive = (event: Event) => {
+    if (!(event instanceof MessageEvent) || typeof event.data !== "string") {
+      return;
+    }
+    let value: unknown;
+    try {
+      value = JSON.parse(event.data);
+    } catch {
+      return;
+    }
+    const parsed = analysisProgressEventSchema.safeParse(value);
+    if (!parsed.success) {
+      return;
+    }
+    onProgress(parsed.data);
+    if (parsed.data.stage === "complete" || parsed.data.stage === "error") {
+      terminalEventReceived = true;
+    }
+  };
+
+  source.addEventListener("log", receive);
+  source.addEventListener("complete", receive);
+  source.onerror = () => {
+    if (terminalEventReceived) {
+      source.close();
+    }
+  };
+  return () => source.close();
 }
 
 async function readJson(response: Response, operation: ReplayOperation): Promise<unknown> {
