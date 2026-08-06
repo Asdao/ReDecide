@@ -9,7 +9,11 @@ coaching.json       -> coaching FastAPI and decision pipeline
 manifest.json       -> safe map/player/status metadata
 ```
 
-The default artifact root is `data/runtime/replays/<replay_id>/`.
+The default local artifact root is `data/runtime/replays/<replay_id>/`.
+With `REDECIDE_STORAGE_BACKEND=blob`, replay artifacts are durable Blob JSON.
+New Vercel OIDC connections use the private `REDECIDE_BLOB_SERVICE_URL`
+service binding declared in `vercel.json`; local development does not set that
+binding and continues to use the filesystem by default.
 
 The default frontend origins are `http://localhost:3000` and
 `http://127.0.0.1:3000`. Set `REPLAY_API_ALLOWED_ORIGINS` to a

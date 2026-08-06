@@ -8,7 +8,15 @@
     "backend": {
       "root": "backend/",
       "framework": "fastapi",
-      "entrypoint": "main:app"
+      "entrypoint": "main:app",
+      "bindings": [
+        {
+          "type": "service",
+          "service": "frontend",
+          "format": "url",
+          "env": "REDECIDE_BLOB_SERVICE_URL"
+        }
+      ]
     }
   },
   "rewrites": [
@@ -26,6 +34,12 @@
     },
     {
       "source": "/api/(.*)",
+      "destination": {
+        "service": "backend"
+      }
+    },
+    {
+      "source": "/service-internal/(.*)",
       "destination": {
         "service": "backend"
       }

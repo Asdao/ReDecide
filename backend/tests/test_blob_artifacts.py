@@ -5,13 +5,16 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass
 
+import httpx
 import pytest
 
 from backend.app import analysis_store
 from backend.replay_api import store as replay_store
+from backend.storage import blob as blob_module
 from backend.storage.blob import (
     BlobArtifactStore,
     BlobStorageNotFound,
+    _ServiceBindingBlobClient,
     blob_storage_enabled,
 )
 
@@ -116,6 +119,97 @@ def test_oidc_only_blob_connection_uses_filesystem_fallback(
     monkeypatch.setenv("REDECIDE_STORAGE_BACKEND", "blob")
 
     assert blob_storage_enabled() is False
+
+
+def test_oidc_blob_connection_uses_service_binding(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("BLOB_READ_WRITE_TOKEN", raising=False)
+    monkeypatch.delenv("VERCEL_BLOB_READ_WRITE_TOKEN", raising=False)
+    monkeypatch.setenv("BLOB_STORE_ID", "store_123")
+    monkeypatch.setenv("VERCEL_OIDC_TOKEN", "oidc-token")
+    monkeypatch.setenv("REDECIDE_STORAGE_BACKEND", "blob")
+    monkeypatch.setenv("REDECIDE_BLOB_SERVICE_URL", "https://frontend.internal")
+
+    assert blob_storage_enabled() is True
+
+
+def test_local_filesystem_default_ignores_service_binding(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("REDECIDE_STORAGE_BACKEND", raising=False)
+    monkeypatch.setenv("REDECIDE_BLOB_SERVICE_URL", "http://localhost:3000")
+
+    assert blob_storage_enabled() is False
+
+
+def test_blob_store_selects_service_binding_without_legacy_token(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    created: list[str] = []
+
+    class FakeBindingClient:
+        def __init__(self, service_url: str) -> None:
+            created.append(service_url)
+
+    monkeypatch.delenv("BLOB_READ_WRITE_TOKEN", raising=False)
+    monkeypatch.delenv("VERCEL_BLOB_READ_WRITE_TOKEN", raising=False)
+    monkeypatch.setenv("REDECIDE_BLOB_SERVICE_URL", "https://frontend.internal/")
+    monkeypatch.setattr(blob_module, "_ServiceBindingBlobClient", FakeBindingClient)
+
+    store = BlobArtifactStore(prefix="replays")
+
+    assert isinstance(store.client, FakeBindingClient)
+    assert created == ["https://frontend.internal/"]
+
+
+def test_service_binding_transfers_json_directly_to_blob() -> None:
+    requests: list[tuple[str, str, bytes]] = []
+    pathname = "analysis/job/state.json"
+    artifact = b'{"phase":"ready","marker":"artifact-body"}'
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        body = request.read()
+        requests.append((request.method, str(request.url), body))
+        if request.url.host == "frontend.internal":
+            ticket = json.loads(body)
+            return httpx.Response(
+                200,
+                json={
+                    "url": f"https://blob.example/{ticket['operation']}",
+                    "expiresAt": 9999999999999,
+                },
+            )
+        if request.method == "PUT":
+            return httpx.Response(
+                200,
+                json={"url": "https://blob.example/object", "pathname": pathname},
+            )
+        if request.method == "GET":
+            return httpx.Response(200, content=artifact)
+        raise AssertionError(f"unexpected request: {request.method} {request.url}")
+
+    http = httpx.Client(transport=httpx.MockTransport(handler))
+    client = _ServiceBindingBlobClient("https://frontend.internal", http=http)
+
+    uploaded = client.put(
+        pathname,
+        artifact,
+        access="private",
+        content_type="application/json; charset=utf-8",
+        overwrite=True,
+    )
+    downloaded = client.get(pathname, access="private")
+    signed_url = client.url(pathname, access="private")
+
+    assert uploaded == {"url": "https://blob.example/object", "pathname": pathname}
+    assert downloaded == {"status_code": 200, "stream": [artifact]}
+    assert signed_url == "https://blob.example/get"
+    bridge_bodies = [body for _, url, body in requests if "frontend.internal" in url]
+    assert bridge_bodies
+    assert all(b"artifact-body" not in body for body in bridge_bodies)
+    put_requests = [item for item in requests if item[0] == "PUT"]
+    assert put_requests == [("PUT", "https://blob.example/put", artifact)]
 
 
 def test_blob_store_passes_legacy_token_to_sdk(

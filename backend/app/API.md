@@ -147,5 +147,7 @@ The frontend can continue with `/api/analysis/{analysis_id}/players`,
 - Live coaching requires Node.js, installed `agent-harness` dependencies, and a valid provider API key.
 - Direct upload expects the `.dem` file; the separate Blob URL route is disabled by default.
 - No real `.dem` has completed the full flow yet.
-- Analysis jobs are lost when the backend restarts.
+- With `REDECIDE_STORAGE_BACKEND=blob` on Vercel Services, analysis state and
+  results survive function restarts through the private frontend Blob binding.
+  The default local filesystem mode persists under `data/runtime/analysis`.
 - Player intent and follow-up questions are not implemented.
