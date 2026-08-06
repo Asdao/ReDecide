@@ -4,6 +4,7 @@ import {
   getAnalysisPlayers,
   getAnalysisResult,
   getReplayVisualization,
+  importReplayUrl,
   prepareReplayAnalysis,
   prepareReplayWorkspace,
   runReplayCoaching,
@@ -331,5 +332,26 @@ describe("replay API adapter", () => {
       kind: "network",
       operation: "prepare",
     });
+  });
+
+  it("imports a replay via Vercel Blob URL", async () => {
+    const fetchMock = vi.fn().mockResolvedValueOnce(jsonResponse(manifest));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await importReplayUrl(
+      "https://test.public.blob.vercel-storage.com/match.dem",
+      "match.dem",
+    );
+    expect(result).toEqual(manifest);
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://127.0.0.1:8000/api/replay/import-url",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({
+          url: "https://test.public.blob.vercel-storage.com/match.dem",
+          filename: "match.dem",
+        }),
+      }),
+    );
   });
 });

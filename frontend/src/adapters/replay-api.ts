@@ -187,6 +187,34 @@ export async function uploadReplay(file: File, signal?: AbortSignal): Promise<Re
   return parseSuccessful(response, replayManifestSchema, "upload");
 }
 
+export async function importReplayUrl(
+  url: string,
+  filename: string,
+  signal?: AbortSignal,
+): Promise<ReplayManifest> {
+  if (!filename.toLowerCase().endsWith(".dem")) {
+    throw new ReplayApiError("Choose a valid .dem replay file.", {
+      kind: "invalid-file",
+      operation: "upload",
+    });
+  }
+
+  const response = await request(
+    "/api/replay/import-url",
+    {
+      method: "POST",
+      headers: {
+        Accept: "application/json",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ url, filename }),
+      signal,
+    },
+    "upload",
+  );
+  return parseSuccessful(response, replayManifestSchema, "upload");
+}
+
 export async function prepareReplayAnalysis(
   replayId: string,
   signal?: AbortSignal,

@@ -49,15 +49,26 @@ function clamp(value: number, minimum: number, maximum: number): number {
 
 function eventMatchesAnalysis(event: ReplayEvent, analysis: ReplayAnalysisResult): boolean {
   const decision = analysis.selected_decision;
+  const coach = analysis.coach_analysis as Record<string, unknown>;
   const playerMatches = decision.role === "victim"
     ? event.victim_id === decision.player_id
     : event.attacker_id === decision.player_id;
-  return (
+  const primaryMatch = (
     event.tick === decision.contact_tick &&
     event.round_num === decision.round_number &&
     event.event === decision.event_category &&
     playerMatches
   );
+  if (primaryMatch) return true;
+  if (
+    event.event === "kill" &&
+    event.victim_id === decision.player_id &&
+    event.round_num === decision.round_number &&
+    Boolean(coach.death_feedback || coach.death_decision_id)
+  ) {
+    return true;
+  }
+  return false;
 }
 
 export function ReplayAnalysisScreen({
@@ -165,6 +176,42 @@ export function ReplayAnalysisScreen({
       ),
     [replay],
   );
+
+  const currentWinProbability = useMemo(() => {
+    if (!analysis?.win_estimator?.timeline?.length) return undefined;
+    const points = analysis.win_estimator.timeline;
+    let closest = points[0];
+    let minDiff = Math.abs(closest.tick - currentTick);
+    for (let i = 1; i < points.length; i++) {
+      const diff = Math.abs(points[i].tick - currentTick);
+      if (diff < minDiff) {
+        minDiff = diff;
+        closest = points[i];
+      }
+    }
+    return {
+      ct: Math.round(closest.ct_probability * 100),
+      t: Math.round(closest.t_probability * 100),
+    };
+  }, [analysis, currentTick]);
+
+  const coachingText = useMemo(() => {
+    if (!analysis?.coach_analysis) return undefined;
+    const coach = analysis.coach_analysis as Record<string, unknown>;
+    if (selectedEvent?.event === "kill") {
+      return (
+        (coach.death_feedback as string) ||
+        (coach.what_could_be_done_better as string)
+      );
+    }
+    if (selectedEvent?.event === "damage") {
+      return (
+        (coach.damage_feedback as string) ||
+        (coach.what_could_be_done_better as string)
+      );
+    }
+    return (coach.what_could_be_done_better as string);
+  }, [analysis, selectedEvent]);
 
   useEffect(() => {
     if (!playing || !replay || lastTick <= firstTick) {
@@ -346,6 +393,17 @@ export function ReplayAnalysisScreen({
                 ))}
               </select>
             </label>
+            {currentWinProbability ? (
+              <div className="winrate-badge" title="Live team win probability for current tick">
+                <span>Win Rate</span>
+                <strong>CT {currentWinProbability.ct}% / {currentWinProbability.t}% T</strong>
+              </div>
+            ) : analysis?.replay_outcome ? (
+              <div className="winrate-badge" title="Match score">
+                <span>Round Score</span>
+                <strong>CT {analysis.replay_outcome.round_score.CT} : {analysis.replay_outcome.round_score.T} T</strong>
+              </div>
+            ) : null}
           </div>
         </header>
 
@@ -374,11 +432,13 @@ export function ReplayAnalysisScreen({
                 <div><dt>Tick</dt><dd>{selectedEvent.tick}</dd></div>
                 <div><dt>Weapon</dt><dd>{selectedEvent.weapon?.replaceAll("_", " ") ?? "—"}</dd></div>
               </dl>
-              {selectedEventHasAnalysis && analysis ? (
+              {selectedEventHasAnalysis && analysis && coachingText ? (
                 <section className="saved-coaching" aria-labelledby="saved-coaching-title">
-                  <p className="eyebrow">Coaching</p>
+                  <p className="eyebrow">
+                    {selectedEvent.event === "kill" ? "Death Coaching" : "Damage Coaching"}
+                  </p>
                   <h3 id="saved-coaching-title">What could be done better</h3>
-                  <p>{analysis.coach_analysis.what_could_be_done_better}</p>
+                  <p>{coachingText}</p>
                 </section>
               ) : null}
             </aside>
