@@ -4,11 +4,11 @@ Last verified: 2026-08-06 (Asia/Singapore)
 
 ## Vercel Services deployment
 
-The frontend now targets the same-origin FastAPI Services route through
-`NEXT_PUBLIC_BACKEND_URL` (default `/backend`), while retaining the legacy
-`NEXT_PUBLIC_API_BASE_URL` fallback for standalone local development. The root
-`vercel.json` mounts the Next.js service at `/` and FastAPI at `/backend`;
-`/api/blob/upload` remains a frontend route for direct Blob client uploads.
+The frontend now targets same-origin `/api` routes, while
+`NEXT_PUBLIC_API_BASE_URL` remains available for standalone local development.
+The root `vercel.json` uses the current `services` schema and ordered rewrites:
+`/api/blob/upload` stays in Next.js, other `/api/*` requests reach FastAPI, and
+the frontend handles the catch-all route.
 
 Validation after this routing change: 101 Vitest tests, TypeScript, ESLint,
 and the production Next.js build (Webpack) pass. The default Turbopack build

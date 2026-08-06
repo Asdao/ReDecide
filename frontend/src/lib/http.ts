@@ -1,11 +1,8 @@
-// Vercel Services exposes the backend under the generated
-// NEXT_PUBLIC_BACKEND_URL variable (normally ``/backend``). Keep the older
-// API_BASE_URL fallback for existing local .env files and standalone backend
-// development, but use the same-origin Services path by default.
+// Vercel Services routes same-origin /api requests to FastAPI through the
+// root vercel.json rewrites. Local standalone-backend development can still
+// provide an absolute API base URL.
 export const apiBaseUrl =
-  (
-    process.env.NEXT_PUBLIC_BACKEND_URL ?? process.env.NEXT_PUBLIC_API_BASE_URL ?? "/backend"
-  ).replace(/\/$/, "");
+  process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/$/, "") ?? "";
 
 export type ReplayUploadMode = "direct" | "blob";
 
