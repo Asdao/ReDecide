@@ -9,7 +9,9 @@ from __future__ import annotations
 
 from copy import deepcopy
 import json
+import os
 from pathlib import Path
+import tempfile
 
 from backend.app.contracts import (
     APIErrorCode,
@@ -163,6 +165,17 @@ from backend.storage.blob import blob_storage_enabled
 CoachAdapter = Callable[[Mapping[str, Any]], Mapping[str, Any] | str]
 
 
+def _default_analysis_log_dir() -> Path:
+    """Choose a writable runtime directory without changing local defaults."""
+
+    configured = os.getenv("REDECIDE_ANALYSIS_LOG_DIR")
+    if configured:
+        return Path(configured)
+    if os.getenv("VERCEL"):
+        return Path(tempfile.gettempdir()) / "redecide" / "analysis-logs"
+    return Path("data/runtime/analysis-logs")
+
+
 class AnalysisNotReady(RuntimeError):
     """Raised when a player is selected before replay preparation completes."""
 
@@ -201,13 +214,15 @@ class AnalysisService:
 
     def __init__(
         self,
-        log_dir: str | Path = "data/runtime/analysis-logs",
+        log_dir: str | Path | None = None,
         *,
         coach_adapter: CoachAdapter | None = None,
         pipeline: Callable[..., Iterator[dict[str, Any]]] = stream_replay_pipeline,
         executor: object | None = None,
     ) -> None:
-        self.log_dir = Path(log_dir)
+        self.log_dir = (
+            Path(log_dir) if log_dir is not None else _default_analysis_log_dir()
+        )
         self.log_dir.mkdir(parents=True, exist_ok=True)
         self.coach_adapter = coach_adapter
         self.pipeline = pipeline

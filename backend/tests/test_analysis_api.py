@@ -31,6 +31,20 @@ def _client_for_app(app: Any) -> Any:
     return TestClient(app)
 
 
+def test_default_analysis_log_dir_uses_vercel_tmp(
+    tmp_path: Any, monkeypatch: Any
+) -> None:
+    orchestration = importlib.import_module("backend.app.orchestration")
+    monkeypatch.setenv("VERCEL", "1")
+    monkeypatch.delenv("REDECIDE_ANALYSIS_LOG_DIR", raising=False)
+    monkeypatch.setattr(orchestration.tempfile, "gettempdir", lambda: str(tmp_path))
+
+    service = orchestration.AnalysisService()
+
+    assert service.log_dir == tmp_path / "redecide" / "analysis-logs"
+    assert service.log_dir.is_dir()
+
+
 def _load_client(tmp_path: Any) -> Any:
     """Return a TestClient for the application when the walking skeleton exists."""
 
