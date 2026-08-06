@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 const blobUploadMock = vi.hoisted(() => vi.fn());
 
-vi.mock("@vercel/blob/client", () => ({ upload: blobUploadMock }));
+vi.mock("@vercel/blob/client", () => ({ uploadPresigned: blobUploadMock }));
 
 import {
   ReplayApiError,

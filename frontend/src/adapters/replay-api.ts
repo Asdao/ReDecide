@@ -1,4 +1,4 @@
-import { upload } from "@vercel/blob/client";
+import { uploadPresigned } from "@vercel/blob/client";
 import { z } from "zod";
 import {
   analysisJobSchema,
@@ -212,7 +212,7 @@ async function uploadReplayViaBlob(file: File, signal?: AbortSignal): Promise<Re
 
   let blobUrl: string;
   try {
-    const blob = await upload(`replays/${file.name}`, file, {
+    const blob = await uploadPresigned(`replays/${file.name}`, file, {
       access: "public",
       handleUploadUrl: REPLAY_BLOB_UPLOAD_URL,
       contentType: "application/octet-stream",

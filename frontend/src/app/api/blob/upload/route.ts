@@ -1,7 +1,11 @@
-import { handleUpload, type HandleUploadBody } from "@vercel/blob/client";
+import { issueSignedToken } from "@vercel/blob";
+import {
+  handleUploadPresigned,
+  type HandleUploadPresignedBody,
+} from "@vercel/blob/client";
 
 const REPLAY_BLOB_MAX_BYTES = 1024 * 1024 * 1024;
-const TOKEN_REQUEST_TYPE = "blob.generate-client-token";
+const TOKEN_REQUEST_TYPE = "blob.generate-presigned-url";
 
 export const runtime = "nodejs";
 
@@ -45,31 +49,45 @@ export async function POST(request: Request): Promise<Response> {
   ) {
     return errorResponse("The upload request was invalid.", 400);
   }
-  const body = rawBody as HandleUploadBody;
+  const body = rawBody as HandleUploadPresignedBody;
 
   if (body.type === TOKEN_REQUEST_TYPE && !isSameOrigin(request)) {
     return errorResponse("The upload request was not allowed.", 403);
   }
 
   try {
-    const result = await handleUpload({
+    const result = await handleUploadPresigned({
       body,
       request,
-      onBeforeGenerateToken: async (pathname) => {
+      getSignedToken: async (pathname) => {
         if (!isDemoPathname(pathname)) {
           throw new Error("Only .dem replay uploads are allowed.");
         }
 
-        return {
+        const token = await issueSignedToken({
+          pathname,
+          operations: ["put"],
           allowedContentTypes: ["application/octet-stream"],
           maximumSizeInBytes: REPLAY_BLOB_MAX_BYTES,
-          addRandomSuffix: true,
-          cacheControlMaxAge: 60,
+        });
+
+        return {
+          token,
+          urlOptions: {
+            allowedContentTypes: ["application/octet-stream"],
+            maximumSizeInBytes: REPLAY_BLOB_MAX_BYTES,
+            addRandomSuffix: true,
+            cacheControlMaxAge: 60,
+          },
         };
       },
     });
     return Response.json(result);
-  } catch {
+  } catch (error: unknown) {
+    console.error("[api/blob/upload] authorization failed", {
+      name: error instanceof Error ? error.name : "UnknownError",
+      message: error instanceof Error ? error.message : "Unknown Blob authorization error",
+    });
     return errorResponse("The replay upload could not be authorized.", 400);
   }
 }
