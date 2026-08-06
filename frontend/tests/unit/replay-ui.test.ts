@@ -115,7 +115,7 @@ describe("uploaded replay screens", () => {
     expect(html).toContain('accept=".dem"');
     expect(html).not.toContain('id="demo-upload" type="file" accept=".dem" disabled');
     expect(html).toContain('<label class="primary" for="demo-upload"');
-    expect(html).toContain("Upload once");
+    expect(html).toContain("Upload your match and view its analysis.");
   });
 
   it("uses the animated border without square markers on every loading screen", () => {
@@ -312,7 +312,7 @@ describe("sample replay screens", () => {
     expect(html).toContain("currently available from the backend");
     expect(html).toContain("Open processed replays");
     expect(html).toContain("already-processed replay");
-    expect(html).toContain("2D viewer");
+    expect(html).toContain("go straight to its analysis");
     expect(html).toContain('class="action-note action-note-accent"');
     expect(html.match(/class="action-note action-note-steel"/g)).toHaveLength(2);
   });
