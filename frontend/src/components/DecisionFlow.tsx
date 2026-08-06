@@ -246,7 +246,16 @@ export function DecisionFlow() {
     const controller = new AbortController();
     const sampleId = state.sampleId;
     selectSample(sampleId, controller.signal)
-      .then((preparation) => dispatch({ type: "SAMPLE_SELECTED", sampleId, preparation }))
+      .then((preparation) => {
+        const sample = state.samples.find((item) => item.sample_id === sampleId);
+        dispatch({
+          type: "SAMPLE_REPLAY_READY",
+          sampleId,
+          sourceName: sample?.display_name ?? preparation.manifest.source,
+          preparation,
+          playersRequestId: nextRequestId("players"),
+        });
+      })
       .catch((error: unknown) => {
         if (!isAbortError(error)) {
           dispatch({ type: "SAMPLE_SELECTION_FAILED", sampleId });
@@ -254,7 +263,7 @@ export function DecisionFlow() {
       });
 
     return () => controller.abort();
-  }, [state]);
+  }, [nextRequestId, state]);
 
   useEffect(() => {
     if (state.status !== "uploading") {

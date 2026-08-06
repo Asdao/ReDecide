@@ -10,7 +10,7 @@ The root `vercel.json` uses the current `services` schema and ordered rewrites:
 `/api/blob/upload` stays in Next.js, other `/api/*` requests reach FastAPI, and
 the frontend handles the catch-all route.
 
-Validation after this routing change: 101 Vitest tests, TypeScript, ESLint,
+Validation after this routing change: 103 Vitest tests, TypeScript, ESLint,
 and the production Next.js build (Webpack) pass. The default Turbopack build
 exited without diagnostics in the local sandbox, so Webpack was used for the
 verified build.
@@ -20,17 +20,13 @@ verified build.
 **Backend sample selection, complete uploaded `.dem` coaching-to-replay playback, a two-save processed replay catalog, and a map-aware 2D replay workspace are implemented.**
 
 The landing page's `Use a sample match` action calls `GET /api/samples` and
-renders the backend-returned list through the compatibility sample selector.
-Selecting an available entry submits its stable `sample_id` to
-`POST /api/analyze`. A separate `Open processed replays` action opens a local
-list containing the bundled Mirage showcase and backend-generated Inferno
-visualization. Selecting a save loads its player roster; selecting a stable
-player ID then opens `/analysis` with that perspective already active. Player
-perspective remains switchable inside the viewer. The Inferno save includes
-saved coaching for flameZ, while Mirage has no analysis artifact; the replay and
-player lists label those states explicitly. The processed-replay radar credit
-links directly to the redistributed radar-image directory. The native `.dem` action continues
-to use the complete backend flow.
+renders the backend-returned catalog. Selecting an available entry submits its
+stable `sample_id` to `POST /api/analyze`; the returned replay manifest and
+analysis metadata then enter the same player-selection, coaching, result
+recovery, and visualization lifecycle as an uploaded replay. A separate
+`Open processed replays` action remains a local saved-replay catalog and does
+not share sample-selection state. The native `.dem` action continues to use
+the complete backend flow.
 
 The `.dem` upload is the primary orange landing action; backend samples and the
 processed replay catalog use the steel-blue secondary treatment. Their concise help
@@ -128,9 +124,9 @@ display names, normalizes sides and event participants, derives `alive` from
 health only when absent, removes duplicate parser event aliases from the viewer,
 and generates deterministic event IDs when the backend did not return one.
 
-The backend-driven compatibility sample selector, schemas, adapter, reducer
-states, and tests power the sample-match landing action. The processed replay
-catalog remains a distinct, explicitly labelled option.
+The backend-driven sample catalog, replay-envelope schema, adapter, reducer
+transition, and tests power the sample-match landing action. The processed
+replay catalog remains a distinct, explicitly labelled option.
 
 `AnalysisProgressScreen.tsx` and the old saved-fixture loading path are no
 longer part of the rendered flow. The landing page now exposes a labelled,
@@ -250,8 +246,8 @@ outcomes are not rendered in the coaching result.
 - `src/components/SampleSelectorScreen.tsx` - loading, error, empty, list, map
   thumbnail, unavailable, selecting, selected, and retry UI
 - `src/components/LandingScreen.tsx` - source selection entry point
-- `src/adapters/samples-api.ts` - `GET /api/samples` and `POST /api/analyze`
-  transport with JSON/content/status checks
+- `src/adapters/samples-api.ts` - `GET /api/samples` and replay-envelope
+  `POST /api/analyze` transport with JSON/content/status checks
 - `src/adapters/replay-api.ts` - typed transport for upload, preparation,
   direct or Blob URL import, status, player selection, coaching, recovery, and
   visualization retrieval
@@ -272,7 +268,9 @@ outcomes are not rendered in the coaching result.
 - `src/app/globals.css` - sample and replay screens, responsive layout, focus,
   progress, error, selector, and result styling
 - `tests/unit/analysis-flow.test.ts` - zero/one/many, unavailable, selection,
-  error/retry/reset, and map-name coverage
+  replay-envelope transition, error/retry/reset, and map-name coverage
+- `tests/unit/samples-api.test.ts` - catalog loading and replay-envelope
+  selection requests
 - `tests/unit/replay-api.test.ts` - multipart upload, endpoint payloads,
   processing states, coaching recovery, visualization gating, validation,
   safe failures, and cancellation
@@ -304,7 +302,7 @@ folder on `raw.githubusercontent.com` for non-bundled future maps.
 
 From `frontend/`, `pnpm run verify` passes:
 
-- Vitest: 9 files and 101 tests passed, including backend-shaped per-player run
+- Vitest: 10 files and 103 tests passed, including backend-shaped per-player run
   metadata, sample invariants, both bundled processed saves, and 20 upload adapter and Blob
   token-route tests covering direct and public-Blob transports, multipart
   selection, limits, cancellation, safe failures, same-origin checks, and token
@@ -324,10 +322,9 @@ Browser verification against the documented sample responses confirmed:
 - browser Forward restores the selected samples or showcase view;
 - direct `?view=` links and Back from `/analysis` retain their expected source
   context without console warnings or errors;
-- the returned Mirage sample renders as a horizontal selectable bar;
-- the local Mirage thumbnail is requested through Next.js image handling;
-- selection reaches the selected state after `POST /api/analyze`;
-- the preparation result reports one available player;
+- the returned hosted sample renders as a horizontal selectable bar;
+- the sample envelope validates as a replay manifest plus analysis metadata;
+- sample selection enters the shared player-selection lifecycle;
 - no console warnings or errors; and
 - no horizontal overflow at a 390-by-844 narrow-screen override.
 
@@ -352,9 +349,8 @@ viewer and event inspector remain free of horizontal overflow.
   locally. Add reviewed local assets to `public/maps/` and the bundled allowlist
   as new backend samples are introduced; otherwise the remote/fallback path is
   used.
-- The compatibility sample flow currently stops after the backend preparation
-  response reports the available players; its next player-selection screen is
-  not yet implemented.
+- The hosted sample replay is fixed by the backend and requires its configured
+  Blob/model environment; the browser keeps only transient lifecycle state.
 - A real native `.dem` has not yet completed the full backend flow, matching the
   backend's documented current limitation. Browser QA used validated replay
   fixtures for post-upload states and did not send user replay data.
@@ -370,11 +366,11 @@ viewer and event inspector remain free of horizontal overflow.
 
 ## Contract/API impact
 
-No backend contract changes and no intent endpoint was invented. The local
-processed-replay adapter and uploaded
-flow consume the documented `replay_visualization_v1` shape directly. In
-addition to the compatibility sample APIs, the frontend adapter implements the
-documented `/api/replay/*` and `/api/analysis/*` contracts, including the
-disabled-by-default public Blob URL import. The rendered upload flow now
-consumes preparation, player selection, repeat coaching, result recovery,
-visualization unlock, and replay playback endpoints end to end.
+No intent endpoint was invented. The sample adapter now consumes the backend's
+real replay envelope from `POST /api/analyze` (`sample_id`, `replay_id`,
+`manifest`, and `analysis`). The local processed-replay adapter and uploaded
+flow consume the documented `replay_visualization_v1` shape directly. The
+frontend implements the `/api/replay/*` and `/api/analysis/*` contracts,
+including the disabled-by-default public Blob URL import, and the sample and
+upload flows share preparation, player selection, repeat coaching, result
+recovery, visualization unlock, and replay playback endpoints end to end.

@@ -32,6 +32,8 @@ from backend.app.contracts import (
 )
 from backend.app.errors import IntegrationError
 from backend.app.coach import HttpCoachAdapter, PiCoachAdapter
+from backend.app.blob_import import BlobFetchError, BlobTooLargeError
+from backend.app.sample_replay import BlobSampleReplay, SampleReplayError
 from backend.app.orchestration import (
     AnalysisNotFound,
     AnalysisNotReady,
@@ -88,11 +90,16 @@ def _error_response(
 
 
 def create_fixture_app(
-    *, orchestrator: FixtureOrchestrator | None = None
+    *,
+    orchestrator: FixtureOrchestrator | None = None,
+    sample_replay: BlobSampleReplay | None = None,
+    analysis_service: AnalysisService | None = None,
+    include_fixture_sample: bool = True,
 ) -> FastAPI:
-    """Create the default four-endpoint API backed by frozen fixtures."""
+    """Create the compatibility API and the hosted real-replay sample."""
 
     fixture = orchestrator or FixtureOrchestrator()
+    hosted_sample = sample_replay or BlobSampleReplay()
     fixture_app = FastAPI(title="RE:DECIDE API", version="0.1.0")
     fixture_app.add_middleware(
         CORSMiddleware,
@@ -136,11 +143,29 @@ def create_fixture_app(
 
     @fixture_app.get("/api/samples", response_model=SamplesResponse)
     def samples() -> SamplesResponse:
-        return fixture.list_samples()
+        hosted = SamplesResponse(samples=[hosted_sample.summary()])
+        if not include_fixture_sample:
+            return hosted
+        return SamplesResponse(samples=fixture.list_samples().samples)
 
-    @fixture_app.post("/api/analyze", response_model=AnalysisPreparationResponse)
-    def analyze(request: AnalyzeRequest) -> AnalysisPreparationResponse:
-        """Prepare a neutral fixture packet; never perform coaching here."""
+    @fixture_app.post("/api/analyze", response_model=None)
+    async def analyze(request: AnalyzeRequest) -> dict[str, Any] | AnalysisPreparationResponse:
+        """Prepare either the hosted native sample or the frozen fixture."""
+
+        if request.sample_id == hosted_sample.sample_id:
+            if analysis_service is None:
+                raise HTTPException(status_code=503, detail="sample analysis is unavailable")
+            try:
+                return await hosted_sample.prepare(
+                    analysis=analysis_service,
+                    sample_id=request.sample_id,
+                )
+            except BlobTooLargeError as exc:
+                raise HTTPException(status_code=413, detail=str(exc)) from exc
+            except BlobFetchError as exc:
+                raise HTTPException(status_code=502, detail=str(exc)) from exc
+            except SampleReplayError as exc:
+                raise HTTPException(status_code=422, detail=str(exc)) from exc
 
         return fixture.prepare(request)
 
@@ -310,6 +335,7 @@ def create_app(
     *,
     service: AnalysisService | None = None,
     orchestrator: FixtureOrchestrator | None = None,
+    sample_replay: BlobSampleReplay | None = None,
 ) -> FastAPI:
     """Create the single public API while preserving component ownership.
 
@@ -342,8 +368,14 @@ def create_app(
     def health() -> dict[str, str]:
         return {"status": "ok"}
 
-    fixture_app = create_fixture_app(orchestrator=orchestrator)
-    analysis_app = create_analysis_app(service=service)
+    analysis_service = service or AnalysisService(coach_adapter=_default_coach_adapter())
+    fixture_app = create_fixture_app(
+        orchestrator=orchestrator,
+        sample_replay=sample_replay,
+        analysis_service=analysis_service,
+        include_fixture_sample=False,
+    )
+    analysis_app = create_analysis_app(service=analysis_service)
 
     # Preserve the typed frozen-contract error handlers on the unified app.
     gateway.exception_handlers.update(fixture_app.exception_handlers)

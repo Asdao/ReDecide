@@ -116,7 +116,13 @@ def create_blob_import_router(
     return router
 
 
-async def _download_public_blob(url: str, destination: Path, max_bytes: int) -> None:
+async def _download_public_blob(
+    url: str,
+    destination: Path,
+    max_bytes: int,
+    *,
+    expected_bytes: int | None = None,
+) -> None:
     """Stream one allowlisted public Vercel Blob to a bounded local file."""
 
     _validate_public_blob_url(url)
@@ -141,6 +147,12 @@ async def _download_public_blob(url: str, destination: Path, max_bytes: int) -> 
                         declared_size = None
                     if declared_size is not None and declared_size > max_bytes:
                         raise BlobTooLargeError("Vercel Blob exceeds the upload limit")
+                    if (
+                        expected_bytes is not None
+                        and declared_size is not None
+                        and declared_size != expected_bytes
+                    ):
+                        raise BlobFetchError("Vercel Blob size does not match the sample seed")
 
                 received = 0
                 with destination.open("wb") as output:

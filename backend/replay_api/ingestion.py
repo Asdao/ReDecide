@@ -36,6 +36,8 @@ def start_replay(
     record: Mapping[str, Any],
     filename: str,
     executor: object | None = None,
+    *,
+    replay_id: str | None = None,
 ) -> dict[str, Any]:
     """Persist a complete replay and return its ready manifest.
 
@@ -45,7 +47,7 @@ def start_replay(
     generated within the request before this function returns.
     """
 
-    replay_id = uuid4().hex
+    replay_id = replay_id or uuid4().hex
     manifest = replay_manifest(record, replay_id=replay_id)
     manifest["source"] = filename
     coaching_record = dict(record)

@@ -26,6 +26,10 @@ function playerSides(player: AnalysisPlayer): string {
   return sides.length > 0 ? sides.join(" / ") : "Side unavailable";
 }
 
+function isSampleReplay(state: ReplayAnalysisFlowState): boolean {
+  return "sampleId" in state && Boolean(state.sampleId);
+}
+
 function replayProgressMessage(state: ReplayAnalysisFlowState): string {
   switch (state.status) {
     case "uploading":
@@ -60,10 +64,13 @@ function ReplaySummary({
   state: Exclude<ReplayAnalysisFlowState, { status: "uploading" | "upload-error" }>;
 }) {
   return (
-    <dl className="replay-summary" aria-label="Uploaded replay summary">
+    <dl
+      className="replay-summary"
+      aria-label={`${isSampleReplay(state) ? "Sample" : "Uploaded"} replay summary`}
+    >
       <div>
         <dt>File</dt>
-        <dd>{state.file.name}</dd>
+        <dd>{state.sourceName ?? state.manifest.source}</dd>
       </div>
       <div>
         <dt>Map</dt>
@@ -158,7 +165,7 @@ export function ReplayFlowScreen({
       <div className="replay-panel">
         <div className="replay-title-row">
           <div>
-            <p className="kicker">Uploaded replay</p>
+            <p className="kicker">{isSampleReplay(state) ? "Sample replay" : "Uploaded replay"}</p>
             <h1 id="replay-title" tabIndex={-1}>
               {heading.prefix} <span className="accent-word">{heading.accent}</span>
             </h1>

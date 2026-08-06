@@ -113,6 +113,16 @@ class BlobArtifactStore:
     def _key(self, name: str) -> str:
         return f"{self.prefix}/{name.lstrip('/')}"
 
+    def _locator(self, name_or_url: str) -> str:
+        """Resolve relative artifact names without double-prefixing URLs or keys."""
+
+        value = name_or_url.strip()
+        if value.startswith(("https://", "http://")):
+            return value
+        if value == self.prefix or value.startswith(f"{self.prefix}/"):
+            return value
+        return self._key(value)
+
     def put_json(self, name: str, payload: Mapping[str, Any]) -> BlobArtifactRef:
         body = json.dumps(dict(payload), ensure_ascii=False, separators=(",", ":")).encode(
             "utf-8"
@@ -131,7 +141,8 @@ class BlobArtifactStore:
         return BlobArtifactRef(url=str(url), pathname=str(pathname))
 
     def get_json(self, name_or_url: str) -> dict[str, Any]:
-        result = self.client.get(name_or_url, access=self.access)
+        locator = self._locator(name_or_url)
+        result = self.client.get(locator, access=self.access)
         if result is None or _value(result, "status_code", 200) != 200:
             raise BlobStorageNotFound(f"Blob artifact not found: {name_or_url}")
         payload = json.loads(_read_stream(_value(result, "stream")))
@@ -140,7 +151,7 @@ class BlobArtifactStore:
         return payload
 
     def url(self, name_or_url: str) -> str:
-        metadata = self.client.head(name_or_url)
+        metadata = self.client.head(self._locator(name_or_url))
         value = _value(metadata, "url")
         if not value:
             raise BlobStorageConfigurationError("Vercel Blob head returned no URL")
