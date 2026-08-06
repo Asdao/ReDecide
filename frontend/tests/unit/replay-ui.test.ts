@@ -2,6 +2,7 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import backendResult from "../../../backend/tests/fixtures/analysis_api_result.json";
+import NotFound from "@/app/not-found";
 import { LandingScreen } from "@/components/LandingScreen";
 import { ProductHeader } from "@/components/ProductHeader";
 import { ProcessedReplaySelectorScreen } from "@/components/ProcessedReplaySelectorScreen";
@@ -346,6 +347,17 @@ describe("uploaded replay screens", () => {
 });
 
 describe("sample replay screens", () => {
+  it("renders the dedicated 404 page with the shared header and a home action", () => {
+    const html = renderToStaticMarkup(createElement(NotFound));
+
+    expect(html).toContain('class="shell not-found-shell"');
+    expect(html).toContain('class="topbar"');
+    expect(html).toContain('<h1 id="not-found-title">404</h1>');
+    expect(html).toContain("The page you&#x27;re looking for doesn&#x27;t exist.");
+    expect(html).toContain('class="primary not-found-home" href="/"');
+    expect(html).toContain("Return home");
+  });
+
   it("offers backend samples and the processed showcase as separate actions", () => {
     const html = renderToStaticMarkup(
       createElement(LandingScreen, {

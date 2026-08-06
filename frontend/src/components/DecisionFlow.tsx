@@ -42,6 +42,7 @@ import { PROCESSED_REPLAYS, processedReplayById } from "@/domain/processed-repla
 import type { ProcessedReplay } from "@/domain/replay-viewer";
 import { normalizeBackendReplay } from "@/domain/replay-viewer";
 import type { AnalysisProgressEvent, ReplayAnalysisResult } from "@/domain/replay";
+import { formatTabTitle, tabLocationForScreen } from "@/domain/tab-title";
 import { isAbortError } from "@/lib/http";
 import { ReplayAnalysisScreen } from "./ReplayAnalysisScreen";
 import { ReplayMapLoadingScreen } from "./ReplayMapLoadingScreen";
@@ -667,6 +668,10 @@ export function DecisionFlow() {
       if (timer) clearTimeout(timer);
     };
   }, [state]);
+
+  useEffect(() => {
+    document.title = formatTabTitle(tabLocationForScreen(currentScreen));
+  }, [currentScreen]);
 
   useEffect(() => {
     if (previousScreen.current === currentScreen) {

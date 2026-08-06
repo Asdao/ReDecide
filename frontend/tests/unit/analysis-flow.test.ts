@@ -12,6 +12,7 @@ import {
   landingViewHref,
   withLandingHistoryMarker,
 } from "@/domain/landing-navigation";
+import { formatTabTitle, tabLocationForScreen } from "@/domain/tab-title";
 import {
   mapAssetKey,
   mapThumbnailUrl,
@@ -38,6 +39,22 @@ const preparation = {
 };
 
 describe("backend sample flow", () => {
+  it("uses a one-word location in each browser tab title", () => {
+    expect(formatTabTitle(tabLocationForScreen("choose"))).toBe("Home - RE:DECIDE");
+    expect(formatTabTitle(tabLocationForScreen("samples-ready"))).toBe(
+      "Samples - RE:DECIDE",
+    );
+    expect(formatTabTitle(tabLocationForScreen("processed-replays"))).toBe(
+      "Replays - RE:DECIDE",
+    );
+    expect(formatTabTitle(tabLocationForScreen("choosing-player"))).toBe(
+      "Replay - RE:DECIDE",
+    );
+    expect(formatTabTitle(tabLocationForScreen("viewer"))).toBe(
+      "Analysis - RE:DECIDE",
+    );
+  });
+
   it("maps landing views to stable, query-preserving history URLs", () => {
     expect(landingViewFromSearch("")).toBe("home");
     expect(landingViewFromSearch("?view=samples")).toBe("samples");
