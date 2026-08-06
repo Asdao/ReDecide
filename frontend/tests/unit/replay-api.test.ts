@@ -1,4 +1,9 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+
+const blobUploadMock = vi.hoisted(() => vi.fn());
+
+vi.mock("@vercel/blob/client", () => ({ upload: blobUploadMock }));
+
 import {
   ReplayApiError,
   getAnalysisPlayers,
@@ -129,6 +134,7 @@ function jsonResponse(payload: unknown, status = 200): Response {
 
 afterEach(() => {
   vi.unstubAllGlobals();
+  blobUploadMock.mockReset();
 });
 
 describe("replay API adapter", () => {
@@ -144,6 +150,105 @@ describe("replay API adapter", () => {
     expect(init.body).toBeInstanceOf(FormData);
     expect((init.body as FormData).get("file")).toBe(file);
     expect((init.headers as Record<string, string>)["Content-Type"]).toBeUndefined();
+  });
+
+  it("uploads through public Vercel Blob before importing the URL", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(manifest, 202));
+    vi.stubGlobal("fetch", fetchMock);
+    blobUploadMock.mockResolvedValue({
+      url: "https://store.public.blob.vercel-storage.com/replays/match-123.dem",
+    });
+    const file = new File(["demo"], "match.dem", { type: "application/octet-stream" });
+    const controller = new AbortController();
+
+    await expect(uploadReplay(file, controller.signal, "blob")).resolves.toEqual(manifest);
+    expect(blobUploadMock).toHaveBeenCalledWith(
+      "replays/match.dem",
+      file,
+      expect.objectContaining({
+        access: "public",
+        handleUploadUrl: "/api/blob/upload",
+        contentType: "application/octet-stream",
+        multipart: false,
+        abortSignal: controller.signal,
+      }),
+    );
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe("http://127.0.0.1:8000/api/replay/import-url");
+    expect(init.method).toBe("POST");
+    expect(JSON.parse(String(init.body))).toEqual({
+      url: "https://store.public.blob.vercel-storage.com/replays/match-123.dem",
+      filename: "match.dem",
+    });
+  });
+
+  it("uses multipart Blob upload above 100 MB and rejects files above 1 GB", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(manifest, 202));
+    vi.stubGlobal("fetch", fetchMock);
+    blobUploadMock.mockResolvedValue({
+      url: "https://store.public.blob.vercel-storage.com/replays/large-123.dem",
+    });
+    const largeFile = new File(["demo"], "large.dem");
+    Object.defineProperty(largeFile, "size", { value: 100 * 1024 * 1024 + 1 });
+
+    await uploadReplay(largeFile, undefined, "blob");
+    expect(blobUploadMock.mock.calls[0]?.[2]).toEqual(
+      expect.objectContaining({ multipart: true }),
+    );
+
+    const oversizedFile = new File(["demo"], "oversized.dem");
+    Object.defineProperty(oversizedFile, "size", { value: 1024 * 1024 * 1024 + 1 });
+    blobUploadMock.mockClear();
+    fetchMock.mockClear();
+
+    await expect(uploadReplay(oversizedFile, undefined, "blob")).rejects.toMatchObject({
+      kind: "invalid-file",
+      operation: "upload",
+      message: "Choose a .dem file smaller than 1 GB.",
+    });
+    expect(blobUploadMock).not.toHaveBeenCalled();
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("preserves Blob upload cancellation and hides provider failures", async () => {
+    blobUploadMock
+      .mockRejectedValueOnce(new DOMException("aborted", "AbortError"))
+      .mockRejectedValueOnce(new Error("private Blob provider detail"));
+    const file = new File(["demo"], "match.dem");
+
+    await expect(uploadReplay(file, undefined, "blob")).rejects.toMatchObject({
+      name: "AbortError",
+    });
+    await expect(uploadReplay(file, undefined, "blob")).rejects.toMatchObject({
+      kind: "network",
+      operation: "upload",
+      message: "The replay could not be uploaded to temporary storage.",
+    });
+  });
+
+  it("explains disabled and oversized Blob imports without exposing backend details", async () => {
+    blobUploadMock.mockResolvedValue({
+      url: "https://store.public.blob.vercel-storage.com/replays/match-123.dem",
+    });
+    vi.stubGlobal(
+      "fetch",
+      vi
+        .fn()
+        .mockResolvedValueOnce(jsonResponse({ detail: "private route detail" }, 404))
+        .mockResolvedValueOnce(jsonResponse({ detail: "private size detail" }, 413)),
+    );
+    const file = new File(["demo"], "match.dem");
+
+    await expect(uploadReplay(file, undefined, "blob")).rejects.toMatchObject({
+      kind: "not-found",
+      status: 404,
+      message: "Replay uploads are not enabled on the backend.",
+    });
+    await expect(uploadReplay(file, undefined, "blob")).rejects.toMatchObject({
+      kind: "invalid-file",
+      status: 413,
+      message: "Choose a smaller .dem replay file.",
+    });
   });
 
   it("rejects a non-.dem file before sending a request", async () => {

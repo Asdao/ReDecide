@@ -1,3 +1,4 @@
+import { upload } from "@vercel/blob/client";
 import { z } from "zod";
 import {
   analysisJobSchema,
@@ -11,7 +12,16 @@ import {
   type ReplayManifest,
   type ReplayVisualization,
 } from "@/domain/replay";
-import { apiBaseUrl, isAbortError } from "@/lib/http";
+import {
+  apiBaseUrl,
+  isAbortError,
+  replayUploadMode,
+  type ReplayUploadMode,
+} from "@/lib/http";
+
+const REPLAY_BLOB_UPLOAD_URL = "/api/blob/upload";
+const REPLAY_BLOB_MULTIPART_THRESHOLD_BYTES = 100 * 1024 * 1024;
+const REPLAY_BLOB_MAX_BYTES = 1024 * 1024 * 1024;
 
 type ReplayOperation =
   | "upload"
@@ -104,11 +114,16 @@ async function readJson(response: Response, operation: ReplayOperation): Promise
 
 function safeHttpError(operation: ReplayOperation, status: number): ReplayApiError {
   if (status === 404) {
-    return new ReplayApiError("This replay or analysis could not be found.", {
-      kind: "not-found",
-      operation,
-      status,
-    });
+    return new ReplayApiError(
+      operation === "upload"
+        ? "Replay uploads are not enabled on the backend."
+        : "This replay or analysis could not be found.",
+      {
+        kind: "not-found",
+        operation,
+        status,
+      },
+    );
   }
   if (status === 409) {
     return new ReplayApiError("This analysis is not ready for that action yet.", {
@@ -119,6 +134,13 @@ function safeHttpError(operation: ReplayOperation, status: number): ReplayApiErr
   }
   if (status === 415) {
     return new ReplayApiError("Choose a valid .dem replay file.", {
+      kind: "invalid-file",
+      operation,
+      status,
+    });
+  }
+  if (status === 413 && operation === "upload") {
+    return new ReplayApiError("Choose a smaller .dem replay file.", {
       kind: "invalid-file",
       operation,
       status,
@@ -164,14 +186,7 @@ function resourcePath(segment: string): string {
   return encodeURIComponent(segment);
 }
 
-export async function uploadReplay(file: File, signal?: AbortSignal): Promise<ReplayManifest> {
-  if (!file.name.toLowerCase().endsWith(".dem")) {
-    throw new ReplayApiError("Choose a valid .dem replay file.", {
-      kind: "invalid-file",
-      operation: "upload",
-    });
-  }
-
+async function uploadReplayDirect(file: File, signal?: AbortSignal): Promise<ReplayManifest> {
   const body = new FormData();
   body.set("file", file);
   const response = await request(
@@ -185,6 +200,67 @@ export async function uploadReplay(file: File, signal?: AbortSignal): Promise<Re
     "upload",
   );
   return parseSuccessful(response, replayManifestSchema, "upload");
+}
+
+async function uploadReplayViaBlob(file: File, signal?: AbortSignal): Promise<ReplayManifest> {
+  if (file.size > REPLAY_BLOB_MAX_BYTES) {
+    throw new ReplayApiError("Choose a .dem file smaller than 1 GB.", {
+      kind: "invalid-file",
+      operation: "upload",
+    });
+  }
+
+  let blobUrl: string;
+  try {
+    const blob = await upload(`replays/${file.name}`, file, {
+      access: "public",
+      handleUploadUrl: REPLAY_BLOB_UPLOAD_URL,
+      contentType: "application/octet-stream",
+      multipart: file.size > REPLAY_BLOB_MULTIPART_THRESHOLD_BYTES,
+      abortSignal: signal,
+    });
+    blobUrl = blob.url;
+  } catch (error: unknown) {
+    if (isAbortError(error)) {
+      throw error;
+    }
+    throw new ReplayApiError("The replay could not be uploaded to temporary storage.", {
+      kind: "network",
+      operation: "upload",
+    });
+  }
+
+  const response = await request(
+    "/api/replay/import-url",
+    {
+      method: "POST",
+      headers: {
+        Accept: "application/json",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ url: blobUrl, filename: file.name }),
+      signal,
+    },
+    "upload",
+  );
+  return parseSuccessful(response, replayManifestSchema, "upload");
+}
+
+export async function uploadReplay(
+  file: File,
+  signal?: AbortSignal,
+  mode: ReplayUploadMode = replayUploadMode,
+): Promise<ReplayManifest> {
+  if (!file.name.toLowerCase().endsWith(".dem")) {
+    throw new ReplayApiError("Choose a valid .dem replay file.", {
+      kind: "invalid-file",
+      operation: "upload",
+    });
+  }
+
+  return mode === "blob"
+    ? uploadReplayViaBlob(file, signal)
+    : uploadReplayDirect(file, signal);
 }
 
 export async function prepareReplayAnalysis(

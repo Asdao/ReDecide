@@ -1,6 +1,6 @@
 # Frontend Status
 
-Last verified: 2026-08-05 (Asia/Singapore)
+Last verified: 2026-08-06 (Asia/Singapore)
 
 ## Status
 
@@ -115,14 +115,19 @@ longer part of the rendered flow. The landing page now exposes a labelled,
 keyboard-focusable `.dem` picker alongside the existing sample-match action.
 
 The frontend now also has a typed, UI-independent adapter for the complete
-uploaded-replay API sequence. It uploads one `.dem` through
-`POST /api/replay/upload`, prepares analysis by stable `replay_id`, reads job
-and player status, submits the selected stable `player_id` for coaching,
-recovers completed results without rerunning coaching, and distinguishes
-visualization processing, locked, failed, and ready responses. Every successful
-JSON response is validated before the adapter returns it. Abort errors remain
-distinguishable from normalized network, HTTP, content-type, JSON, and schema
-errors, and backend error details are not exposed through adapter messages.
+uploaded-replay API sequence. Its configurable upload transport defaults to a
+direct multipart `POST /api/replay/upload` for local development. Vercel can
+instead upload the `.dem` directly from the browser to a public Blob store,
+then submit only its URL and original filename to `POST /api/replay/import-url`.
+Blob uploads use multipart transfer above 100 MB and reject files above the
+backend-aligned 1 GB limit before transfer. The adapter prepares analysis by
+stable `replay_id`, reads job and player status, submits the selected stable
+`player_id` for coaching, recovers completed results without rerunning coaching,
+and distinguishes visualization processing, locked, failed, and ready
+responses. Every successful JSON response is validated before the adapter
+returns it. Abort errors remain distinguishable from normalized network, HTTP,
+content-type, JSON, and schema errors, and provider details are not exposed
+through adapter messages.
 
 The main reducer now models the complete supported upload lifecycle without UI
 coupling: uploading, preparing analysis, waiting for players, choosing a stable
@@ -215,8 +220,12 @@ outcomes are not rendered in the coaching result.
 - `src/adapters/samples-api.ts` - `GET /api/samples` and `POST /api/analyze`
   transport with JSON/content/status checks
 - `src/adapters/replay-api.ts` - typed transport for upload, preparation,
-  status, player selection, coaching, recovery, and visualization retrieval
+  direct or Blob URL import, status, player selection, coaching, recovery, and
+  visualization retrieval
+- `src/app/api/blob/upload/route.ts` - same-origin Vercel Blob client-token
+  route restricted to `.dem`, public object storage, and a 1 GB maximum
 - `src/lib/http.ts` - shared public API base URL and browser abort detection
+- `.env.example` - local direct-upload defaults and the Vercel Blob mode switch
 - `src/domain/replay.ts` - strict replay manifest, analysis, result, and
   visualization boundary schemas
 - `src/domain/maps.ts` - shared official and fallback display names for CS2 map
@@ -250,6 +259,11 @@ Set `NEXT_PUBLIC_API_BASE_URL` in `frontend/.env.local`. Local development
 defaults to `http://127.0.0.1:8000` when the variable is absent. The backend
 must allow the frontend origin through `REDECIDE_API_ALLOWED_ORIGINS`.
 
+`NEXT_PUBLIC_REPLAY_UPLOAD_MODE` defaults to `direct`, which sends the file to
+the local or configured FastAPI base URL. Set it to `blob` in Vercel and connect
+a public Blob store so Vercel supplies the server-only `BLOB_READ_WRITE_TOKEN`.
+Never expose that token through a `NEXT_PUBLIC_*` variable.
+
 The Next.js image allowlist permits only the referenced repository's thumbnail
 folder on `raw.githubusercontent.com` for non-bundled future maps.
 
@@ -257,14 +271,18 @@ folder on `raw.githubusercontent.com` for non-bundled future maps.
 
 From `frontend/`, `pnpm run verify` passes:
 
-- Vitest: 7 files, 84 tests passed, including both full processed replay files,
-  concurrent analysis/replay preparation, repeated player selection, and
-  uploaded-viewer navigation, the matching Inferno analysis, and the replay
-  timeline's single keyboard tab stop
+- Focused Vitest: 20 upload adapter and Blob token-route tests passed, covering
+  direct and public-Blob transports, multipart selection, limits, cancellation,
+  safe failures, same-origin checks, and token constraints
+- Full Vitest rerun: 93 tests passed and 2 pre-existing landing-copy assertions
+  failed after `LandingScreen.tsx` changed concurrently to replace “Upload once”
+  and “2D viewer”; the unrelated component change was preserved and its tests
+  were not changed as part of the Blob work
 - TypeScript: passed
 - ESLint: passed with no warnings
-- Next.js production build: passed; `/` and `/_not-found` prerendered and
-  `/analysis` rendered on demand
+- Next.js production build: passed in both default direct mode and explicit
+  Blob mode; `/` and `/_not-found` prerendered, with `/analysis` and
+  `/api/blob/upload` rendered on demand
 
 Browser verification against the documented sample responses confirmed:
 
@@ -307,6 +325,11 @@ viewer and event inspector remain free of horizontal overflow.
 - A real native `.dem` has not yet completed the full backend flow, matching the
   backend's documented current limitation. Browser QA used validated replay
   fixtures for post-upload states and did not send user replay data.
+- A real public Vercel Blob has not yet completed the hosted end-to-end flow.
+  Blob objects are public to anyone with their URL and are not automatically
+  deleted after FastAPI imports them. The token route checks same-origin browser
+  requests and upload constraints, but a public production deployment still
+  needs authentication or platform-level protection to prevent upload abuse.
 - Only Inferno currently has a paired saved coaching result for the processed
   save catalog. Uploaded replays use their live completed analysis. Player
   intent remains disabled because no public backend contract exists.
@@ -316,6 +339,7 @@ viewer and event inspector remain free of horizontal overflow.
 No backend contract changes. The local processed-replay adapter and uploaded
 flow consume the documented `replay_visualization_v1` shape directly. In
 addition to the compatibility sample APIs, the frontend adapter implements the
-documented `/api/replay/*` and `/api/analysis/*` contracts. The rendered upload
-flow now consumes preparation, player selection, repeat coaching, result
-recovery, visualization unlock, and replay playback endpoints end to end.
+documented `/api/replay/*` and `/api/analysis/*` contracts, including the
+disabled-by-default public Blob URL import. The rendered upload flow now
+consumes preparation, player selection, repeat coaching, result recovery,
+visualization unlock, and replay playback endpoints end to end.
