@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 const blobUploadMock = vi.hoisted(() => vi.fn());
 
-vi.mock("@vercel/blob/client", () => ({ upload: blobUploadMock }));
+vi.mock("@vercel/blob/client", () => ({ uploadPresigned: blobUploadMock }));
 
 import {
   ReplayApiError,
@@ -205,7 +205,7 @@ describe("replay API adapter", () => {
 
     await expect(uploadReplay(file)).resolves.toEqual(manifest);
     const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
-    expect(url).toBe("http://127.0.0.1:8000/api/replay/upload");
+    expect(url).toBe("/api/replay/upload");
     expect(init.method).toBe("POST");
     expect(init.body).toBeInstanceOf(FormData);
     expect((init.body as FormData).get("file")).toBe(file);
@@ -213,17 +213,20 @@ describe("replay API adapter", () => {
   });
 
   it("uploads through public Vercel Blob before importing the URL", async () => {
-    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(manifest, 202));
+    const readyManifest = { ...manifest, visualization_status: "ready" };
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(readyManifest, 202));
     vi.stubGlobal("fetch", fetchMock);
     blobUploadMock.mockResolvedValue({
-      url: "https://store.public.blob.vercel-storage.com/replays/match-123.dem",
+      url: "https://store.public.blob.vercel-storage.com/uploads/match-123.dem",
     });
     const file = new File(["demo"], "match.dem", { type: "application/octet-stream" });
     const controller = new AbortController();
 
-    await expect(uploadReplay(file, controller.signal, "blob")).resolves.toEqual(manifest);
+    await expect(uploadReplay(file, controller.signal, "blob")).resolves.toEqual(
+      readyManifest,
+    );
     expect(blobUploadMock).toHaveBeenCalledWith(
-      "replays/match.dem",
+      "uploads/match.dem",
       file,
       expect.objectContaining({
         access: "public",
@@ -234,19 +237,39 @@ describe("replay API adapter", () => {
       }),
     );
     const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
-    expect(url).toBe("http://127.0.0.1:8000/api/replay/import-url");
+    expect(url).toBe("/api/replay/import-url");
     expect(init.method).toBe("POST");
     expect(JSON.parse(String(init.body))).toEqual({
-      url: "https://store.public.blob.vercel-storage.com/replays/match-123.dem",
+      url: "https://store.public.blob.vercel-storage.com/uploads/match-123.dem",
       filename: "match.dem",
     });
+    const [cleanupUrl, cleanupInit] = fetchMock.mock.calls[1] as [string, RequestInit];
+    expect(cleanupUrl).toBe("/api/blob/cleanup");
+    expect(cleanupInit.method).toBe("POST");
+    expect(JSON.parse(String(cleanupInit.body))).toEqual({
+      url: "https://store.public.blob.vercel-storage.com/uploads/match-123.dem",
+    });
+  });
+
+  it("retains the temporary Blob when processing has not completed", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(manifest, 202));
+    vi.stubGlobal("fetch", fetchMock);
+    blobUploadMock.mockResolvedValue({
+      url: "https://store.public.blob.vercel-storage.com/uploads/match-123.dem",
+    });
+
+    await expect(
+      uploadReplay(new File(["demo"], "match.dem"), undefined, "blob"),
+    ).resolves.toEqual(manifest);
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
   it("uses multipart Blob upload above 100 MB and rejects files above 1 GB", async () => {
     const fetchMock = vi.fn().mockResolvedValue(jsonResponse(manifest, 202));
     vi.stubGlobal("fetch", fetchMock);
     blobUploadMock.mockResolvedValue({
-      url: "https://store.public.blob.vercel-storage.com/replays/large-123.dem",
+      url: "https://store.public.blob.vercel-storage.com/uploads/large-123.dem",
     });
     const largeFile = new File(["demo"], "large.dem");
     Object.defineProperty(largeFile, "size", { value: 100 * 1024 * 1024 + 1 });
@@ -288,7 +311,7 @@ describe("replay API adapter", () => {
 
   it("explains disabled and oversized Blob imports without exposing backend details", async () => {
     blobUploadMock.mockResolvedValue({
-      url: "https://store.public.blob.vercel-storage.com/replays/match-123.dem",
+      url: "https://store.public.blob.vercel-storage.com/uploads/match-123.dem",
     });
     vi.stubGlobal(
       "fetch",
@@ -343,10 +366,10 @@ describe("replay API adapter", () => {
     await expect(prepareReplayWorkspace("replay-1")).resolves.toEqual(job);
     expect(fetchMock).toHaveBeenCalledTimes(2);
     expect(fetchMock.mock.calls[0][0]).toBe(
-      "http://127.0.0.1:8000/api/analysis/prepare",
+      "/api/analysis/prepare",
     );
     expect(fetchMock.mock.calls[1][0]).toBe(
-      "http://127.0.0.1:8000/api/replay/replay-1/json",
+      "/api/replay/replay-1/json",
     );
   });
 

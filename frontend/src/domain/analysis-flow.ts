@@ -1,4 +1,8 @@
-import type { SamplePreparation, SampleSummary } from "./samples";
+import type {
+  SamplePreparation,
+  SampleReplayPreparation,
+  SampleSummary,
+} from "./samples";
 import type {
   AnalysisJob,
   AnalysisPlayer,
@@ -40,7 +44,9 @@ export function resultRecoveryDisposition(
 }
 
 type UploadedReplayContext = {
-  file: File;
+  file?: File;
+  sourceName?: string;
+  sampleId?: string;
   manifest: ReplayManifest;
 };
 
@@ -112,6 +118,13 @@ export type AnalysisFlowAction =
   | { type: "SAMPLES_FAILED" }
   | { type: "SELECT_SAMPLE"; sampleId: string }
   | { type: "SAMPLE_SELECTED"; sampleId: string; preparation: SamplePreparation }
+  | {
+      type: "SAMPLE_REPLAY_READY";
+      sampleId: string;
+      sourceName: string;
+      preparation: SampleReplayPreparation;
+      playersRequestId: string;
+    }
   | { type: "SAMPLE_SELECTION_FAILED"; sampleId: string }
   | { type: "SELECT_REPLAY_FILE"; file: File; requestId: string }
   | {
@@ -194,11 +207,20 @@ function resultMatchesSelection(
 }
 
 function uploadedReplayContext(state: UploadedReplayContext): UploadedReplayContext {
-  return { file: state.file, manifest: state.manifest };
+  return {
+    ...(state.file ? { file: state.file } : {}),
+    ...(state.sourceName ? { sourceName: state.sourceName } : {}),
+    ...(state.sampleId ? { sampleId: state.sampleId } : {}),
+    manifest: state.manifest,
+  };
 }
 
 function preparedReplayContext(state: PreparedReplayContext): PreparedReplayContext {
-  return { ...uploadedReplayContext(state), analysis: state.analysis };
+  return {
+    ...uploadedReplayContext(state),
+    analysis: state.analysis,
+    ...(state.sampleId ? { sampleId: state.sampleId } : {}),
+  };
 }
 
 function playerSelectionContext(state: PlayerSelectionContext): PlayerSelectionContext {
@@ -270,6 +292,17 @@ export function analysisFlowReducer(
             preparation: action.preparation,
           }
         : state;
+    case "SAMPLE_REPLAY_READY":
+      return state.status === "selecting-sample" && state.sampleId === action.sampleId
+        ? {
+            status: "waiting-for-players",
+            sourceName: action.sourceName,
+            manifest: action.preparation.manifest,
+            analysis: action.preparation.analysis,
+            sampleId: action.sampleId,
+            requestId: action.playersRequestId,
+          }
+        : state;
     case "SAMPLE_SELECTION_FAILED":
       return state.status === "selecting-sample" && state.sampleId === action.sampleId
         ? {
@@ -287,6 +320,7 @@ export function analysisFlowReducer(
         ? {
             status: "preparing-analysis",
             file: state.file,
+            sourceName: state.file.name,
             manifest: action.manifest,
             requestId: action.prepareRequestId,
           }
@@ -304,6 +338,7 @@ export function analysisFlowReducer(
         ? {
             status: "waiting-for-players",
             file: state.file,
+            sourceName: state.sourceName ?? state.file?.name,
             manifest: state.manifest,
             analysis: action.analysis,
             requestId: action.playersRequestId,

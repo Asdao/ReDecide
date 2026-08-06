@@ -17,6 +17,8 @@ import subprocess
 import sys
 from typing import Any
 
+import httpx
+
 
 MAX_PROMPT_BYTES = 64 * 1024
 DEFAULT_TIMEOUT_SECONDS = 180
@@ -27,6 +29,77 @@ class PiCoachError(RuntimeError):
 
 
 ProcessRunner = Callable[..., subprocess.CompletedProcess[str]]
+
+
+class HttpCoachAdapter:
+    """Call an OpenAI-compatible model endpoint without spawning Node.js.
+
+    Vercel's Python runtime should not depend on the local Node/Pi harness.
+    The prompt and response validation intentionally stay identical to
+    ``PiCoachAdapter`` so local and deployed coaching share one contract.
+    """
+
+    def __init__(
+        self,
+        *,
+        base_url: str | None = None,
+        api_key: str | None = None,
+        model: str | None = None,
+        timeout_seconds: int = DEFAULT_TIMEOUT_SECONDS,
+        client: httpx.Client | None = None,
+    ) -> None:
+        self.base_url = (base_url or os.getenv("HARNESS_MODEL_BASE_URL", "")).strip()
+        self.api_key = (api_key or os.getenv("HARNESS_MODEL_API_KEY") or os.getenv("DEEPSEEK_API_KEY", "")).strip()
+        self.model = (model or os.getenv("HARNESS_MODEL", "deepseek-v3-flash")).strip()
+        self.timeout_seconds = timeout_seconds
+        self._client = client
+
+    def __call__(self, pipeline_result: Mapping[str, Any]) -> str:
+        if not self.base_url:
+            raise PiCoachError("HARNESS_MODEL_BASE_URL is required for HTTP coaching")
+        if not self.api_key:
+            raise PiCoachError(
+                "HARNESS_MODEL_API_KEY or DEEPSEEK_API_KEY is required for HTTP coaching"
+            )
+        prompt = PiCoachAdapter().build_prompt(pipeline_result)
+        endpoint = self.base_url.rstrip("/")
+        if not endpoint.endswith("/chat/completions"):
+            endpoint = f"{endpoint}/chat/completions"
+        headers = {
+            "Authorization": f"Bearer {self.api_key}",
+            "Content-Type": "application/json",
+        }
+        body = {
+            "model": self.model,
+            "messages": [{"role": "user", "content": prompt}],
+            "temperature": 0,
+        }
+        close_client = self._client is None
+        client = self._client or httpx.Client(timeout=httpx.Timeout(float(self.timeout_seconds)))
+        try:
+            response = client.post(endpoint, headers=headers, json=body)
+            response.raise_for_status()
+            response_body = response.json()
+        except (httpx.HTTPError, ValueError) as exc:
+            raise PiCoachError("HTTP coaching provider failed") from exc
+        finally:
+            if close_client:
+                client.close()
+        try:
+            content = response_body["choices"][0]["message"]["content"]
+        except (KeyError, IndexError, TypeError) as exc:
+            raise PiCoachError("HTTP coaching provider returned an invalid response") from exc
+        if not isinstance(content, str):
+            raise PiCoachError("HTTP coaching provider returned non-text content")
+        payload = _response_payload(content.strip())
+        PiCoachAdapter._validate_response(payload)
+        return json.dumps(
+            {
+                "decision_id": payload["decision_id"],
+                "what_could_be_done_better": payload["what_could_be_done_better"],
+            },
+            ensure_ascii=True,
+        )
 
 
 class PiCoachAdapter:
@@ -290,4 +363,4 @@ def _integer(value: Any, default: int) -> int:
         return default
 
 
-__all__ = ["PiCoachAdapter", "PiCoachError"]
+__all__ = ["HttpCoachAdapter", "PiCoachAdapter", "PiCoachError"]

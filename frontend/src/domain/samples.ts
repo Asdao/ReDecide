@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { decisionPacketSchema } from "@/domain/contracts";
+import { analysisJobSchema, replayManifestSchema } from "@/domain/replay";
 
 const requiredString = z.string().trim().min(1);
 
@@ -71,8 +72,23 @@ export const samplePreparationSchema = z.discriminatedUnion("stage", [
     .strict(),
 ]);
 
+/**
+ * Real sample replay selection response. Unlike the legacy fixture
+ * preparation above, this envelope provides the same replay manifest and
+ * analysis job metadata used by the uploaded-replay flow.
+ */
+export const sampleReplayPreparationSchema = z
+  .object({
+    sample_id: requiredString,
+    replay_id: requiredString,
+    manifest: replayManifestSchema,
+    analysis: analysisJobSchema,
+  })
+  .strict();
+
 export type SampleSummary = z.infer<typeof sampleSummarySchema>;
 export type SamplePreparation = z.infer<typeof samplePreparationSchema>;
+export type SampleReplayPreparation = z.infer<typeof sampleReplayPreparationSchema>;
 
 const hostagesMaps = new Set(["agency", "italy", "office"]);
 const armsRaceMaps = new Set(["baggage", "pool_day", "shoots"]);

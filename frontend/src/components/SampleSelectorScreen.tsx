@@ -92,7 +92,9 @@ function SampleBar({
           </span>
           <span className="sample-description">{sample.description}</span>
           <span className="sample-meta">
-            {sample.players.length} {sample.players.length === 1 ? "player" : "players"}
+            {sample.players.length > 0
+              ? `${sample.players.length} ${sample.players.length === 1 ? "player" : "players"}`
+              : "Players discovered during preparation"}
             {sample.recommended_player ? ` · Recommended: ${sample.recommended_player}` : ""}
           </span>
         </span>

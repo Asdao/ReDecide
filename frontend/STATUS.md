@@ -2,22 +2,36 @@
 
 Last verified: 2026-08-06 (Asia/Singapore)
 
+## Vercel Services deployment
+
+The frontend now targets same-origin `/api` routes, while
+`NEXT_PUBLIC_API_BASE_URL` remains available for standalone local development.
+The root `vercel.json` uses the current `services` schema and ordered rewrites:
+`/api/blob/upload` and `/api/blob/cleanup` stay in Next.js, other `/api/*`
+requests reach FastAPI, public `/service-internal/*` requests are routed away from the
+frontend signer, and the frontend handles the catch-all route. The backend has
+a deployment-aware private binding to the frontend. It uses that binding to
+obtain exact-operation, exact-path, five-minute Blob URLs for durable analysis
+and replay JSON; artifact bodies transfer directly between FastAPI and Blob.
+Local development remains filesystem-backed unless explicitly opted into Blob.
+
+Validation after this routing change: 117 Vitest tests, TypeScript, ESLint,
+and the production Next.js build (Webpack) pass. The default Turbopack build
+exited without diagnostics in the local sandbox, so Webpack was used for the
+verified build.
+
 ## Status
 
 **Backend sample selection, complete uploaded `.dem` coaching-to-replay playback, a two-save processed replay catalog, and a map-aware 2D replay workspace are implemented.**
 
 The landing page's `Use a sample match` action calls `GET /api/samples` and
-renders the backend-returned list through the compatibility sample selector.
-Selecting an available entry submits its stable `sample_id` to
-`POST /api/analyze`. A separate `Open processed replays` action opens a local
-list containing the bundled Mirage showcase and backend-generated Inferno
-visualization. Selecting a save loads its player roster; selecting a stable
-player ID then opens `/analysis` with that perspective already active. Player
-perspective remains switchable inside the viewer. The Inferno save includes
-saved coaching for flameZ, while Mirage has no analysis artifact; the replay and
-player lists label those states explicitly. The processed-replay radar credit
-links directly to the redistributed radar-image directory. The native `.dem` action continues
-to use the complete backend flow.
+renders the backend-returned catalog. Selecting an available entry submits its
+stable `sample_id` to `POST /api/analyze`; the returned replay manifest and
+analysis metadata then enter the same player-selection, coaching, result
+recovery, and visualization lifecycle as an uploaded replay. A separate
+`Open processed replays` action remains a local saved-replay catalog and does
+not share sample-selection state. The native `.dem` action continues to use
+the complete backend flow.
 
 The `.dem` upload is the primary orange landing action; backend samples and the
 processed replay catalog use the steel-blue secondary treatment. Their concise help
@@ -145,9 +159,9 @@ display names, normalizes sides and event participants, derives `alive` from
 health only when absent, removes duplicate parser event aliases from the viewer,
 and generates deterministic event IDs when the backend did not return one.
 
-The backend-driven compatibility sample selector, schemas, adapter, reducer
-states, and tests power the sample-match landing action. The processed replay
-catalog remains a distinct, explicitly labelled option.
+The backend-driven sample catalog, replay-envelope schema, adapter, reducer
+transition, and tests power the sample-match landing action. The processed
+replay catalog remains a distinct, explicitly labelled option.
 
 `AnalysisProgressScreen.tsx` and the old saved-fixture loading path are no
 longer part of the rendered flow. The landing page now exposes a labelled,
@@ -167,6 +181,13 @@ responses. Every successful JSON response is validated before the adapter
 returns it. Abort errors remain distinguishable from normalized network, HTTP,
 content-type, JSON, and schema errors, and provider details are not exposed
 through adapter messages.
+
+Raw Blob uploads now use an isolated randomized `uploads/` prefix. After the
+FastAPI import returns a validated manifest with `visualization_status: ready`,
+the browser calls the same-origin Next.js cleanup route to delete that raw
+`.dem`; the durable `replays/<replay_id>/` artifacts remain. An incomplete or
+failed import keeps the raw object available for recovery, and cleanup failure
+does not discard an otherwise usable prepared replay.
 
 The uploaded-replay boundary now matches the backend's repeatable per-player
 run contract. Analysis metadata accepts the `coaching` state, nullable
@@ -267,13 +288,18 @@ outcomes are not rendered in the coaching result.
 - `src/components/SampleSelectorScreen.tsx` - loading, error, empty, list, map
   thumbnail, unavailable, selecting, selected, and retry UI
 - `src/components/LandingScreen.tsx` - source selection entry point
-- `src/adapters/samples-api.ts` - `GET /api/samples` and `POST /api/analyze`
-  transport with JSON/content/status checks
+- `src/adapters/samples-api.ts` - `GET /api/samples` and replay-envelope
+  `POST /api/analyze` transport with JSON/content/status checks
 - `src/adapters/replay-api.ts` - typed transport for upload, preparation,
   direct or Blob URL import, status, player selection, coaching, recovery, and
   visualization retrieval
-- `src/app/api/blob/upload/route.ts` - same-origin Vercel Blob client-token
+- `src/app/api/blob/upload/route.ts` - same-origin Vercel Blob presigned-upload
   route restricted to `.dem`, public object storage, and a 1 GB maximum
+- `src/app/api/blob/cleanup/route.ts` - same-origin deletion route restricted
+  to temporary public `uploads/*.dem` objects
+- `src/app/service-internal/blob-artifacts/route.ts` - private service-binding signer
+  restricted to known replay/analysis JSON keys, configured access, 128 MB,
+  and five-minute single-operation URLs
 - `src/lib/http.ts` - shared public API base URL and browser abort detection
 - `.env.example` - local direct-upload defaults and the Vercel Blob mode switch
 - `src/domain/replay.ts` - strict replay manifest, analysis, result, and
@@ -289,7 +315,9 @@ outcomes are not rendered in the coaching result.
 - `src/app/globals.css` - sample and replay screens, responsive layout, focus,
   progress, error, selector, and result styling
 - `tests/unit/analysis-flow.test.ts` - zero/one/many, unavailable, selection,
-  error/retry/reset, and map-name coverage
+  replay-envelope transition, error/retry/reset, and map-name coverage
+- `tests/unit/samples-api.test.ts` - catalog loading and replay-envelope
+  selection requests
 - `tests/unit/replay-api.test.ts` - multipart upload, endpoint payloads,
   processing states, coaching recovery, visualization gating, validation,
   safe failures, and cancellation
@@ -311,8 +339,16 @@ must allow the frontend origin through `REDECIDE_API_ALLOWED_ORIGINS`.
 
 `NEXT_PUBLIC_REPLAY_UPLOAD_MODE` defaults to `direct`, which sends the file to
 the local or configured FastAPI base URL. Set it to `blob` in Vercel and connect
-a public Blob store so Vercel supplies the server-only `BLOB_READ_WRITE_TOKEN`.
-Never expose that token through a `NEXT_PUBLIC_*` variable.
+a public Blob store so the Next.js upload and cleanup routes receive the
+server-only connected-store credentials. Never expose Blob credentials through
+a `NEXT_PUBLIC_*` variable.
+
+Keep `REDECIDE_STORAGE_BACKEND=filesystem` locally. Set it to `blob` for the
+Vercel backend. The `REDECIDE_BLOB_SERVICE_URL` service binding is declared in
+the root `vercel.json` and injected by Vercel; it is not a dashboard secret and
+should not be copied into local `.env` files. Legacy `BLOB_READ_WRITE_TOKEN`
+deployments remain supported, but the service binding is used for new OIDC-only
+Blob connections.
 
 The Next.js image allowlist permits only the referenced repository's thumbnail
 folder on `raw.githubusercontent.com` for non-bundled future maps.
@@ -331,11 +367,20 @@ From `frontend/`, `pnpm run verify` passes:
   analysis precedence, synthetic analysis markers, analysis-event cleanup, and
   validated SSE progress delivery. Landing-
   page assertions match the current upload and processed-replay wording.
+- Vitest: 12 files and 117 tests passed, including backend-shaped per-player run
+  metadata, sample invariants, both bundled processed saves, and 34 upload and
+  Blob bridge tests covering direct and
+  public-Blob transports, multipart selection, limits, cancellation, safe
+  failures, same-origin checks, token constraints, temporary-prefix isolation,
+  and success-only deletion. The intent tests cover per-moment isolation, loading-to-success,
+  same-text retry state, and stale response rejection. Landing-page assertions
+  match the current upload and processed-replay wording.
 - TypeScript: passed
 - ESLint: passed with no warnings
 - Next.js production build: passed in both default direct mode and explicit
-  Blob mode; `/` and `/_not-found` prerendered, with `/analysis` and
-  `/api/blob/upload` rendered on demand
+  Blob mode; `/` and `/_not-found` prerendered, with `/analysis`,
+  `/api/blob/upload`, `/api/blob/cleanup`, and the private
+  `/service-internal/blob-artifacts` signer rendered on demand
 
 Browser verification against the documented sample responses confirmed:
 
@@ -344,10 +389,9 @@ Browser verification against the documented sample responses confirmed:
 - browser Forward restores the selected samples or showcase view;
 - direct `?view=` links and Back from `/analysis` retain their expected source
   context without console warnings or errors;
-- the returned Mirage sample renders as a horizontal selectable bar;
-- the local Mirage thumbnail is requested through Next.js image handling;
-- selection reaches the selected state after `POST /api/analyze`;
-- the preparation result reports one available player;
+- the returned hosted sample renders as a horizontal selectable bar;
+- the sample envelope validates as a replay manifest plus analysis metadata;
+- sample selection enters the shared player-selection lifecycle;
 - no console warnings or errors; and
 - no horizontal overflow at a 390-by-844 narrow-screen override.
 
@@ -372,17 +416,21 @@ viewer and event inspector remain free of horizontal overflow.
   locally. Add reviewed local assets to `public/maps/` and the bundled allowlist
   as new backend samples are introduced; otherwise the remote/fallback path is
   used.
-- The compatibility sample flow currently stops after the backend preparation
-  response reports the available players; its next player-selection screen is
-  not yet implemented.
+- The hosted sample replay is fixed by the backend and requires its configured
+  Blob/model environment; the browser keeps only transient lifecycle state.
 - A real native `.dem` has not yet completed the full backend flow, matching the
   backend's documented current limitation. Browser QA used validated replay
   fixtures for post-upload states and did not send user replay data.
 - A real public Vercel Blob has not yet completed the hosted end-to-end flow.
-  Blob objects are public to anyone with their URL and are not automatically
-  deleted after FastAPI imports them. The token route checks same-origin browser
-  requests and upload constraints, but a public production deployment still
-  needs authentication or platform-level protection to prevent upload abuse.
+  Temporary Blob objects are deleted on validated successful import, but a
+  failed or interrupted import intentionally retains its object, and cleanup is
+  best-effort if Vercel deletion is unavailable. The routes check same-origin
+  browser requests and upload constraints, but a public production deployment
+  still needs authentication or platform-level protection to prevent upload
+  abuse.
+- Durable replay and analysis JSON now use the private OIDC Blob bridge on
+  Vercel, but the freshly deployed bridge still needs one hosted end-to-end
+  sample run to confirm that a second FastAPI invocation restores the job.
 - Only Inferno currently has a paired saved coaching result for the processed
   save catalog. Uploaded replays use their live completed analysis. The player
   intent UI and typed request lifecycle are implemented, but submission remains
@@ -399,3 +447,15 @@ disabled-by-default public Blob URL import. The rendered upload flow now
 consumes preparation, player selection, repeat coaching, result recovery, SSE
 progress, visualization unlock, and replay playback endpoints end to end. No
 backend files or contracts were changed.
+No intent endpoint was invented. The sample adapter now consumes the backend's
+real replay envelope from `POST /api/analyze` (`sample_id`, `replay_id`,
+`manifest`, and `analysis`). The local processed-replay adapter and uploaded
+flow consume the documented `replay_visualization_v1` shape directly. The
+frontend implements the `/api/replay/*` and `/api/analysis/*` contracts,
+including the disabled-by-default public Blob URL import, and the sample and
+upload flows share preparation, player selection, repeat coaching, result
+recovery, visualization unlock, and replay playback endpoints end to end.
+The internal Next.js `/api/blob/cleanup` route does not change the FastAPI
+contract; it removes only temporary raw uploads after successful import. The
+`/service-internal/blob-artifacts` route is not a browser API. It is reachable by the
+FastAPI service binding and returns only narrowly scoped signed Blob URLs.

@@ -109,14 +109,24 @@ them unless specifically required.
 ### `GET /api/samples`
 
 - **Input:** None.
-- **Output:** JSON list containing the old built-in sample match.
-- **Summary:** Returns the test sample used by the frozen-contract demonstration.
+- **Output:** The stable `SamplesResponse` shape with the hosted Ancient sample.
+- **Summary:** Lists the public sample without downloading or parsing its 321,584,788-byte demo.
 
 ### `POST /api/analyze`
 
-- **Input:** JSON containing the old fixture `sample_id` and optional player name.
-- **Output:** JSON containing the old fixture preparation stage and possible `DecisionPacket`.
-- **Summary:** Prepares the built-in test sample; it is not part of the uploaded-replay flow.
+- **Input:** JSON: `{"sample_id":"3dmax-vs-falcons-m2-ancient"}`.
+- **Output:** `{sample_id, replay_id, manifest, analysis}`. `manifest` is the
+  `replay_manifest_v1` payload and `analysis` is the normal analysis-job metadata.
+- **Summary:** Downloads and parses the hosted sample only when its deterministic
+  replay artifacts are absent, then runs the real replay preparation pipeline.
+  Subsequent requests reuse the cached manifest/coaching/visualization artifacts.
+
+The hosted sample's deterministic `replay_id` is
+`59a7b7145da41a0c86f60bb59cb6c033`. The raw source is validated as an
+allowlisted public Vercel Blob URL with the expected 321,584,788-byte seed.
+The frontend can continue with `/api/analysis/{analysis_id}/players`,
+`/api/analysis/{analysis_id}/run`, `/api/analysis/{analysis_id}/result`, and
+`/api/replay/{replay_id}/json` using the returned IDs.
 
 ## Unavailable API
 
@@ -137,5 +147,7 @@ them unless specifically required.
 - Live coaching requires Node.js, installed `agent-harness` dependencies, and a valid provider API key.
 - Direct upload expects the `.dem` file; the separate Blob URL route is disabled by default.
 - No real `.dem` has completed the full flow yet.
-- Analysis jobs are lost when the backend restarts.
+- With `REDECIDE_STORAGE_BACKEND=blob` on Vercel Services, analysis state and
+  results survive function restarts through the private frontend Blob binding.
+  The default local filesystem mode persists under `data/runtime/analysis`.
 - Player intent and follow-up questions are not implemented.
