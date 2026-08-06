@@ -1612,10 +1612,126 @@ input[type="file"] {
   text-transform: uppercase;
 }
 
-.saved-coaching > p:last-child {
+.saved-coaching > p:nth-of-type(2) {
   margin: 0.7rem 0 0;
   color: #d9e8ff;
   line-height: 1.6;
+}
+
+.saved-coaching .coaching-generation-status {
+  margin: 0.85rem 0 0;
+  color: var(--steel-blue-text);
+  font-family: var(--font-interface);
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+
+.moment-intent {
+  margin-top: 1.25rem;
+  border-top: 1px solid var(--line);
+  padding-top: 1.25rem;
+}
+
+.moment-intent > p:first-child {
+  margin: 0 0 0.75rem;
+  color: #d9dde4;
+  font-family: var(--font-interface);
+  font-size: 0.85rem;
+  line-height: 1.55;
+}
+
+.moment-intent form {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.55rem;
+  align-items: stretch;
+}
+
+.moment-intent textarea {
+  min-height: 5.5rem;
+  resize: vertical;
+  border: 1px solid var(--line);
+  border-radius: 0;
+  background: #090d12;
+  padding: 0.75rem;
+  color: var(--text);
+  font: 0.88rem/1.5 var(--font-interface);
+}
+
+.moment-intent textarea:focus-visible {
+  border-color: var(--focus);
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+.moment-intent textarea:disabled {
+  cursor: not-allowed;
+  opacity: 0.52;
+}
+
+.moment-intent form button,
+.moment-intent-error button {
+  min-width: 5rem;
+  border: 1px solid var(--accent);
+  background: var(--accent);
+  padding: 0.65rem 0.85rem;
+  color: #090b0f;
+  font-family: var(--font-display);
+  font-weight: 800;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
+.moment-intent form button:disabled {
+  border-color: var(--line);
+  background: var(--surface-raised);
+  color: var(--muted);
+  cursor: not-allowed;
+}
+
+.submitted-intent {
+  margin-bottom: 0.75rem;
+  border-left: 3px solid var(--accent);
+  background: rgb(238 133 47 / 7%);
+  padding: 0.75rem 0.85rem;
+}
+
+.submitted-intent p,
+.submitted-intent blockquote {
+  margin: 0;
+}
+
+.submitted-intent blockquote {
+  margin-top: 0.35rem;
+  color: var(--text);
+  font-family: var(--font-interface);
+  font-size: 0.9rem;
+  line-height: 1.5;
+}
+
+.moment-intent .moment-intent-unavailable,
+.moment-intent-error p {
+  margin: 0.65rem 0 0;
+  color: var(--muted);
+  font-family: var(--font-interface);
+  font-size: 0.75rem;
+  line-height: 1.45;
+}
+
+.moment-intent-error {
+  margin-top: 0.75rem;
+}
+
+.moment-intent-error p {
+  color: #f2aaaa;
+}
+
+.moment-intent-error button {
+  margin-top: 0.55rem;
+  border-color: var(--line);
+  background: transparent;
+  color: var(--text);
 }
 
 .replay-timeline {

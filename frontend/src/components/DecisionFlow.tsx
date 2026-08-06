@@ -700,6 +700,7 @@ export function DecisionFlow() {
     return (
       <ReplayAnalysisScreen
         initialPlayerId={state.selectedPlayer.player_id}
+        analysisId={state.analysis.analysis_id}
         initialReplay={state.replay}
         initialAnalysis={state.result}
         uploaded

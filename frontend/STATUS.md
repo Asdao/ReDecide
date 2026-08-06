@@ -97,7 +97,14 @@ slides a wider inspector in from the right and shifts the centered radar
 slightly left; resuming playback restores the centered
 map. Inferno's saved coaching is attached to the matching flameZ damage event at
 tick 2579, shown as a distinct blue timeline marker, and rendered in the moment
-inspector. The viewer never starts a model request.
+inspector. Analysis-backed moments now also render the intent follow-up composer
+at the bottom of the inspector. Its typed, per-moment request lifecycle keeps a
+one-time submitted intent attached to the stable event ID, disables editing,
+preserves the old coaching behind the rotating loading border, ignores stale
+responses, and replaces only that moment's coaching after a successful response.
+The composer remains visibly disabled in the running app until the backend
+provides a documented endpoint and a submission function is connected; the
+viewer does not invent or call an unsupported API.
 
 The processed replay adapter accepts the documented backend
 `replay_visualization_v1` output without requiring the sanitized Mirage shape.
@@ -282,12 +289,13 @@ folder on `raw.githubusercontent.com` for non-bundled future maps.
 
 From `frontend/`, `pnpm run verify` passes:
 
-- Vitest: 8 files and 97 tests passed, including backend-shaped per-player run
+- Vitest: 9 files and 101 tests passed, including backend-shaped per-player run
   metadata, sample invariants, both bundled processed saves, and 20 upload adapter and Blob
   token-route tests covering direct and public-Blob transports, multipart
   selection, limits, cancellation, safe failures, same-origin checks, and token
-  constraints. Landing-page assertions match the current upload and processed-
-  replay wording.
+  constraints. The intent tests cover per-moment isolation, loading-to-success,
+  same-text retry state, and stale response rejection. Landing-page assertions
+  match the current upload and processed-replay wording.
 - TypeScript: passed
 - ESLint: passed with no warnings
 - Next.js production build: passed in both default direct mode and explicit
@@ -341,12 +349,14 @@ viewer and event inspector remain free of horizontal overflow.
   requests and upload constraints, but a public production deployment still
   needs authentication or platform-level protection to prevent upload abuse.
 - Only Inferno currently has a paired saved coaching result for the processed
-  save catalog. Uploaded replays use their live completed analysis. Player
-  intent remains disabled because no public backend contract exists.
+  save catalog. Uploaded replays use their live completed analysis. The player
+  intent UI and typed request lifecycle are implemented, but submission remains
+  disabled because no public backend endpoint or response contract exists.
 
 ## Contract/API impact
 
-No backend contract changes. The local processed-replay adapter and uploaded
+No backend contract changes and no intent endpoint was invented. The local
+processed-replay adapter and uploaded
 flow consume the documented `replay_visualization_v1` shape directly. In
 addition to the compatibility sample APIs, the frontend adapter implements the
 documented `/api/replay/*` and `/api/analysis/*` contracts, including the
