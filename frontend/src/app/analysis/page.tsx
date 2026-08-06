@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { ReplayAnalysisScreen } from "@/components/ReplayAnalysisScreen";
 
 export const metadata: Metadata = {
+  title: "Analysis",
   description: "Explore a processed CS2 replay on a synchronized 2D radar and timeline.",
 };
 

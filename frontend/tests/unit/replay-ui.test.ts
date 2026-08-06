@@ -2,6 +2,7 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import backendResult from "../../../backend/tests/fixtures/analysis_api_result.json";
+import NotFound from "@/app/not-found";
 import { LandingScreen } from "@/components/LandingScreen";
 import { ProductHeader } from "@/components/ProductHeader";
 import { ProcessedReplaySelectorScreen } from "@/components/ProcessedReplaySelectorScreen";
@@ -226,6 +227,47 @@ describe("uploaded replay screens", () => {
     expect(html).not.toContain("round_score");
   });
 
+  it("renders an attacker analysis point ahead of same-tick damage or death", () => {
+    const attackerReplay: ProcessedReplay = {
+      ...uploadedReplay,
+      events: [
+        {
+          event_id: "analysis-damage",
+          event: "damage",
+          tick: result.selected_decision.contact_tick,
+          round_num: result.selected_decision.round_number,
+          attacker_id: result.selected_decision.player_id,
+          victim_id: result.selected_decision.opponent_id,
+          damage_health: 100,
+        },
+        {
+          event_id: "same-tick-kill",
+          event: "kill",
+          tick: result.selected_decision.contact_tick,
+          round_num: result.selected_decision.round_number,
+          attacker_id: result.selected_decision.player_id,
+          victim_id: result.selected_decision.opponent_id,
+        },
+      ],
+      ticks: [
+        uploadedReplay.ticks[0],
+        { ...uploadedReplay.ticks[0], tick: 300 },
+      ],
+    };
+    const html = renderToStaticMarkup(createElement(ReplayAnalysisScreen, {
+      initialPlayerId: result.selected_decision.player_id,
+      initialReplay: attackerReplay,
+      initialAnalysis: result,
+      uploaded: true,
+      onChoosePlayer: () => undefined,
+    }));
+
+    expect(html.match(/<button type="button" class="coaching"/g)).toHaveLength(1);
+    expect(html).toContain("Damage dealt · Saved analysis");
+    expect(html).toContain('<span><i class="coaching"></i>Analysis</span>');
+    expect(html).not.toContain('<button type="button" class="death"');
+  });
+
   it("labels time between rounds without repeating the round in the timeline legend", () => {
     const waitingReplay: ProcessedReplay = {
       ...uploadedReplay,
@@ -305,6 +347,17 @@ describe("uploaded replay screens", () => {
 });
 
 describe("sample replay screens", () => {
+  it("renders the dedicated 404 page with the shared header and a home action", () => {
+    const html = renderToStaticMarkup(createElement(NotFound));
+
+    expect(html).toContain('class="shell not-found-shell"');
+    expect(html).toContain('class="topbar"');
+    expect(html).toContain('<h1 id="not-found-title">404</h1>');
+    expect(html).toContain("The page you&#x27;re looking for doesn&#x27;t exist.");
+    expect(html).toContain('class="primary not-found-home" href="/"');
+    expect(html).toContain("Return home");
+  });
+
   it("offers backend samples and the processed showcase as separate actions", () => {
     const html = renderToStaticMarkup(
       createElement(LandingScreen, {

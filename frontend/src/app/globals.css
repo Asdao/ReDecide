@@ -219,6 +219,38 @@ a:focus-visible {
   line-height: 1.7;
 }
 
+.not-found-content {
+  width: min(100% - 2rem, 80rem);
+  min-height: calc(100svh - 5.5rem);
+  display: grid;
+  place-items: center;
+  margin: 0 auto;
+  padding: 3rem 0 5rem;
+  text-align: center;
+}
+
+.not-found-copy h1 {
+  margin: 0;
+  color: var(--accent);
+  font-family: var(--font-display);
+  font-size: clamp(10rem, 29vw, 24rem);
+  font-weight: 700;
+  letter-spacing: -0.055em;
+  line-height: 0.72;
+}
+
+.not-found-copy p {
+  margin: clamp(2.5rem, 6vw, 4rem) 0 1.75rem;
+  color: #d2d6db;
+  font-family: var(--font-interface);
+  font-size: clamp(1rem, 2vw, 1.25rem);
+  line-height: 1.6;
+}
+
+.not-found-home {
+  text-decoration: none;
+}
+
 .actions {
   display: flex;
   flex-wrap: wrap;
@@ -1326,7 +1358,7 @@ input[type="file"] {
   min-width: 0;
   min-height: 0;
   display: grid;
-  grid-template-rows: auto minmax(0, 1fr);
+  grid-template-rows: auto auto minmax(0, 1fr);
   padding: 0.8rem 1.25rem 0.65rem;
 }
 
@@ -1519,6 +1551,8 @@ input[type="file"] {
 .legend-dot.dead { opacity: 0.32; }
 
 .analysis-inspector {
+  --inspector-border-color: var(--tactical-tan);
+
   position: absolute;
   z-index: 8;
   top: 7.5rem;
@@ -1529,7 +1563,7 @@ input[type="file"] {
   display: flex;
   flex-direction: column;
   overflow-y: auto;
-  border: 2px solid var(--accent);
+  border: 2px solid var(--inspector-border-color);
   background: rgb(14 18 25 / 94%);
   padding: 1.25rem;
   opacity: 0;
@@ -1598,6 +1632,89 @@ input[type="file"] {
   text-overflow: ellipsis;
   text-transform: capitalize;
   white-space: nowrap;
+}
+
+.analysis-inspector.death {
+  --inspector-border-color: #ee5f5f;
+}
+
+.analysis-inspector.analysis {
+  --inspector-border-color: #4f9cff;
+}
+
+.radar-win-rate {
+  width: min(16.5rem, 100%);
+  justify-self: end;
+  padding-bottom: 0.7rem;
+}
+
+.radar-win-rate-values {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  gap: 0.65rem;
+  align-items: baseline;
+}
+
+.radar-win-rate-values p {
+  justify-self: center;
+  margin: 0;
+  color: var(--muted);
+  font-family: var(--font-display);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.radar-win-rate-values strong {
+  display: inline-flex;
+  gap: 0.45rem;
+  align-items: baseline;
+  color: var(--text);
+  font-family: var(--font-interface);
+  font-size: 1rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.radar-win-rate-values .friendly-team {
+  justify-self: start;
+  color: var(--verified);
+}
+
+.radar-win-rate-values .enemy-team {
+  justify-self: end;
+  color: #ee5f5f;
+}
+
+.radar-win-rate-values span {
+  font-family: var(--font-display);
+  font-size: 0.72rem;
+  letter-spacing: 0.08em;
+}
+
+.win-rate-track {
+  height: 0.55rem;
+  display: flex;
+  overflow: hidden;
+  margin-top: 0.2rem;
+  background: var(--surface-raised);
+}
+
+.radar-win-rate.baseline .win-rate-track {
+  opacity: 0.48;
+}
+
+.win-rate-track span {
+  display: block;
+  height: 100%;
+}
+
+.win-rate-friendly {
+  background: var(--verified);
+}
+
+.win-rate-enemy {
+  background: #ee5f5f;
 }
 
 .saved-coaching {
@@ -1982,9 +2099,12 @@ input[type="file"] {
   z-index: 2;
 }
 
+.event-track button.damage::before,
+.event-track button.death::before,
 .event-track button.coaching::before {
-  width: 8px;
-  box-shadow: 0 0 0 2px rgb(220 236 255 / 70%);
+  width: 6px;
+  height: 0.9rem;
+  box-shadow: none;
 }
 
 .timeline-caption i.damage {
@@ -1993,7 +2113,6 @@ input[type="file"] {
 
 .timeline-caption i.coaching {
   background: #4f9cff;
-  box-shadow: 0 0 0 1px rgb(220 236 255 / 70%);
 }
 
 .event-track button:focus,
@@ -2165,6 +2284,10 @@ input[type="file"] {
 
   .radar-frame {
     min-width: 0;
+  }
+
+  .radar-win-rate {
+    width: min(16.5rem, calc(100% - 1rem));
   }
 
   .playback-controls {

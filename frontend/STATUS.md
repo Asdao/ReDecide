@@ -40,9 +40,13 @@ or keyboard-focused action, with tan help text for upload and steel-blue help
 text for the secondary actions. The secondary hover fill now uses a single
 diagonal wipe without the earlier arrow-like edge. The product logo is a normal
 link to `/`, so activating it performs a fresh page navigation and clears all
-in-memory sample, upload, or processed-replay state. The document title is
-always `RE:DECIDE`; nested screens do not replace the browser-tab title with
-route-specific text.
+in-memory sample, upload, or processed-replay state. The browser-tab title uses
+the current one-word location followed by ` - RE:DECIDE`: Home, Samples,
+Replays, Replay, or Analysis.
+
+Unknown routes render a dedicated `404 - RE:DECIDE` page. It preserves the
+shared diagonal background and product top bar, centers an oversized orange
+404 with explanatory text, and provides a primary action back to the homepage.
 
 Backend samples and the processed replay catalog use query-backed browser history
 entries (`?view=samples` and `?view=showcase`). Browser Back returns to the
@@ -63,6 +67,11 @@ and all uploaded-replay progress states. The former
 floating square markers and pulse animations were removed. The moving border is
 a solid, hard-edged orange segment without a translucent gradient ramp, and the
 global reduced-motion treatment still collapses it to a static border state.
+Uploaded analysis preparation and coaching now subscribe to the backend-provided
+`events_url`. Validated SSE messages replace static loading copy with the latest
+backend stage and percentage; malformed stream records are ignored, request
+identity remains scoped to the active analysis, and polling continues to own
+completion and failure recovery when streaming is unavailable.
 
 The analysis route renders the reviewed local radar for the selected replay with the
 selected player in blue, same-side players in green, and opponents in red.
@@ -80,9 +89,16 @@ timeline, scrubber, elapsed time, and event inspector. The viewer supports
 play/pause, five-second rewind/fast-forward, 0.5x through 8x playback, direct
 scrubbing, round jumps, and stable kill/objective event markers. Selecting a
 marker seeks to its exact tick and exposes the known event facts without
-starting another model call. Timeline markers are perspective-specific: they
-show only damage received and deaths where the selected player is the victim,
-and refresh immediately when the perspective changes. Playback detects the
+starting another model call. Timeline markers are perspective-specific:
+ordinary markers show damage received and deaths where the selected player is
+the victim, while the selected analysis point is always included for its
+analyzed player even when that player was the attacker. An analysis point
+replaces competing damage or death markers for the same replay event, uses the blue
+analysis treatment, and opens the same coaching inspector for uploaded and
+processed saves. If the visualization omits the exact event row, the frontend
+synthesizes the marker from the validated selected decision. Round-zero analysis
+aliases and duplicate event facts are discarded when resolving that fallback
+marker. Markers refresh immediately when the perspective changes. Playback detects the
 first selected-player event crossed by the authoritative clock, seeks to its
 exact tick, opens the event inspector, and pauses automatically. Event and round
 tracks use the range thumb's usable inset so markers align with the playback
@@ -93,8 +109,12 @@ with no persistent focus or selected outline after clicking or automatic
 pausing. The marker track now uses a roving keyboard tab stop, so it contributes
 one stop instead of every replay event to the page tab order; Left/Right and
 Home/End move between markers and keyboard focus remains visibly outlined. The
-wider right-side inspector uses an orange border on all four sides;
-saved coaching uses a borderless blue background. The inspector has no separate
+wider right-side inspector matches its border to the selected marker: tan for
+damage, red for death, and blue for an analysis-backed moment. A 100-damage
+event is classified as death, and a same-tick duplicate kill marker is folded
+into that stable damage event. The analysis legend swatch has the same visual
+thickness as the damage and death swatches.
+Saved coaching uses a borderless blue background. The inspector has no separate
 saved-analysis note or clear button. Player
 and round selectors suppress the browser's native white focus ring while
 retaining the product-colored container state.
@@ -114,13 +134,23 @@ tick 2579, shown as a distinct blue timeline marker, and rendered in the moment
 inspector. Analysis-backed moments now also render the intent follow-up composer
 pinned to the bottom of the inspector. The textbox keeps its base height and
 scrolls internally instead of resizing. Its typed, per-moment request lifecycle
-keeps a
-one-time submitted intent attached to the stable event ID, disables editing,
+keeps a one-time submitted intent attached to the stable event ID, disables editing,
 preserves the old coaching behind the rotating loading border, ignores stale
 responses, and replaces only that moment's coaching after a successful response.
 The composer remains visibly disabled in the running app until the backend
 provides a documented endpoint and a submission function is connected; the
 viewer does not invent or call an unsupported API.
+The radar workspace always renders a compact win-rate strip directly under the
+live radar status and above the moment inspector. The strip is capped at half
+the inspector's maximum width. The selected player's current team is flushed
+left in the legend's green, `Win rate` is centered, and the opposing team is
+flushed right in the legend's red with its team name after the percentage. The
+split bar uses the same perspective-aware colors, matches the round indicator's
+thickness, and sits close beneath the values. Playback carries forward the
+latest backend estimate at or before the current tick in the same round. Before
+a fresh round receives its first estimate,
+or when analysis data is unavailable, the strip shows a muted 50/50 baseline
+instead of borrowing from another round or a future tick.
 
 The processed replay adapter accepts the documented backend
 `replay_visualization_v1` output without requiring the sanitized Mirage shape.
@@ -327,6 +357,16 @@ folder on `raw.githubusercontent.com` for non-bundled future maps.
 
 From `frontend/`, `pnpm run verify` passes:
 
+- Vitest: 9 files and 108 tests passed, including backend-shaped per-player run
+  metadata, sample invariants, both bundled processed saves, and 20 upload adapter and Blob
+  token-route tests covering direct and public-Blob transports, multipart
+  selection, limits, cancellation, safe failures, same-origin checks, and token
+  constraints. The intent tests cover per-moment isolation, loading-to-success,
+  same-text retry state, stale response rejection, same-round win-estimate
+  selection, CT/T perspective swaps, lethal-damage deduplication, attacker-side
+  analysis precedence, synthetic analysis markers, analysis-event cleanup, and
+  validated SSE progress delivery. Landing-
+  page assertions match the current upload and processed-replay wording.
 - Vitest: 12 files and 117 tests passed, including backend-shaped per-player run
   metadata, sample invariants, both bundled processed saves, and 34 upload and
   Blob bridge tests covering direct and
@@ -398,6 +438,15 @@ viewer and event inspector remain free of horizontal overflow.
 
 ## Contract/API impact
 
+No backend contract changes and no intent endpoint was invented. The local
+processed-replay adapter and uploaded
+flow consume the documented `replay_visualization_v1` shape directly. In
+addition to the compatibility sample APIs, the frontend adapter implements the
+documented `/api/replay/*` and `/api/analysis/*` contracts, including the
+disabled-by-default public Blob URL import. The rendered upload flow now
+consumes preparation, player selection, repeat coaching, result recovery, SSE
+progress, visualization unlock, and replay playback endpoints end to end. No
+backend files or contracts were changed.
 No intent endpoint was invented. The sample adapter now consumes the backend's
 real replay envelope from `POST /api/analyze` (`sample_id`, `replay_id`,
 `manifest`, and `analysis`). The local processed-replay adapter and uploaded

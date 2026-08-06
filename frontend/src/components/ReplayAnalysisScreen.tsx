@@ -10,14 +10,18 @@ import {
 } from "@/domain/moment-intent";
 import type { ReplayAnalysisResult } from "@/domain/replay";
 import {
+  analysisTimelineEvents,
   buildReplayFrames,
+  eventMatchesAnalysis,
   firstEventCrossed,
   formatReplayTime,
   interpolatedSnapshotsAtTick,
   playerDisplayName,
-  playerTimelineEvents,
   radarOverviewForMap,
+  replayEventIsDeath,
   roundAtTick,
+  winProbabilityAtMoment,
+  winRateForPerspective,
   worldToRadar,
   type ProcessedReplay,
   type ReplayEvent,
@@ -27,10 +31,20 @@ import { ProductHeader } from "./ProductHeader";
 
 const PLAYBACK_RATES = [0.5, 1, 2, 4, 8];
 
-function eventLabel(event: ReplayEvent): string {
+function eventLabel(
+  event: ReplayEvent,
+  analysis?: ReplayAnalysisResult,
+): string {
+  if (analysis && eventMatchesAnalysis(event, analysis)) {
+    if (analysis.selected_decision.event_category === "damage") {
+      return analysis.selected_decision.role === "attacker" ? "Damage dealt" : "Damage received";
+    }
+    return "Analysis point";
+  }
+  if (replayEventIsDeath(event)) {
+    return event.headshot ? "Headshot death" : "Death";
+  }
   switch (event.event) {
-    case "kill":
-      return event.headshot ? "Headshot death" : "Death";
     case "damage":
       return "Damage received";
     default:
@@ -51,17 +65,8 @@ function clamp(value: number, minimum: number, maximum: number): number {
   return Math.min(maximum, Math.max(minimum, value));
 }
 
-function eventMatchesAnalysis(event: ReplayEvent, analysis: ReplayAnalysisResult): boolean {
-  const decision = analysis.selected_decision;
-  const playerMatches = decision.role === "victim"
-    ? event.victim_id === decision.player_id
-    : event.attacker_id === decision.player_id;
-  return (
-    event.tick === decision.contact_tick &&
-    event.round_num === decision.round_number &&
-    event.event === decision.event_category &&
-    playerMatches
-  );
+function formatProbability(value: number): string {
+  return `${(value * 100).toFixed(1)}%`;
 }
 
 export function ReplayAnalysisScreen({
@@ -163,12 +168,11 @@ export function ReplayAnalysisScreen({
   const selectedSnapshot = currentSnapshots.find(
     ({ player_id }) => player_id === selectedPlayerId,
   );
-  const selectedEvent = replay?.events.find(({ event_id }) => event_id === selectedEventId);
-
   const timelineEvents = useMemo(
-    () => (replay ? playerTimelineEvents(replay.events, selectedPlayerId) : []),
-    [replay, selectedPlayerId],
+    () => (replay ? analysisTimelineEvents(replay.events, selectedPlayerId, analysis) : []),
+    [analysis, replay, selectedPlayerId],
   );
+  const selectedEvent = timelineEvents.find(({ event_id }) => event_id === selectedEventId);
   const analysisEventId = useMemo(
     () => analysis ? timelineEvents.find((event) => eventMatchesAnalysis(event, analysis))?.event_id : undefined,
     [analysis, timelineEvents],
@@ -176,8 +180,35 @@ export function ReplayAnalysisScreen({
   const selectedEventHasAnalysis = Boolean(
     analysis && selectedEvent && eventMatchesAnalysis(selectedEvent, analysis),
   );
+  const selectedEventKind = selectedEventHasAnalysis
+    ? "analysis"
+    : selectedEvent && replayEventIsDeath(selectedEvent)
+      ? "death"
+      : "damage";
   const selectedIntentState = selectedEventId ? intentStates[selectedEventId] : undefined;
   const selectedIntentDraft = selectedEventId ? intentDrafts[selectedEventId] ?? "" : "";
+  const currentWinProbability = useMemo(
+    () => currentRound && analysis
+      ? winProbabilityAtMoment(
+          analysis.win_estimator.timeline,
+          currentRound.round_num,
+          currentTick,
+        )
+      : undefined,
+    [analysis, currentRound, currentTick],
+  );
+  const selectedAnalysisPlayer = analysis?.players.find(
+    ({ player_id }) => player_id === selectedPlayerId,
+  );
+  const selectedSide = (
+    currentRound
+      ? selectedAnalysisPlayer?.side_by_round[String(currentRound.round_num)]
+      : undefined
+  ) ?? selectedSnapshot?.side ?? "ct";
+  const winRate = winRateForPerspective(
+    currentWinProbability,
+    selectedSide,
+  );
 
   const namesById = useMemo(
     () =>
@@ -420,13 +451,20 @@ export function ReplayAnalysisScreen({
           </ul>
 
           {selectedEvent ? (
-            <aside className="analysis-inspector" aria-labelledby="inspector-title">
+            <aside
+              className={`analysis-inspector ${selectedEventKind}`}
+              aria-labelledby="inspector-title"
+            >
               <div className="inspector-heading">
                 <p className="eyebrow">Moment inspector</p>
-                <h2 id="inspector-title">{eventLabel(selectedEvent)}</h2>
+                <h2 id="inspector-title">
+                  {eventLabel(selectedEvent, selectedEventHasAnalysis ? analysis : undefined)}
+                </h2>
               </div>
               <p className="inspector-summary">
-                {selectedEvent.event === "kill"
+                {selectedEventHasAnalysis && analysis?.selected_decision.role === "attacker"
+                  ? `${namesById.get(selectedEvent.attacker_id ?? "") ?? "The selected player"} dealt ${selectedEvent.damage_health ?? "unknown"} damage to ${namesById.get(selectedEvent.victim_id ?? "") ?? "an opponent"}.`
+                  : replayEventIsDeath(selectedEvent)
                   ? `${namesById.get(selectedEvent.victim_id ?? "") ?? "The selected player"} was eliminated by ${namesById.get(selectedEvent.attacker_id ?? "") ?? "an opponent"}.`
                   : `${namesById.get(selectedEvent.victim_id ?? "") ?? "The selected player"} took ${selectedEvent.damage_health ?? "unknown"} damage from ${namesById.get(selectedEvent.attacker_id ?? "") ?? "an opponent"}.`}
               </p>
@@ -542,6 +580,36 @@ export function ReplayAnalysisScreen({
                 <strong>{selectedSnapshot?.side.toUpperCase() ?? "—"}</strong>
               </div>
             </div>
+            <section
+              className={`radar-win-rate${winRate.isBaseline ? " baseline" : ""}`}
+              aria-label="Win rate"
+            >
+              <div className="radar-win-rate-values">
+                <strong className="friendly-team">
+                  <span>{winRate.friendlyTeam}</span>
+                  {formatProbability(winRate.friendlyProbability)}
+                </strong>
+                <p>Win rate</p>
+                <strong className="enemy-team">
+                  {formatProbability(winRate.enemyProbability)}
+                  <span>{winRate.enemyTeam}</span>
+                </strong>
+              </div>
+              <div
+                className="win-rate-track"
+                role="img"
+                aria-label={`${winRate.friendlyTeam} ${formatProbability(winRate.friendlyProbability)}, ${winRate.enemyTeam} ${formatProbability(winRate.enemyProbability)}${winRate.isBaseline ? ", baseline estimate" : ""}`}
+              >
+                <span
+                  className="win-rate-friendly"
+                  style={{ width: formatProbability(winRate.friendlyProbability) }}
+                />
+                <span
+                  className="win-rate-enemy"
+                  style={{ width: formatProbability(winRate.enemyProbability) }}
+                />
+              </div>
+            </section>
             <div className="radar-frame">
               <Image
                 src={radarOverview.image}
@@ -652,7 +720,7 @@ export function ReplayAnalysisScreen({
               {timelineEvents.map((event, eventIndex) => (
                 <button
                   type="button"
-                  className={`${event.event === "kill" ? "death" : "damage"}${analysisEventId === event.event_id ? " coaching" : ""}${selectedEventId === event.event_id ? " selected" : ""}`}
+                  className={`${analysisEventId === event.event_id ? "coaching" : replayEventIsDeath(event) ? "death" : "damage"}${selectedEventId === event.event_id ? " selected" : ""}`}
                   style={{ left: `${((event.tick - firstTick) / duration) * 100}%` }}
                   key={event.event_id}
                   ref={(element) => {
@@ -668,8 +736,8 @@ export function ReplayAnalysisScreen({
                       ? 0
                       : -1
                   }
-                  title={`Round ${event.round_num}: ${eventLabel(event)}${analysisEventId === event.event_id ? " · Saved analysis" : ""}`}
-                  aria-label={`Round ${event.round_num}, ${eventLabel(event)}, ${formatReplayTime(event.tick, firstTick, replay.map.tick_rate)}${analysisEventId === event.event_id ? ", saved analysis" : ""}`}
+                  title={`Round ${event.round_num}: ${eventLabel(event, analysisEventId === event.event_id ? analysis : undefined)}${analysisEventId === event.event_id ? " · Saved analysis" : ""}`}
+                  aria-label={`Round ${event.round_num}, ${eventLabel(event, analysisEventId === event.event_id ? analysis : undefined)}, ${formatReplayTime(event.tick, firstTick, replay.map.tick_rate)}${analysisEventId === event.event_id ? ", saved analysis" : ""}`}
                   onClick={(clickEvent) => {
                     clickEvent.currentTarget.blur();
                     seek(event.tick, event.event_id);
