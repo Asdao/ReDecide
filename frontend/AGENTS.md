@@ -1,526 +1,368 @@
 # Frontend agent instructions
 
-These instructions apply to every file under `frontend/`. They extend the
-repository-level `AGENTS.md`; when they conflict, the repository-level rules
-and the numbered role briefs take precedence.
+These instructions apply to all work under `frontend/`. The frontend branch is
+currently maintained by one person, but existing work must still be inspected
+and preserved before edits.
 
 ## Required context
 
-Before implementing or changing frontend behavior, read:
+Before changing frontend behavior:
 
-1. `../AGENTS.md`
-2. `../Project_Context.md`
-3. `../04_FRONTEND_PRODUCT_EXPERIENCE.md`
-4. `../INTEGRATION_STATUS.md`
-5. `STATUS.md`
-6. `../backend/app/contracts.py` and the current fixtures under
-   `../backend/tests/fixtures/`
+1. Read `../backend/app/API.md`; it is the source of truth for the public API.
+2. Read `../backend/replay_api/API.md` when implementing upload, replay status,
+   or visualization download behavior.
+3. Read `STATUS.md` for the current frontend implementation and limitations.
+4. Inspect the relevant frontend files, tests, working-tree status, and diff.
+5. Inspect the current backend route and fixture implementation when an API
+   detail is unclear. Do not invent an endpoint or response shape.
 
-Inspect the current frontend tree, working-tree status, and diff before every
-material change. Preserve user work and reuse existing frontend conventions
-once they exist.
+## Scope
 
-## Mission and scope
+Build and maintain the browser UI under `frontend/**`. Do not edit backend code
+unless the user explicitly asks for a coordinated backend change. Keep secrets,
+provider configuration, replay contents, and server-only paths out of browser
+code, logs, URLs, analytics, and persistent storage.
 
-Build the complete RE:DECIDE browser experience for one outcome-blind CS2
-post-contact decision. The user must be able to choose or upload a match, see
-truthful analysis progress, state their intent before judgement, and inspect an
-evidence-linked Decision Card plus one practice quest.
+Use the existing Next.js, React, TypeScript, Zod, Tailwind, Vitest, and pnpm
+setup. Reuse the current components, adapters, domain types, fixtures, and
+visual conventions before creating replacements.
 
-Person 4 owns `frontend/**`. Do not edit backend code, frozen contracts, root
-dependency files, role briefs, or another owner's status file. Report contract
-or endpoint mismatches to Person 1 instead of repairing them in the browser.
+## Current user flow
 
-Do not add login, profiles, match history, leaderboards, social features, a
-chat interface, a full VOD player, a 3D map, a live overlay, or a mobile app.
-
-## Validated readiness and integration gates
-
-Architecture, QA, and product/accessibility reviews rate this plan **GO WITH
-CHANGES**. Fixture-first implementation may begin. Do not describe the live or
-sample product as integrated until Person 1 has resolved and documented all of
-these P0 gates:
-
-1. **Intent-before-judgement flow:** the frontend needs a prepared decision and
-   neutral summary before collecting intent, while the documented one-shot
-   `/api/analyze` request accepts intent up front.
-2. **Packet/card pairing:** the final experience needs both the validated
-   `DecisionPacket` and matching `DecisionCard`, but the documented endpoint
-   returns only the card. Reject a mismatched `decision_id`.
-3. **Uploaded-player discovery:** player choices are not known until an upload
-   is parsed, and no preparation response currently defines how they are
-   returned.
-4. **Structured action evidence:** version `1.0` carries complete
-   `EvidenceItem` objects only for `known_before_decision`; observed-action
-   evidence is currently a list of bare IDs and cannot provide expandable
-   tick, source, and statement details.
-5. **Unsafe result checks:** Person 1 must freeze the safe outcome when
-   `future_information_detected` or `contradiction_detected` is true. Until
-   agreed otherwise, fail closed: suppress coaching prose and verified-evidence
-   presentation, show a neutral invalid/unverified-analysis state, and offer
-   retry or an explicitly labelled example. Do not rewrite the backend verdict.
-6. **Request/response details:** freeze sample, upload, preparation, success,
-   no-decision, and error shapes, including HTTP status mapping, retryability,
-   content type, file-size limit, and optional intent-note limit.
-7. **Claim citations:** the current global `facts_used` list supports the claim
-   that the card's supporting evidence is inspectable. It cannot map every
-   sentence in `assessment` or `why` to an exact evidence ID. Person 1 must
-   either accept that narrower requirement or coordinate a structured
-   claim-citation addition.
-
-Keep these gates visible in `STATUS.md` until the agreed contracts and a real
-end-to-end sample have been verified. Frontend code may define internal ports,
-errors, and view models for fixture development, but it must not present those
-as frozen backend contracts.
-
-Current status documents may lag the tree: executable Pydantic contracts and
-JSON fixtures already exist even though `STATUS.md`/`../INTEGRATION_STATUS.md`
-may still say otherwise. Treat inspected code as implementation evidence, note
-the mismatch in the frontend handoff, update only `STATUS.md` after material
-frontend work, and leave the integration-status correction to Person 1. The
-working branch may also differ from the brief's `ux/decision-card` name;
-coordinate rather than renaming or rewriting history automatically.
-
-## Product invariants
-
-- Collect intent before revealing the verdict.
-- Never reveal or use later death, survival, kill, win, or round outcome while
-  presenting the decision analysis.
-- Display only facts provided by a validated runtime response. Never infer or
-  manufacture missing CS2 facts in frontend code or copy.
-- Treat `INSUFFICIENT_EVIDENCE` as a valid coaching result, not an application
-  error.
-- Keep unknowns and limitations readable and prominent.
-- Never expose provider credentials, private replay data, or server-only
-  configuration in browser bundles, logs, fixtures, or screenshots.
-- Use aliases for player names in fixtures and screenshots unless consent has
-  been recorded.
-
-## Contracts and API boundary
-
-Create one strict frontend schema source for the current version `1.0`
-contracts. Prefer strict Zod schemas with inferred TypeScript types so runtime
-validation and compile-time types cannot drift:
-
-- `DecisionPacket`
-- `IntentInput`
-- `DecisionCard`
-
-Do not use `any` at the API boundary. Receive network and fixture data as
-`unknown`, validate it, then expose typed values to components. Keep enum
-values, field names, nullability, and numeric ranges aligned with Person 1's
-contract. Do not add browser-only fields to shared contract types; use separate
-view-model types when the UI needs derived state. Mirror fixed schema version
-`1.0`, strict extra-field rejection, recursive JSON values, optional versus
-nullable fields, confidence/data-quality ranges, and Pydantic's boundary
-whitespace behavior. Parse once at the adapter boundary.
-
-Consume only the agreed endpoints:
-
-- `GET /api/health`
-- `GET /api/samples`
-- `POST /api/analyze`
-- `POST /api/analyze-json` for fixture or fallback integration when available
-
-Before live integration, inspect and test the actual request, response, sample,
-upload, no-decision, and error schemas. The required intent-before-judgement
-flow needs an agreed two-stage backend behavior: prepare/detect the replay and
-return player choices plus a packet, then submit intent and return the matching
-card, or an equivalent design using the allowed endpoints. Do not invent a
-permanent endpoint or silently change the shared contract to work around that
-gap.
-
-The shared API decision must specify:
-
-- `/api/samples` response fields;
-- upload field names, content type, and maximum size;
-- uploaded-player discovery;
-- prepared-decision response and neutral summary;
-- final packet/card response envelope or retrieval mechanism;
-- typed error fields/codes for parser failure, unsupported demo, no decision,
-  missing provider configuration, timeout, invalid model output, future-data
-  detection, and contradiction;
-- which failures are retryable and whether retry can repeat a paid model call;
-- separate detection and coaching timeout behavior; and
-- maximum length/normalization for the optional intent note.
-
-Handle network loss, CORS failure, non-JSON errors, malformed successful
-responses, and ordinary `4xx`/`5xx` responses without rendering unvalidated
-content. Decide and document whether `/api/health` blocks analysis actions or
-only reports availability.
-
-## Evidence handling
-
-Checked-in fixtures and evidence IDs such as `E1`, `E2`, `E3`, and `E4` are
-illustrative examples. Runtime `DecisionPacket` and `DecisionCard` values are
-authoritative for the analyzed match.
-
-The normal backend invariant is:
-
-1. the replay pipeline emits the evidence records available for that match;
-2. the coach includes only corresponding valid IDs in `facts_used`; and
-3. deterministic backend checks reject or flag unsupported references.
-
-The frontend must still fail safely if malformed or stale data reaches it:
-
-- Build one evidence index keyed by `evidence_id` from the structured evidence
-  records actually present in the response.
-- Resolve `facts_used` and action evidence references through that index using
-  exact, case-sensitive IDs. Do not trim, normalize, or guess an ID after the
-  response has passed contract validation.
-- Render an evidence chip or expansion only when the referenced record exists.
-- Silently omit unresolved evidence references from the visible evidence list;
-  continue rendering the rest of the card.
-- Never create a placeholder statement, tick, source, value, or replacement ID.
-- Never present an ID listed in `checks.unsupported_evidence_ids` as verified.
-- Preserve valid evidence order and avoid duplicate chips.
-- Keep the neutral observed-action description when it is present, even if one
-  of its optional evidence expansions cannot be resolved.
-
-For the Decision Card's supporting-evidence section, `no evidence remains`
-means that zero valid, supported IDs from `DecisionCard.facts_used` resolve to
-structured evidence records after filtering. Unreferenced packet facts and bare
-observed-action IDs do not count as support for the card's assessment.
-
-If at least one valid `facts_used` item remains, show the valid evidence and no
-notice. If none remain, replace the empty evidence list with one visible,
-neutral notice:
-
-> Evidence details aren't available for this card. You can still review the
-> coaching summary, but its supporting replay facts can't be verified here.
-
-Place the notice inside the evidence section where the chips would otherwise
-appear. Use amber/uncertainty styling rather than verified green or error red,
-and use an icon plus text so color is not the only signal. If the notice appears
-after asynchronous loading, announce it once as a polite status, not an urgent
-alert. Do not render empty drawers or popovers.
-
-Zero resolved frontend evidence is a stale, incomplete, or mismatched display
-response; it is not the same as the backend verdict `INSUFFICIENT_EVIDENCE`.
-Keep the backend verdict unchanged and keep the rest of the card usable,
-including the assessment, observed-action description, options, quest,
-unknowns, and limitations. Do not imply that the unavailable evidence was
-verified.
-
-Put this logic in a shared pure helper rather than repeating filtering in
-components. The helper should return the resolved items in `facts_used` order,
-an internal list of omitted IDs for diagnostics/tests, and whether the notice
-must be shown. Do not expose omitted IDs in the UI. A malformed structured
-evidence object or mismatched packet/card `decision_id` is an invalid response,
-not a missing-reference case, and must use the safe invalid-response state.
-Missing evidence must not crash the page or hide valid evidence that remains.
-Display supplied `data_quality.warnings` as quality notes or limitations. Do
-not derive a new verdict from `data_quality.score` in the browser.
-
-## Required experience
-
-Implement one clear flow, preferably as explicit typed application states:
-
-1. **Choose match**
-   - Lead with `Try a sample match` as the one-click primary action.
-   - Offer `.dem` upload as the secondary path.
-   - Show player selection when supplied by the sample or upload response.
-   - Explain the difference immediately in plain language: `We judge the choice
-     using only what was knowable at that moment—not whether you later won,
-     died, or lost the round.`
-   - State only confirmed privacy behavior. Safe default copy may say replay
-     data is sent to the analysis service and provider keys remain on the
-     server; do not promise deletion or retention behavior until confirmed.
-2. **Analysis progress**
-   - Before intent, show only `Parse replay events`, `Find a post-contact
-     decision`, and `Freeze what was knowable`.
-   - After intent submission, show `Compare action with stated intent` and
-     `Verify evidence and limitations`.
-   - Animate waiting without claiming backend stages have completed unless the
-     backend confirms them.
-   - Without backend stage events, show one current/waiting stage rather than
-     completing stages on a timer.
-   - Provide clear timeout, retry, and safe fallback behavior.
-3. **Intent checkpoint**
-   - Show only the decision timestamp and a neutral event summary.
-   - Offer the five frozen intent tags and an optional one-sentence note.
-   - Explain briefly why intent changes the assessment.
-   - Do not mount verdict, judgement, later-outcome, or recommendation copy in
-     the DOM before intent is submitted.
-4. **Decision Card**
-   - Prioritize verdict and calibrated confidence, knowledge boundary, known
-     evidence, observed choice, intent-relative assessment, alternatives and
-     trade-offs, practice quest, unknowns, and limitations.
-   - Make each rendered evidence item expandable with its real ID, tick or
-     timestamp, source, and exact statement.
-   - Convert enum labels into readable language and explain confidence as
-     `Confidence in this judgement, not your chance of winning.`
-   - Explain unknowns as facts the replay could not capture and limitations as
-     constraints on the judgement.
-   - For `INSUFFICIENT_EVIDENCE`, use neutral/amber styling, foreground missing
-     facts and limitations, preserve any safe evidence, and offer another
-     decision or sample.
-
-Create the knowledge-boundary timeline as a compact chronological figure:
+The active uploaded-replay flow is:
 
 ```text
-known before decision → decision moment → immediate action through close tick
-                                            → everything after was hidden
+upload .dem
+  -> receive replay manifest and replay_id
+  -> prepare analysis with replay_id
+  -> wait until players are available
+  -> choose player_id
+  -> run coaching (may take up to 30 seconds)
+  -> validate and display the completed analysis
+  -> retrieve the unlocked visualization JSON when needed
 ```
 
-Use the real decision and action-close time/tick values where supplied. Label
-the future region `hidden from the coach` and provide the same meaning in a
-text caption for screen readers. Do not rely on color, hatching, or horizontal
-position alone. At narrow widths, use a stacked ordered representation instead
-of horizontal scrolling or chronology-breaking wrapping. Do not reveal later
-outcomes unless an explicitly approved demo-only reveal is added after the
-completed card.
+Rules:
 
-At `1440x900`, the first Decision Card viewport should contain the verdict,
-confidence explanation, knowledge boundary, and beginning of the evidence
-section. Options, quest, and limitations may continue below without shrinking
-text to force everything into one screen.
+- Upload the `.dem` once. The backend creates separate coaching and
+  visualization artifacts; the browser must not parse or re-upload it after
+  player selection.
+- Display a player's `display_name`, but submit the stable `player_id`.
+- Keep `replay_id`, `analysis_id`, and `player_id` distinct.
+- Player intent and follow-up questions are not supported by the current public
+  API. Do not send intent data to an invented endpoint. The future intent flow
+  below may be designed behind a typed interface, but it must remain disabled or
+  clearly mocked until the backend contract exists.
+- Do not display player-specific coaching before a player is selected.
+- The coaching call can take up to 30 seconds. Show truthful progress and allow
+  reasonable network overhead before declaring a timeout.
+- Validate every successful response before rendering it. Treat network data as
+  `unknown`; do not use `any` at the API boundary.
+- Do not reveal later round outcomes before the backend unlocks the full
+  visualization JSON.
 
-## Run modes and architecture
+## Future replay and coaching workspace
 
-Keep presentation components independent of the data source. Provide typed
-adapters with the same frontend-facing interface for:
+This section defines the intended replay experience. It extends the current
+upload-to-analysis flow but does not claim that all required backend contracts
+exist yet.
 
-- `live`: uploaded replay through the real parser and coach;
-- `sample`: bundled match through the real path; and
-- `fixture`: checked-in deterministic data for development and recovery.
+### Layout and playback
 
-Treat `upload` and `sample` as user-selected analysis sources. They should share
-one real backend adapter. Treat `fixture` as a deterministic adapter used for
-development or explicit recovery, not as a second fake implementation of the
-live path. A small frontend port may expose operations such as `listSamples`,
-`prepareDecision`, and `submitIntent`, with backend and fixture implementations
-behind it.
+- Use the game radar as the main visual surface in the center of the screen.
+- Put a replay timeline across the full width at the bottom of the viewport.
+- Provide play, pause, rewind, fast-forward, and direct scrubbing. Controls must
+  remain usable by keyboard and must expose their state and current replay time
+  to assistive technology.
+- Drive playback from replay ticks and the backend-provided map tick rate. Keep
+  one authoritative playback clock; do not let the timeline, player positions,
+  and analysis panel maintain separate clocks.
+- Mark backend-identified learning points on the timeline, including first
+  damage, deaths, and other supported key events. Use stable `event_id` or
+  `decision_id` values instead of array indexes.
+- When playback reaches a learning point, select that marker, pause by default,
+  and show the analysis associated with that exact point. The user may resume,
+  rewind, fast-forward, scrub to another time, or select another marker.
+- Seeking must update the map immediately and deterministically. Reaching the
+  same point again must not repeat a model call when a cached analysis already
+  exists.
+- Keep the full-width timeline anchored at the bottom when the analysis panel
+  opens. Avoid horizontal page scrolling or controls that move unpredictably.
 
-Select enabled/default modes through validated environment/configuration, not a
-hidden production control. A public API base URL may be exposed to the browser;
-keys and provider configuration may not. Never silently replace a failed real
-sample or upload with fixture output. Offer an explicit action such as `Open a
-demo example` and retain a visible label such as `Demo example — not generated
-from your uploaded match.` The recorded submission must use the genuine sample
-path.
+### Key-point coaching panel and future intent
 
-Fixture mode must remain deployable without the backend. Coordinate whether to
-keep a validated frontend-local rehearsal fixture or package a shared canonical
-fixture with Person 1. Do not assume a standalone Next.js build will include
-arbitrary files imported from above the frontend project root. If a local copy
-is approved, validate it with the same schema and add a drift/compatibility
-test. Add fixture variants for every required verdict, failure, evidence, and
-fallback state; do not mutate one fixture through untyped overrides.
+- In ordinary playback, the map occupies the central focus area.
+- At a learning point, shrink the map slightly and shift it left. Reveal a
+  right-side panel containing the backend analysis for that point and an intent
+  textbox.
+- The panel must identify the selected round, replay time/tick, event type, and
+  player so analysis from different points cannot be confused.
+- The first analysis shown is the backend's existing analysis for that point.
+- In the future flow, the user may enter what they intended to do at that
+  moment. Submitting intent sends the selected `replay_id`, `analysis_id`,
+  `player_id`, stable key-point ID, and intent text to a future backend endpoint.
+- The contextual response replaces the analysis currently displayed for that
+  key point only. It must not overwrite analysis for other points or change the
+  underlying replay facts.
+- Store analysis state by stable key-point ID and request version. Ignore a
+  late intent response if the user changed point, changed intent, reset the
+  replay, or started a newer request.
+- Show a local loading state in the analysis panel while keeping playback
+  controls available. Preserve the previous analysis until the contextual
+  response validates successfully; on failure, keep it and offer retry.
+- Do not infer, simulate, or persist contextual intent analysis until the
+  backend owner documents an endpoint, request/response schema, length limit,
+  retry behavior, and privacy/retention rules. Never send intent text through
+  query parameters, logs, analytics, or persistent browser storage.
 
-When scaffolding, use the stack recommended by Person 1 unless the team has
-agreed otherwise: Next.js App Router, React, strict TypeScript, Tailwind, and
-the repository's available `pnpm`. Keep the frontend package, lockfile,
-configuration, and tests inside `frontend/`. Use small reusable components and
-plain design tokens; do not build a general-purpose design system. A minimal
-layout is sufficient:
+### Radar map and player rendering
+
+- Radar images and overview metadata are available from
+  [MurkyYT/cs2-map-icons](https://github.com/MurkyYT/cs2-map-icons). Its radar
+  information includes map origin, scale, rotation, zoom, and vertical-section
+  metadata. Multi-level maps may have separate lower-radar images.
+- Use a reviewed, pinned map asset and its matching overview metadata. Do not
+  guess the world-to-radar transform or stretch a radar image until positions
+  appear plausible.
+- The repository redistributes assets extracted from the CS2 depot and states
+  that map icons, radars, thumbnails, and overview data are Valve property.
+  Confirm acceptable hackathon usage and attribution before bundling assets.
+  Prefer a reviewed local subset over runtime hotlinking or bulk-copying every
+  map.
+- Render player snapshots from the unlocked visualization JSON. The backend
+  currently documents `X`, `Y`, `Z`, health, side, and alive state when
+  available. Handle missing samples explicitly and interpolate only between
+  valid snapshots for the same player and round.
+- Render each player as a clear dot relative to the selected player at the
+  current tick:
+  - selected player: blue;
+  - selected player's allies: green; and
+  - enemies: red.
+- Do not use color alone. Give the selected player a distinct ring or glyph,
+  distinguish teams by shape or outline, and provide an accessible legend.
+- Use the side/team values at the current round rather than assuming a player's
+  team remains constant for the whole match. Hide, fade, or mark dead players
+  according to the backend `alive` state.
+- Use `Z` and the radar's vertical-section metadata to choose the appropriate
+  floor on multi-level maps. When the correct floor is uncertain, indicate that
+  uncertainty rather than silently placing the player on an arbitrary layer.
+- The selected blue player's current `Z` determines the active floor at every
+  playback position. When the selected player moves between floors, update the
+  active radar layer without resetting playback, the selected learning point,
+  or the open coaching panel.
+- In the flat 2D view, render the active floor at full opacity in the foreground.
+  Keep the other available floor images aligned underneath it at lower opacity
+  so the user retains multi-level context without confusing an inactive floor
+  for the selected player's current floor.
+- Render players on the active floor at full opacity. Render players on other
+  floors at reduced opacity while preserving their team color and identity
+  shape. The selected blue player must always remain fully visible on the active
+  floor.
+- Apply the same floor classification to player dots, field-of-view wedges,
+  event markers, and any paths or trails. Do not show an off-floor player at
+  full opacity merely because their `X` and `Y` overlap the active floor.
+- Avoid rapid layer flicker when a `Z` value sits close to a vertical-section
+  boundary. Use the backend's explicit vertical sections where available and a
+  deterministic boundary rule. If the selected player's `Z` is temporarily
+  missing, retain the last valid floor within the same round and visibly fall
+  back to an uncertain single-layer state when no valid floor is known.
+- Add a field-of-view wedge only when the backend returns a documented,
+  normalized view direction such as yaw, including its units, zero direction,
+  rotation convention, and coordinate space. The current public visualization
+  contract does not guarantee this data. Never substitute movement direction
+  as player aim.
+
+### Flat 2D stacked-layer presentation
+
+The required implementation is a flat 2D radar. It is practical with the
+current position snapshots and the overview metadata, and it provides the best
+base for reliable playback, seeking, key-point synchronization, and responsive
+layout.
+
+- Render every radar floor as an aligned textured plane with vertical spacing
+  derived from floor order, not as true game geometry.
+- Keep the selected blue player's active plane at full opacity and stronger
+  visual emphasis. Keep other planes visible below or above it at reduced
+  opacity.
+- Anchor every player marker to its classified floor plane. Players on the
+  active plane remain fully opaque; players on other planes use the same reduced
+  opacity rule as the flat view.
+- When the selected player changes floor, transition emphasis to the new plane
+  while retaining camera position, playback time, and analysis state.
+- Allow a restrained tilt and slow spin only when it does not interfere with
+  playback or reading analysis. Pause decorative rotation during scrubbing,
+  active playback when motion becomes distracting, and while the coaching panel
+  is being read.
+- Provide a visible toggle between flat and stacked modes. Flat 2D remains the
+  canonical tactical view and fallback for unsupported maps, small screens,
+  reduced-motion users, poor performance, and uncertain layer metadata.
+- Keep timeline markers and playback controls in screen space; they must not
+  tilt or rotate with the map planes.
+
+Do not attempt true 3D map geometry from the radar PNGs. They are flat images,
+not meshes, so true geometry would require another licensed geometry source,
+world-height mapping, a WebGL/Three.js renderer, camera and interaction work,
+performance tuning, and substantially more QA. The decorative stacked-layer
+version is medium effort after the 2D viewer is stable; true 3D is high effort
+and out of scope for the first implementation.
+
+Recommended order:
+
+1. Flat 2D radar with correct coordinate transforms and player dots.
+2. Timeline playback, seeking, controls, and key-point markers.
+3. Responsive map-to-left and analysis-panel transition.
+4. Contextual intent flow after the backend contract is available.
+5. Conditional field-of-view wedges after view direction is available.
+
+## Public API endpoints
+
+Run the public gateway from the repository root with:
+
+```powershell
+uv run uvicorn backend.app.main:app --reload --port 8000
+```
+
+The following list mirrors `../backend/app/API.md`.
+
+### Active APIs
+
+| Method and path | Frontend use |
+| --- | --- |
+| `GET /api/health` | Check backend availability. Returns `{"status":"ok"}`. |
+| `POST /api/replay/upload` | Upload one `.dem` as `multipart/form-data` in the `file` field. Returns `202` with a safe replay manifest containing `replay_id`, map, rounds, players, and processing status. |
+| `POST /api/replay/import-url` | Optional public Vercel Blob import. Disabled by default and absent from OpenAPI unless `REDECIDE_BLOB_IMPORT_ENABLED=true`. |
+| `GET /api/replay/{replay_id}/status` | Read the latest replay, coaching, visualization, and unlock status. |
+| `GET /api/replay/{replay_id}/json` | Download the full minimap, timeline, positions, rounds, and events JSON after visualization generation is ready and coaching has unlocked it. |
+| `POST /api/analysis/prepare` | Send `{"replay_id":"<replay_id>"}`. Returns `202` with `analysis_id`, status, and progress URLs. |
+| `GET /api/analysis/{analysis_id}` | Poll job status, including `players_available` and `result_available`. |
+| `GET /api/analysis/{analysis_id}/players` | Get selectable players and stable `player_id` values. A `202` means preparation is not ready yet. |
+| `POST /api/analysis/{analysis_id}/run` | Send `{"player_id":"<player_id>"}`. Runs live coaching and returns the completed player analysis. This request may take up to 30 seconds. |
+| `GET /api/analysis/{analysis_id}/result` | Retrieve the completed result without running coaching again. A `202` means it is not ready yet. |
+| `GET /api/analysis/{analysis_id}/events` | Consume `text/event-stream` progress events while preparation or coaching runs. |
+| `GET /api/analysis/{analysis_id}/logs` | Read saved plain-text JSONL progress logs for debugging or status display. Do not expose sensitive log details to users. |
+
+Upload-specific behavior:
+
+- Reject a non-`.dem` filename cleanly; the backend returns `415`.
+- Treat parser failure as an upload error; the backend returns `422`.
+- The backend currently imposes no explicit demo-size limit, although hosting
+  infrastructure may impose one.
+- The upload response already contains safe player metadata. The analysis
+  player endpoint remains authoritative for coaching selection.
+- `visualization_status: "ready"` is not sufficient for download;
+  `visualization_unlocked` must also be `true`.
+- `/api/replay/{replay_id}/json` can return `202` while processing, `403` while
+  locked, `404` for an unknown replay, or `422` after visualization failure.
+
+### Compatibility APIs
+
+These endpoints exist but are not the primary uploaded-replay flow:
+
+| Method and path | Status and use |
+| --- | --- |
+| `POST /api/replay/convert` | Older alias for `/api/replay/upload`. New frontend code must use `/api/replay/upload`. |
+| `GET /api/samples` | Returns the sample matches available for selection. Treat the response as an opaque backend result. |
+| `POST /api/analyze` | Starts the supported sample analysis flow using the selected `sample_id` and optional player name. |
+
+Sample-picker behavior:
+
+- When the user chooses `Use a sample match`, call `GET /api/samples` and render
+  the returned `samples` array as a selectable list.
+- The backend currently returns one match, so show a normal list containing one
+  match. Do not auto-select it or replace the list with a special hard-coded
+  sample button.
+- Treat the backend as a black box. The frontend must not depend on, reveal, or
+  describe whether samples come from fixtures, files, a database, or any other
+  backend implementation detail.
+- Use only the returned sample fields and stable `sample_id`. Do not branch on a
+  known fixture ID or assume the list will always contain exactly one item.
+- Handle zero, one, and many samples with the same list component. Show an empty
+  state when none are returned and disable or label entries whose returned
+  availability field says they cannot be selected.
+- Submit the chosen `sample_id` through `POST /api/analyze` and validate its
+  response before continuing the sample flow.
+
+`POST /api/analyze-json` is intentionally unavailable on the public gateway and
+returns `404`. Never call it from the frontend.
+
+## Frontend state and request handling
+
+Represent the main flow with explicit states rather than unrelated booleans:
 
 ```text
-src/app
-src/components
-src/domain       # schemas, state, evidence resolution
-src/adapters
-src/fixtures
-tests/e2e
+choose source
+  -> uploading
+  -> preparing analysis
+  -> choosing player
+  -> running coaching
+  -> result
 ```
 
-Use native `fetch` plus `AbortController`. Avoid server actions, Redux, XState,
-Zustand, query libraries, Storybook, a design-system package, and network-fetched
-fonts unless a demonstrated requirement justifies them.
+Each request may also transition to a typed error, retry, or reset state. Keep
+the source file, IDs, selected player, request ownership, and retryability
+explicit. Use `AbortController`, ignore late responses after reset or a newer
+request, and prevent duplicate uploads or coaching calls.
 
-Use a small reducer with a discriminated union rather than scattered booleans:
+Use SSE progress when practical. Otherwise poll the documented status endpoint
+without fabricating completed stages. A long request is not automatically a
+failure. Preserve the result from `POST /run`; use `GET /result` for retrieval
+or recovery without causing another model call.
 
-```text
-choose
-  → detecting
-  → intent
-  → coaching
-  → result | abstention
+Never silently replace a failed live upload with fixture or sample data. Any
+fallback must be a user-selected action with persistent provenance explaining
+that it is an example.
+
+## UI and accessibility
+
+- Keep the existing restrained dark visual language and responsive layout.
+- Label the `.dem` file input, player selector, retry actions, and errors.
+- Use semantic controls, visible focus, readable contrast, and reduced-motion
+  support.
+- Announce meaningful progress changes through one polite live region. Do not
+  announce decorative animation or complete stages on a timer.
+- Use blocking alerts only for errors that prevent the user from continuing.
+- At common desktop and laptop widths, verify loading, player selection, the
+  30-second wait, errors, and the final result without clipping or horizontal
+  overflow.
+
+## Required error handling
+
+Handle at least:
+
+- invalid file type and `.dem` parser failure;
+- network loss, CORS failure, non-JSON responses, and malformed success data;
+- unknown `replay_id` or `analysis_id`;
+- replay or player list still processing;
+- empty player list and invalid player selection;
+- coaching/model failure and analysis timeout;
+- visualization processing, locked, missing, and failed states; and
+- reset, abort, stale response, duplicate submission, and retry behavior.
+
+Show safe, non-technical messages and do not expose stack traces, provider
+errors, local paths, raw prompts, or private replay details.
+
+## Validation and handoff
+
+After frontend changes, run the focused tests for the changed behavior and then,
+when feasible, run from `frontend/`:
+
+```powershell
+pnpm run verify
 ```
 
-Detection may instead end in parser error, timeout, invalid response, or no
-decision. Coaching may instead end in model failure, timeout, unsafe result, or
-invalid response. Carry the source and retry context explicitly. Ignore late
-responses after reset, timeout, abort, or a newer request. Prevent duplicate
-submission and preserve the user's file, player, and intent when a retry is
-safe. Reset must abort pending work and clear replay data and sensitive client
-state.
+Add or update tests for API validation, state transitions, the upload-to-player
+flow, the 30-second coaching wait, error recovery, cancellation, stale-response
+rejection, accessibility, zero/one/many sample-list responses, unavailable
+sample entries, and the complete sample path supported by the backend. For
+replay-workspace changes, also test tick-to-time
+conversion, world-to-radar transforms, round/team changes, missing player
+snapshots, selected-player floor changes, active/inactive layer and player
+opacity, boundary flicker prevention, flat/2.5D parity, reduced-motion fallback,
+timeline seeking, marker activation, pause/rewind/fast-forward behavior, panel
+layout, cached point analysis, and stale contextual-intent responses. Verify
+acceptable performance with a realistically large tick stream rather than a
+tiny fixture alone.
 
-## Visual and accessibility requirements
-
-- Use a dark, restrained competitive-game style without copying official CS2
-  branding.
-- Use one warm decision accent, green only for verified evidence, amber for
-  uncertainty, and red only for errors or genuinely poor decisions.
-- Design desktop-first for `1440x900`; also verify `1366x768` and `1280x720`.
-- Prevent horizontal overflow and clipped content.
-- Meet WCAG AA contrast. Use semantic HTML, labelled controls, visible keyboard
-  focus, sensible heading order, at least practical `44px` pointer targets, and
-  reduced-motion support.
-- Move focus to the new main heading, blocking error summary, or card title on
-  meaningful screen transitions.
-- Implement intent with a real `fieldset`, `legend`, and radio inputs. Label
-  and describe the file input and associate validation errors with it.
-- Use native `details` or buttons with `aria-expanded` and `aria-controls` for
-  evidence disclosure. Restore focus correctly when closing any drawer.
-- Announce progress changes sparingly through one polite live region. Do not
-  repeatedly announce animations. Use `alert` only for blocking errors.
-- Ensure keyboard order follows visual chronology and status/verdict meaning is
-  always communicated with text or an icon, not color alone.
-- Motion must explain a transition or waiting state rather than decorate it.
-- Never hide limitations in small or low-contrast text.
-
-At supported viewports and 200% zoom where feasible, verify the entire page,
-expanded evidence, optional intent note, notices, and errors for overflow,
-clipping, obscured focus, and unusable popovers.
-
-## Security and privacy checks
-
-- Only a public API base URL may use browser-public environment variables.
-  Provider keys and server configuration must never enter source or bundles.
-- Do not put replay contents, real player names, intent text, or omitted
-  evidence IDs in console logs, analytics, URLs, or persistent browser storage.
-- Do not use `dangerouslySetInnerHTML` for API/model output.
-- Send raw uploads only to the configured backend. Do not add silent analytics
-  or third-party upload destinations.
-- Reset must clear sensitive client state and abort pending upload/analysis.
-- Inspect production bundles and real network responses for secrets before the
-  demo. Frontend-only checks cannot prove backend responses are clean.
-- Privacy copy must match confirmed backend processing and retention behavior;
-  do not make stronger promises than the implementation supports.
-
-## Required states and tests
-
-Implement and verify at least:
-
-- normal successful card;
-- `REASONABLE_BUT_RISKY`;
-- `POOR_DECISION`;
-- `INSUFFICIENT_EVIDENCE`;
-- loading and truthful progress;
-- parser or upload error;
-- API timeout and retry;
-- model failure;
-- no eligible decision;
-- sample failure with fixture fallback;
-- malformed or partially missing evidence references;
-- zero valid supporting-evidence references and its visible notice;
-- unsafe future-information or contradiction checks;
-- malformed success, non-JSON error, network loss, CORS, and `4xx`/`5xx`;
-- keyboard-only navigation and visible focus; and
-- the complete sample route at the recorded-demo resolution.
-
-Use clear recovery behavior and non-technical copy:
-
-- Parser/upload error: state the usable reason, then offer another `.dem` or a
-  sample. Do not expose a stack trace.
-- Timeout: say `Analysis is taking longer than expected`, prevent duplicate
-  work, and offer retry or sample selection.
-- Model failure/invalid or unsafe response: say the judgement could not be
-  produced or verified, suppress unsafe prose, and offer retry.
-- No eligible decision: explain that no supported post-contact reset decision
-  was found and offer another match or sample; this is not a parser error.
-- Fixture recovery: require the explicit, persistent provenance label defined
-  above.
-- Empty `options`, `limitations`, or `unknowns`: omit or explain the empty
-  section without inserting invented content. Record the chosen rendering rule
-  in tests.
-
-Add focused unit/component tests for contract parsing, state transitions,
-evidence resolution, all verdicts, and error recovery. Add one browser-level
-test for the complete sample flow. Test that intent appears before the verdict
-and that the hidden-future region is clearly labelled. Evidence tests must
-cover all valid, partially valid, all missing, empty `facts_used`, all
-unsupported, duplicate references, bare action IDs, and
-`INSUFFICIENT_EVIDENCE` with no resolvable supporting facts. Partial evidence
-must not show the notice; zero resolved supporting evidence must show it once.
-
-Use a modest test stack: Vitest, Testing Library/user-event, and Playwright.
-The complete validation matrix must include:
-
-- strict schema parsing and rejection of extra/malformed fields;
-- packet/card `decision_id` mismatch;
-- reducer transitions and impossible-state prevention;
-- pre-intent versus post-intent progress order;
-- no judgement or verdict content in the DOM before intent submission;
-- all verdict, empty, timeout, parser, model, unsafe-result, and invalid-response
-  states;
-- retry cancellation, stale-response rejection, and duplicate-submit
-  prevention;
-- explicit fixture provenance and no silent fallback;
-- evidence disclosure keyboard behavior and no empty popovers;
-- focus movement, polite status announcements, reduced motion, and a
-  keyboard-only sample flow;
-- semantic/text fallback for the knowledge boundary;
-- the complete sample path in at most five actions, using an agreed counting
-  rule; and
-- no clipping or body-level horizontal overflow at `1440x900`, `1366x768`, and
-  `1280x720`.
-
-Fixture coverage must include `GOOD_DECISION`, `REASONABLE_BUT_RISKY`,
-`POOR_DECISION`, `INSUFFICIENT_EVIDENCE`, no decision, parser error, timeout,
-model failure, malformed response, partial evidence, zero evidence, unsafe
-checks, and explicit fallback. A mocked backend adapter test does not count as
-a genuine live/sample end-to-end test.
-
-Run type checking, linting, component tests, the browser flow, and a production
-build after relevant changes. Record exact commands and results. If a check
-cannot run because a service or dependency is unavailable, report that rather
-than claiming it passed.
-
-Before a demo or release, also require a pinned Node version, committed lockfile,
-clean dependency install, production-server smoke test, network-offline fixture
-rehearsal, genuine primary and secondary sample runs, explicit recovery
-rehearsal, second-machine verification, and a `1440x900` timed walkthrough. Do
-not rely on globally installed tools, a warm cache, or development mode alone.
-
-## Product acceptance validation
-
-Coordinate five first-time-viewer sessions with Person 5. Within sixty seconds,
-measure whether each person can explain:
-
-- which decision was judged;
-- what the player knew;
-- what immediate action was observed;
-- what information was hidden;
-- why the judgement was made; and
-- what to try in the next match.
-
-Record observed results and the number of participants honestly. Fix the top
-three comprehension failures; do not invent a pass or a percentage. Define the
-five-action sample criterion before measuring it. A recommended count is:
-
-1. try sample;
-2. choose player when required;
-3. choose intent;
-4. submit intent; and
-5. optionally inspect evidence.
-
-Progress transitions must be automatic and must not require `Next` clicks.
-Decide and document supported browsers, tick-versus-timestamp formatting when
-tick rate is unavailable, fixture-mode production availability, and the
-optional intent-note length before feature freeze.
-
-## Delivery workflow
-
-Work in the smallest demonstrable increments:
-
-1. Record the P0 integration gates and questions for Person 1.
-2. Scaffold the standalone frontend package and theme.
-3. Add strict schemas/types and the approved deployable fixture strategy.
-4. Add the reducer state model and typed backend/fixture ports.
-5. Render all four screens from fixtures, splitting progress around intent.
-6. Add the knowledge boundary, evidence resolver, notice, and unsafe-result
-   gate.
-7. Add failure, abstention, timeout, abort, retry, no-decision, invalid-response,
-   and explicit fallback states.
-8. Connect the frozen sample/upload API shapes without changing backend code.
-9. Add component and browser tests, accessibility checks, responsive polish,
-   production-build verification, and demo reset.
-10. Run usability tests with Person 5 and fix the top comprehension failures.
-
-After material frontend work, replace stale information in `STATUS.md` with the
-current operational truth: implemented behavior, important paths, dependencies,
-exact validation commands/results, limitations, contract impact, blockers, and
-the next integration handoff. Do not edit `../INTEGRATION_STATUS.md`; Person 1
-updates it only after merged end-to-end verification.
+After material work, update `STATUS.md` with current implemented behavior,
+important paths, exact validation results, limitations, API impact, and the
+next handoff. Replace stale claims rather than appending a diary.

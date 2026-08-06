@@ -22,15 +22,16 @@ sys.modules[SPEC.name] = CLI
 SPEC.loader.exec_module(CLI)
 
 
-def test_choose_player_defaults_to_first_eligible_and_honors_requested_id() -> None:
+def test_choose_player_randomly_selects_eligible_and_honors_requested_id() -> None:
     players = [
         {"player_id": "no-decision", "display_name": "No Contact", "decision_ids": []},
         {"player_id": "t1", "display_name": "T One", "decision_ids": ["decision-1"]},
         {"player_id": "ct1", "display_name": "CT One", "decision_ids": ["decision-2"]},
     ]
 
-    with patch("builtins.input", return_value=""):
-        assert CLI._choose_player(players, None)["player_id"] == "t1"
+    with patch.object(CLI.random, "choice", return_value=players[2]) as choice:
+        assert CLI._choose_player(players, None)["player_id"] == "ct1"
+        choice.assert_called_once_with(players[1:])
     assert CLI._choose_player(players, "ct1")["display_name"] == "CT One"
 
 
@@ -143,7 +144,7 @@ class _FakeAsyncClient:
         raise AssertionError(f"unexpected POST {path}")
 
 
-def test_run_api_uses_public_route_sequence_and_selects_player() -> None:
+def test_run_api_uses_public_route_sequence_and_selects_player(tmp_path) -> None:
     _FakeAsyncClient.calls = []
     _FakeAsyncClient.metadata_poll_count = 0
     _FakeAsyncClient.fail_preparation = False
@@ -154,13 +155,21 @@ def test_run_api_uses_public_route_sequence_and_selects_player() -> None:
     fake_app_module = types.SimpleNamespace(create_app=lambda: object())
     replay = {"schema_version": 1, "replay_id": "demo"}
 
+    output_path = tmp_path / "analysis.json"
     with patch.dict(sys.modules, {"httpx": fake_httpx}), patch.dict(
         sys.modules, {"backend.app.main": fake_app_module}
-    ), patch("builtins.input", return_value="1"):
+    ):
         # The demo imports create_app from the module at call time.
         output = io.StringIO()
         with redirect_stdout(output):
-            asyncio.run(CLI._run_api(replay, source="JSON: fixture", player_id=None))
+            asyncio.run(
+                CLI._run_api(
+                    replay,
+                    source="JSON: fixture",
+                    player_id=None,
+                    output_path=output_path,
+                )
+            )
 
     methods_and_paths = [(method, path) for method, path, _ in _FakeAsyncClient.calls]
     assert methods_and_paths == [
@@ -177,6 +186,7 @@ def test_run_api_uses_public_route_sequence_and_selects_player() -> None:
     assert "Eventual winner: T (12-16)" in output.getvalue()
     assert "CT 60.0% | T 40.0%" in output.getvalue()
     assert "Better: Reset behind cover." in output.getvalue()
+    assert output_path.is_file()
 
 
 def test_run_api_stops_when_fastapi_reports_preparation_failure() -> None:

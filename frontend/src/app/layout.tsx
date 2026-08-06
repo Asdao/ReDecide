@@ -7,7 +7,7 @@ import "@fontsource/saira-condensed/700.css";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "RE:DECIDE — Outcome-blind CS2 coaching",
+  title: "RE:DECIDE",
   description: "Replay the decision, not the match outcome.",
 };
 

@@ -54,8 +54,8 @@ demo contains no private coach integration of its own.
 ## Input selection
 
 The replay source is selected automatically. Once preparation returns the
-player selector, the demo prompts you to choose one of the eligible players.
-Pass `--player-id` to run without that prompt.
+player selector, the demo randomly chooses one eligible player. Pass
+`--player-id` to choose a specific player.
 
 - `--demo PATH` explicitly supplies a native `.dem` input.
 - Without `--demo`, the first `.dem`/`.demo` under `data/samples/` or this
@@ -105,6 +105,10 @@ The probability is the closest global CT/T timeline estimate at or before the
 event tick. A `Better:` line is emitted for major events when the coach returns
 a modeled alternative. Input source, fallback, and model warnings go to
 standard error so they do not pollute the event output.
+
+The final analysis response is saved automatically to
+`data/runtime/analysis/<analysis_id>.json`. Use `--output PATH` to choose a
+different location.
 
 ## Exit behavior
 

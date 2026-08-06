@@ -1,3 +1,0 @@
-HARNESS_MODEL=deepseek-v4-flash
-HARNESS_MODEL_BASE_URL=https://api.deepseek.com
-DEEPSEEK_API_KEY=

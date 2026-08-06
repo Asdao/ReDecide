@@ -230,13 +230,15 @@ def create_analysis_app(*, service: AnalysisService | None = None) -> FastAPI:
             raise HTTPException(status_code=503, detail=str(exc)) from exc
 
     @analysis_app.get("/api/analysis/{analysis_id}/result")
-    def result(analysis_id: str) -> dict[str, Any]:
+    def result(analysis_id: str, player_id: str | None = None) -> dict[str, Any]:
         try:
-            return analysis.result(analysis_id)
+            return analysis.result(analysis_id, player_id=player_id)
         except AnalysisNotFound as exc:
             raise HTTPException(status_code=404, detail="analysis job not found") from exc
         except AnalysisNotReady as exc:
             raise HTTPException(status_code=202, detail=str(exc)) from exc
+        except PlayerSelectionError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
         except RuntimeError as exc:
             raise HTTPException(status_code=500, detail=str(exc)) from exc
 
