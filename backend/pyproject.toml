@@ -18,6 +18,6 @@ dependencies = [
     "pyarrow>=15.0",
 ]
 
-# The service runs directly from the repository root, so source packages stay
-# importable through the existing ``backend.*`` and ``replay_*`` paths. The
-# root project manifest remains the packaging manifest for local development.
+# Vercel flattens this service directory into the function root. ``main.py``
+# registers that root as the ``backend`` package so the existing absolute
+# imports keep working in both Vercel and repository-root development.
