@@ -80,7 +80,7 @@ accepts only `https://<store-id>.public.blob.vercel-storage.com/...` URLs.
 ### `GET /api/analysis/{analysis_id}/result`
 
 - **Input:** `analysis_id` in the URL. Optionally pass `?player_id=<player_id>` to retrieve that player's saved result.
-- **Output:** JSON containing the completed analysis, or a status response if it is not ready.
+- **Output:** JSON containing the completed analysis, including `coach_analysis` (with dual feedback: `damage_feedback` for initial contact positioning/utility, and `death_feedback` for trade/engagement positioning upon elimination), or a status response if it is not ready.
 - **Summary:** Retrieves a saved coaching result again without running the coach a second time. Results are retained separately for each analyzed player.
 
 ### `GET /api/analysis/{analysis_id}/events`

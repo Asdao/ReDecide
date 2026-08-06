@@ -11711,6 +11711,9 @@
   "coach_analysis": {
     "decision_id": "r1:p76561197978835160:t2579",
     "what_could_be_done_better": "Given the observed opponent hold with minimal displacement, the best available alternative is to initiate a controlled peek or use utility to force the opponent out of position rather than continuing to hold your current angle.",
+    "damage_feedback": "Given the observed opponent hold with minimal displacement, the best available alternative is to initiate a controlled peek or use utility to force the opponent out of position rather than continuing to hold your current angle.",
+    "death_feedback": "Upon taking initial damage, re-exposing yourself while on low health without team support or flash cover resulted in a high-risk duel. Consider falling back to reset contact or waiting for a teammate to trade.",
+    "death_decision_id": "r1:p76561197978835160:t3100",
     "player_id": "76561197978835160",
     "player_name": "flameZ",
     "source": "pi"
