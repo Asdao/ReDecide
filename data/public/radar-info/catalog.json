@@ -1,0 +1,344 @@
+{
+  "schema_version": "radar_catalog_v1",
+  "coordinate_system": "source_world_units",
+  "maps": {
+    "de_ancient": {
+      "overview_source": "data/public/radar-info/de_ancient.txt",
+      "overview_sha256": "f6b420a983e2702c3c0d903a901483b6bc61fcf5eef2b6fb62da485ba93eb3c1",
+      "material": "overviews/de_ancient",
+      "transform": {
+        "pos_x": -2953.0,
+        "pos_y": 2164.0,
+        "scale": 5.0,
+        "rotate": 0.0,
+        "zoom": 0.0
+      },
+      "landmarks": {
+        "ct_spawn": {
+          "x": 0.51,
+          "y": 0.17
+        },
+        "t_spawn": {
+          "x": 0.485,
+          "y": 0.87
+        },
+        "bomb_a": {
+          "x": 0.31,
+          "y": 0.25
+        },
+        "bomb_b": {
+          "x": 0.8,
+          "y": 0.4
+        }
+      },
+      "insets": {
+        "left": null,
+        "top": null,
+        "right": null,
+        "bottom": null
+      },
+      "layers": [
+        {
+          "name": "default",
+          "image": "/radars/de_ancient.png",
+          "width": 1024,
+          "height": 1024,
+          "altitude_min": null,
+          "altitude_max": null,
+          "sha256": "88fe108f7cc54d89b9c6179155cc39f419aa02f79df1a3f36031049577fd1952"
+        }
+      ]
+    },
+    "de_anubis": {
+      "overview_source": "data/public/radar-info/de_anubis.txt",
+      "overview_sha256": "f83755ed8a85365923ac565d3fbd2ab1391e75d8b89cfd759da9214bf80e9fff",
+      "material": "overviews/de_anubis",
+      "transform": {
+        "pos_x": -2796.0,
+        "pos_y": 3328.0,
+        "scale": 5.22,
+        "rotate": null,
+        "zoom": null
+      },
+      "landmarks": {
+        "ct_spawn": {
+          "x": 0.61,
+          "y": 0.22
+        },
+        "t_spawn": {
+          "x": 0.58,
+          "y": 0.93
+        },
+        "bomb_a": {
+          "x": null,
+          "y": null
+        },
+        "bomb_b": {
+          "x": null,
+          "y": null
+        }
+      },
+      "insets": {
+        "left": null,
+        "top": null,
+        "right": null,
+        "bottom": null
+      },
+      "layers": [
+        {
+          "name": "default",
+          "image": "/radars/de_anubis.png",
+          "width": 1024,
+          "height": 1024,
+          "altitude_min": null,
+          "altitude_max": null,
+          "sha256": "bdbec7107ccfb83578cf139defc90447bf87e10e5eee1a669ec3b910d21b07c5"
+        }
+      ]
+    },
+    "de_dust2": {
+      "overview_source": "data/public/radar-info/de_dust2.txt",
+      "overview_sha256": "97947e99bc7930fc06dc15af3dcf942dbca5ca1c6f36119a089615fd4b383620",
+      "material": "overviews/de_dust2_v2",
+      "transform": {
+        "pos_x": -2476.0,
+        "pos_y": 3239.0,
+        "scale": 4.4,
+        "rotate": 1.0,
+        "zoom": 1.1
+      },
+      "landmarks": {
+        "ct_spawn": {
+          "x": 0.62,
+          "y": 0.21
+        },
+        "t_spawn": {
+          "x": 0.39,
+          "y": 0.91
+        },
+        "bomb_a": {
+          "x": 0.8,
+          "y": 0.16
+        },
+        "bomb_b": {
+          "x": 0.21,
+          "y": 0.12
+        }
+      },
+      "insets": {
+        "left": 0.0,
+        "top": 0.0,
+        "right": 0.0,
+        "bottom": 0.0
+      },
+      "layers": [
+        {
+          "name": "default",
+          "image": "/radars/de_dust2.png",
+          "width": 1024,
+          "height": 1024,
+          "altitude_min": null,
+          "altitude_max": null,
+          "sha256": "0c5089b636db711c553ee1af7405630430bbb462fa985066ca35f3b56891c31b"
+        }
+      ]
+    },
+    "de_inferno": {
+      "overview_source": "data/public/radar-info/de_inferno.txt",
+      "overview_sha256": "ff93b0ff1f6705ccfb4daf3b038dd88ccdf3ca776823667c19782650e94d2c54",
+      "material": "overviews/de_inferno",
+      "transform": {
+        "pos_x": -2087.0,
+        "pos_y": 3870.0,
+        "scale": 4.9,
+        "rotate": null,
+        "zoom": null
+      },
+      "landmarks": {
+        "ct_spawn": {
+          "x": 0.9,
+          "y": 0.35
+        },
+        "t_spawn": {
+          "x": 0.1,
+          "y": 0.67
+        },
+        "bomb_a": {
+          "x": 0.81,
+          "y": 0.69
+        },
+        "bomb_b": {
+          "x": 0.49,
+          "y": 0.22
+        }
+      },
+      "insets": {
+        "left": null,
+        "top": null,
+        "right": null,
+        "bottom": null
+      },
+      "layers": [
+        {
+          "name": "default",
+          "image": "/radars/de_inferno.png",
+          "width": 1024,
+          "height": 1024,
+          "altitude_min": null,
+          "altitude_max": null,
+          "sha256": "6bb5d2792b2896ad0ee79e383c7ec0bc227b52df4cf22df1ff7f1aa09ab8f379"
+        }
+      ]
+    },
+    "de_mirage": {
+      "overview_source": "data/public/radar-info/de_mirage.txt",
+      "overview_sha256": "f201fd608d6ea0bd091920620a4f74e97197d26caf36f133875b58d5ba1d77fe",
+      "material": "overviews/de_mirage",
+      "transform": {
+        "pos_x": -3230.0,
+        "pos_y": 1713.0,
+        "scale": 5.0,
+        "rotate": 0.0,
+        "zoom": 0.0
+      },
+      "landmarks": {
+        "ct_spawn": {
+          "x": 0.28,
+          "y": 0.7
+        },
+        "t_spawn": {
+          "x": 0.87,
+          "y": 0.36
+        },
+        "bomb_a": {
+          "x": 0.54,
+          "y": 0.76
+        },
+        "bomb_b": {
+          "x": 0.23,
+          "y": 0.28
+        }
+      },
+      "insets": {
+        "left": 0.135,
+        "top": 0.08,
+        "right": 0.105,
+        "bottom": 0.08
+      },
+      "layers": [
+        {
+          "name": "default",
+          "image": "/radars/de_mirage.png",
+          "width": 1024,
+          "height": 1024,
+          "altitude_min": null,
+          "altitude_max": null,
+          "sha256": "bf033548420ef82b84f1f366f4846c7ff4892246199b37c2300c762e5d16c74f"
+        }
+      ]
+    },
+    "de_nuke": {
+      "overview_source": "data/public/radar-info/de_nuke.txt",
+      "overview_sha256": "877a8df76cee8e5abc4756df162790ed25c5f5dd994ed9d895a7bc3a9c3ac585",
+      "material": "overviews/de_nuke",
+      "transform": {
+        "pos_x": -3453.0,
+        "pos_y": 2887.0,
+        "scale": 7.0,
+        "rotate": null,
+        "zoom": null
+      },
+      "landmarks": {
+        "ct_spawn": {
+          "x": 0.82,
+          "y": 0.45
+        },
+        "t_spawn": {
+          "x": 0.19,
+          "y": 0.54
+        },
+        "bomb_a": {
+          "x": 0.58,
+          "y": 0.48
+        },
+        "bomb_b": {
+          "x": 0.58,
+          "y": 0.58
+        }
+      },
+      "insets": {
+        "left": 0.33,
+        "top": 0.2,
+        "right": 0.2,
+        "bottom": 0.2
+      },
+      "layers": [
+        {
+          "name": "default",
+          "image": "/radars/de_nuke.png",
+          "width": 1024,
+          "height": 1024,
+          "altitude_min": -495.0,
+          "altitude_max": 10000.0,
+          "sha256": "6230346d3ce969006062fbd02220b083245f621ef366ce26a42dc27a80120bd0"
+        },
+        {
+          "name": "lower",
+          "image": "/radars/de_nuke_lower.png",
+          "width": 1024,
+          "height": 1024,
+          "altitude_min": -10000.0,
+          "altitude_max": -495.0,
+          "sha256": "a426807be3682f13604fbf9979d1983ade75cd65bad6d0a6bee15cc11e9349b1"
+        }
+      ]
+    },
+    "de_overpass": {
+      "overview_source": "data/public/radar-info/de_overpass.txt",
+      "overview_sha256": "23b44305d79a15dc9feea71528a7015d6f3612044a8367f29b20c65aec2e7897",
+      "material": "overviews/de_overpass",
+      "transform": {
+        "pos_x": -4831.0,
+        "pos_y": 1781.0,
+        "scale": 5.2,
+        "rotate": 0.0,
+        "zoom": 0.0
+      },
+      "landmarks": {
+        "ct_spawn": {
+          "x": 0.49,
+          "y": 0.2
+        },
+        "t_spawn": {
+          "x": 0.66,
+          "y": 0.93
+        },
+        "bomb_a": {
+          "x": 0.55,
+          "y": 0.23
+        },
+        "bomb_b": {
+          "x": 0.7,
+          "y": 0.31
+        }
+      },
+      "insets": {
+        "left": null,
+        "top": null,
+        "right": null,
+        "bottom": null
+      },
+      "layers": [
+        {
+          "name": "default",
+          "image": "/radars/de_overpass.png",
+          "width": 1024,
+          "height": 1024,
+          "altitude_min": null,
+          "altitude_max": null,
+          "sha256": "ab3bfff1c3cc8da47eda921511b3eb34028e24b718b85709ac080f123fd4c108"
+        }
+      ]
+    }
+  }
+}
