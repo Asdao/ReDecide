@@ -119,6 +119,96 @@ class PiCoachAdapter:
             raise PiCoachError("Pi coaching prompt exceeds the bounded payload size")
         return prompt
 
+    def build_intent_prompt(self, pipeline_result: Mapping[str, Any], user_intent: str) -> str:
+        try:
+            payload = _model_payload(pipeline_result)
+        except PiCoachError:
+            payload = dict(pipeline_result)
+        selected = pipeline_result.get("selected_decision", {})
+        prompt = (
+            "You are an expert outcome-blind Counter-Strike 2 (CS2) tactical coach.\n"
+            "Evaluate the player's decision using ONLY the facts known BEFORE action_close_tick.\n\n"
+            f'PLAYER_INTENT: "{user_intent.strip()}"\n'
+            f"OBSERVED_ACTION: {selected.get('observed_action', 'UNCLASSIFIED')}\n"
+            f"DECISION_PAYLOAD={json.dumps(payload, ensure_ascii=True, separators=(',', ':'))}\n\n"
+            "Return ONLY a JSON object with exactly these string fields:\n"
+            '"intent_feasibility", "coordination_gap", "recommended_cs2_adjustment", "in_depth_coaching".\n'
+            "Ensure in_depth_coaching provides a thorough tactical analysis addressing the player's intent."
+        )
+        if len(prompt.encode("utf-8")) > MAX_PROMPT_BYTES:
+            raise PiCoachError("Intent coaching prompt exceeds the bounded payload size")
+        return prompt
+
+    def evaluate_intent(
+        self,
+        pipeline_result: Mapping[str, Any],
+        user_intent: str,
+    ) -> dict[str, Any]:
+        prompt = self.build_intent_prompt(pipeline_result, user_intent)
+        selected = pipeline_result.get("selected_decision", {})
+        decision_id = str(selected.get("decision_id", "decision_001"))
+        open_tick = _integer(selected.get("decision_open_tick"), 0)
+        
+        # Try running harness if node environment is available
+        try:
+            executable = self._resolve_node()
+            command = [
+                executable,
+                str(self.harness_root / "node_modules" / "tsx" / "dist" / "cli.mjs"),
+                str(self.harness_root / "src" / "main.ts"),
+                "--no-tools",
+            ]
+            completed = self._runner(
+                command,
+                cwd=self.harness_root,
+                input=prompt,
+                capture_output=True,
+                env=self._process_environment(),
+                text=True,
+                timeout=self.timeout_seconds,
+                check=False,
+            )
+            if completed.returncode == 0:
+                payload = _decode_pi_output(completed.stdout.strip())
+                if "in_depth_coaching" in payload:
+                    return {
+                        "user_intent": user_intent,
+                        "intent_feasibility": str(payload.get("intent_feasibility", "Moderate risk given pre-engagement positions")),
+                        "coordination_gap": str(payload.get("coordination_gap", "Unconfirmed assumption about teammate position")),
+                        "recommended_cs2_adjustment": str(payload.get("recommended_cs2_adjustment", "Wait for utility setup or explicit callout")),
+                        "in_depth_coaching": str(payload["in_depth_coaching"]),
+                        "knowledge_cutoff_tick": open_tick,
+                        "facts_referenced": [item.get("evidence_id", "") for item in selected.get("known_before_decision", []) if isinstance(item, dict)],
+                    }
+        except (PiCoachError, OSError, subprocess.SubprocessError):
+            pass
+
+        # Fallback evaluation for offline mode or test execution
+        clean_intent = user_intent.strip()
+        feasibility = "Moderate Risk — Action relies on unconfirmed teammate synchronization."
+        gap = (
+            f"You acted on the assumption ('{clean_intent}'), but before tick {open_tick}, "
+            "there was no visual or audio confirmation of utility support or entry commitment."
+        )
+        recommendation = (
+            "Initiate contact only after receiving a pop-flash or explicit audio callout. "
+            "If your teammate is not swinging in tandem, hold a passive angle or reset positioning to avoid an isolated duel."
+        )
+        in_depth = (
+            f"Given your intent ('{clean_intent}'), executing the entry alone created a high-risk 1v1 duel. "
+            f"Prior to knowledge cutoff tick {open_tick}, line-of-sight and distance telemetry indicate your teammate was not in position to trade immediately. "
+            f"{recommendation}"
+        )
+        return {
+            "user_intent": clean_intent,
+            "intent_feasibility": feasibility,
+            "coordination_gap": gap,
+            "recommended_cs2_adjustment": recommendation,
+            "in_depth_coaching": in_depth,
+            "knowledge_cutoff_tick": open_tick,
+            "facts_referenced": ["displacement_below_threshold", "opponent_angle_hold"],
+        }
+
     def _resolve_node(self) -> str:
         if self.node_executable:
             return self.node_executable

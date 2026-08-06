@@ -7,6 +7,7 @@ import {
   prepareReplayAnalysis,
   prepareReplayWorkspace,
   runReplayCoaching,
+  submitPlayerIntent,
   uploadReplay,
 } from "@/adapters/replay-api";
 
@@ -331,5 +332,47 @@ describe("replay API adapter", () => {
       kind: "network",
       operation: "prepare",
     });
+  });
+
+  it("submits player action intent and receives contextual response", async () => {
+    const intentResponse = {
+      analysis_id: "analysis-1",
+      player_id: "p1",
+      decision_id: "decision-1",
+      user_intent: "I expected my teammate to swing with me",
+      intent_feasibility: "Moderate Risk",
+      coordination_gap: "No audio or flash confirmation before tick 2500",
+      recommended_cs2_adjustment: "Wait for utility setup or callout",
+      in_depth_coaching: "Detailed CS2 tactical breakdown",
+      knowledge_cutoff_tick: 2500,
+      facts_referenced: ["displacement_below_threshold"],
+    };
+
+    const fetchMock = vi.fn().mockResolvedValueOnce({
+      ok: true,
+      headers: new Headers({ "content-type": "application/json" }),
+      json: async () => intentResponse,
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await submitPlayerIntent(
+      "analysis-1",
+      "p1",
+      "decision-1",
+      "I expected my teammate to swing with me",
+    );
+    expect(result).toEqual(intentResponse);
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://127.0.0.1:8000/api/analysis/analysis-1/intent",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({
+          analysis_id: "analysis-1",
+          player_id: "p1",
+          decision_id: "decision-1",
+          intent_text: "I expected my teammate to swing with me",
+        }),
+      }),
+    );
   });
 });

@@ -18,6 +18,7 @@ import {
   type ProcessedReplay,
   type ReplayEvent,
 } from "@/domain/replay-viewer";
+import { submitPlayerIntent, type IntentCoachingResponse } from "@/adapters/replay-api";
 import { isAbortError } from "@/lib/http";
 import { ProductHeader } from "./ProductHeader";
 
@@ -85,9 +86,34 @@ export function ReplayAnalysisScreen({
   const [playbackRate, setPlaybackRate] = useState(1);
   const [selectedPlayerId, setSelectedPlayerId] = useState(initialPlayerId ?? "");
   const [selectedEventId, setSelectedEventId] = useState<string>();
+  const [intentInputText, setIntentInputText] = useState("");
+  const [intentLoading, setIntentLoading] = useState(false);
+  const [intentResponse, setIntentResponse] = useState<IntentCoachingResponse>();
+  const [intentError, setIntentError] = useState<string>();
   const currentTickRef = useRef(initialTick);
   const lastAnimationTime = useRef<number | undefined>(undefined);
   const eventMarkerRefs = useRef(new Map<string, HTMLButtonElement>());
+
+  const handleIntentSubmit = async () => {
+    if (!intentInputText.trim() || !selectedPlayerId) return;
+    setIntentLoading(true);
+    setIntentError(undefined);
+    try {
+      const activeAnalysisId = analysis?.replay_id ?? replayId ?? "sample:fixture-mirage-01";
+      const activeDecisionId = analysis?.selected_decision?.decision_id ?? "r1:p1:t2579";
+      const result = await submitPlayerIntent(
+        activeAnalysisId,
+        selectedPlayerId,
+        activeDecisionId,
+        intentInputText.trim(),
+      );
+      setIntentResponse(result);
+    } catch (err: unknown) {
+      setIntentError(err instanceof Error ? err.message : "Could not evaluate intent.");
+    } finally {
+      setIntentLoading(false);
+    }
+  };
 
   useEffect(() => {
     if (initialReplay) {
@@ -374,13 +400,48 @@ export function ReplayAnalysisScreen({
                 <div><dt>Tick</dt><dd>{selectedEvent.tick}</dd></div>
                 <div><dt>Weapon</dt><dd>{selectedEvent.weapon?.replaceAll("_", " ") ?? "—"}</dd></div>
               </dl>
-              {selectedEventHasAnalysis && analysis ? (
+              {selectedEventHasAnalysis && analysis && coachingText ? (
                 <section className="saved-coaching" aria-labelledby="saved-coaching-title">
-                  <p className="eyebrow">Coaching</p>
+                  <p className="eyebrow">
+                    {selectedEvent.event === "kill" ? "Death Coaching" : "Damage Coaching"}
+                  </p>
                   <h3 id="saved-coaching-title">What could be done better</h3>
-                  <p>{analysis.coach_analysis.what_could_be_done_better}</p>
+                  <p>{coachingText}</p>
                 </section>
               ) : null}
+
+              <section className="intent-coaching-section" aria-label="In-depth intent analysis">
+                <p className="eyebrow">Action Intent & Context</p>
+                <h3 id="intent-section-title">What were you trying to achieve?</h3>
+                <div className="intent-input-container">
+                  <textarea
+                    value={intentInputText}
+                    onChange={(event) => setIntentInputText(event.target.value)}
+                    placeholder='e.g. "I expected my teammate to swing with me from Banana."'
+                    maxLength={240}
+                    rows={2}
+                    disabled={intentLoading}
+                  />
+                  <button
+                    type="button"
+                    className="primary intent-submit-button"
+                    onClick={handleIntentSubmit}
+                    disabled={!intentInputText.trim() || intentLoading}
+                  >
+                    {intentLoading ? "Analyzing Intent..." : "Get In-Depth Analysis"}
+                  </button>
+                </div>
+                {intentError ? <p className="intent-error-text">{intentError}</p> : null}
+                {intentResponse ? (
+                  <div className="intent-response-card">
+                    <h4>In-Depth CS2 Tactical Breakdown</h4>
+                    <p><strong>Feasibility:</strong> {intentResponse.intent_feasibility}</p>
+                    <p><strong>Coordination Gap:</strong> {intentResponse.coordination_gap}</p>
+                    <p><strong>Adjustment:</strong> {intentResponse.recommended_cs2_adjustment}</p>
+                    <p className="intent-explanation-body">{intentResponse.in_depth_coaching}</p>
+                  </div>
+                ) : null}
+              </section>
             </aside>
           ) : null}
 

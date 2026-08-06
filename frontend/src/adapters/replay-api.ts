@@ -320,3 +320,48 @@ export async function getReplayVisualization(
     value: await parseSuccessful(response, replayVisualizationSchema, "visualization"),
   };
 }
+
+const intentCoachingResponseSchema = z
+  .object({
+    analysis_id: z.string(),
+    player_id: z.string(),
+    decision_id: z.string(),
+    user_intent: z.string(),
+    intent_feasibility: z.string(),
+    coordination_gap: z.string(),
+    recommended_cs2_adjustment: z.string(),
+    in_depth_coaching: z.string(),
+    knowledge_cutoff_tick: z.number(),
+    facts_referenced: z.array(z.string()),
+  })
+  .strict();
+
+export type IntentCoachingResponse = z.infer<typeof intentCoachingResponseSchema>;
+
+export async function submitPlayerIntent(
+  analysisId: string,
+  playerId: string,
+  decisionId: string,
+  intentText: string,
+  signal?: AbortSignal,
+): Promise<IntentCoachingResponse> {
+  const response = await request(
+    `/api/analysis/${resourcePath(analysisId)}/intent`,
+    {
+      method: "POST",
+      headers: {
+        Accept: "application/json",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        analysis_id: analysisId,
+        player_id: playerId,
+        decision_id: decisionId,
+        intent_text: intentText,
+      }),
+      signal,
+    },
+    "coaching",
+  );
+  return parseSuccessful(response, intentCoachingResponseSchema, "coaching");
+}

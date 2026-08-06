@@ -309,3 +309,23 @@ class APIErrorDetail(ContractModel):
 
 class APIErrorResponse(ContractModel):
     error: APIErrorDetail
+
+
+class IntentCoachingRequest(ContractModel):
+    analysis_id: str = Field(min_length=1)
+    player_id: str = Field(min_length=1)
+    decision_id: str = Field(min_length=1)
+    intent_text: str = Field(min_length=1, max_length=240)
+
+
+class IntentCoachingResponse(ContractModel):
+    analysis_id: str = Field(min_length=1)
+    player_id: str = Field(min_length=1)
+    decision_id: str = Field(min_length=1)
+    user_intent: str = Field(min_length=1)
+    intent_feasibility: str = Field(min_length=1)
+    coordination_gap: str = Field(min_length=1)
+    recommended_cs2_adjustment: str = Field(min_length=1)
+    in_depth_coaching: str = Field(min_length=1)
+    knowledge_cutoff_tick: int = Field(ge=0)
+    facts_referenced: list[str]
