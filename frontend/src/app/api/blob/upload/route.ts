@@ -5,6 +5,7 @@ import {
 } from "@vercel/blob/client";
 
 const REPLAY_BLOB_MAX_BYTES = 1024 * 1024 * 1024;
+const TEMPORARY_REPLAY_PREFIX = "uploads/";
 const TOKEN_REQUEST_TYPE = "blob.generate-presigned-url";
 
 export const runtime = "nodejs";
@@ -23,7 +24,10 @@ function isSameOrigin(request: Request): boolean {
 }
 
 function isDemoPathname(pathname: string): boolean {
-  return pathname.toLowerCase().endsWith(".dem");
+  return (
+    pathname.startsWith(TEMPORARY_REPLAY_PREFIX) &&
+    pathname.toLowerCase().endsWith(".dem")
+  );
 }
 
 function errorResponse(message: string, status: number): Response {

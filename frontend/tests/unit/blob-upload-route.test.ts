@@ -38,7 +38,7 @@ describe("Vercel Blob upload route", () => {
       uploadRequest(
         {
           type: "blob.generate-presigned-url",
-          payload: { pathname: "replays/match.dem", multipart: false, clientPayload: null },
+          payload: { pathname: "uploads/match.dem", multipart: false, clientPayload: null },
         },
         "https://redecide.example",
       ),
@@ -55,7 +55,7 @@ describe("Vercel Blob upload route", () => {
       uploadRequest(
         {
           type: "blob.generate-presigned-url",
-          payload: { pathname: "replays/match.dem", multipart: false, clientPayload: null },
+          payload: { pathname: "uploads/match.dem", multipart: false, clientPayload: null },
         },
         "https://attacker.example",
       ),
@@ -81,7 +81,7 @@ describe("Vercel Blob upload route", () => {
       uploadRequest(
         {
           type: "blob.generate-presigned-url",
-          payload: { pathname: "replays/match.dem", multipart: true, clientPayload: null },
+          payload: { pathname: "uploads/match.dem", multipart: true, clientPayload: null },
         },
         "https://redecide.example",
       ),
@@ -91,7 +91,7 @@ describe("Vercel Blob upload route", () => {
     const options = handleUploadPresignedMock.mock.calls[0]?.[0] as {
       getSignedToken: (pathname: string) => Promise<Record<string, unknown>>;
     };
-    await expect(options.getSignedToken("replays/match.dem")).resolves.toEqual({
+    await expect(options.getSignedToken("uploads/match.dem")).resolves.toEqual({
       token: {
         delegationToken: "delegation",
         clientSigningToken: "signing-token",
@@ -105,12 +105,15 @@ describe("Vercel Blob upload route", () => {
       },
     });
     expect(issueSignedTokenMock).toHaveBeenCalledWith({
-      pathname: "replays/match.dem",
+      pathname: "uploads/match.dem",
       operations: ["put"],
       allowedContentTypes: ["application/octet-stream"],
       maximumSizeInBytes: 1024 * 1024 * 1024,
     });
-    await expect(options.getSignedToken("replays/match.zip")).rejects.toThrow(
+    await expect(options.getSignedToken("uploads/match.zip")).rejects.toThrow(
+      "Only .dem replay uploads are allowed.",
+    );
+    await expect(options.getSignedToken("replays/match.dem")).rejects.toThrow(
       "Only .dem replay uploads are allowed.",
     );
   });
@@ -123,7 +126,7 @@ describe("Vercel Blob upload route", () => {
     const callback = {
       type: "blob.upload-completed",
       payload: {
-        blob: { url: "https://store.public.blob.vercel-storage.com/replays/match.dem" },
+        blob: { url: "https://store.public.blob.vercel-storage.com/uploads/match.dem" },
       },
     };
 
@@ -132,7 +135,7 @@ describe("Vercel Blob upload route", () => {
       uploadRequest(
         {
           type: "blob.generate-presigned-url",
-          payload: { pathname: "replays/match.dem", multipart: false, clientPayload: null },
+          payload: { pathname: "uploads/match.dem", multipart: false, clientPayload: null },
         },
         "https://redecide.example",
       ),

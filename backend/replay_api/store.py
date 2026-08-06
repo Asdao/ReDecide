@@ -4,9 +4,11 @@ from __future__ import annotations
 
 import json
 import os
-from pathlib import Path
 import re
-from typing import Any, Mapping
+import tempfile
+from collections.abc import Mapping
+from pathlib import Path
+from typing import Any
 from uuid import uuid4
 
 from backend.storage.blob import (
@@ -15,12 +17,16 @@ from backend.storage.blob import (
     replay_blob_store,
 )
 
-
 _REPLAY_ID = re.compile(r"^[0-9a-f]{32}$")
 
 
 def replay_root() -> Path:
-    return Path(os.getenv("REDECIDE_REPLAY_STORE", "data/runtime/replays"))
+    configured = os.getenv("REDECIDE_REPLAY_STORE")
+    if configured:
+        return Path(configured)
+    if os.getenv("VERCEL"):
+        return Path(tempfile.gettempdir()) / "redecide" / "replays"
+    return Path("data/runtime/replays")
 
 
 def save_replay_artifacts(

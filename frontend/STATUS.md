@@ -7,10 +7,10 @@ Last verified: 2026-08-06 (Asia/Singapore)
 The frontend now targets same-origin `/api` routes, while
 `NEXT_PUBLIC_API_BASE_URL` remains available for standalone local development.
 The root `vercel.json` uses the current `services` schema and ordered rewrites:
-`/api/blob/upload` stays in Next.js, other `/api/*` requests reach FastAPI, and
-the frontend handles the catch-all route.
+`/api/blob/upload` and `/api/blob/cleanup` stay in Next.js, other `/api/*`
+requests reach FastAPI, and the frontend handles the catch-all route.
 
-Validation after this routing change: 103 Vitest tests, TypeScript, ESLint,
+Validation after this routing change: 108 Vitest tests, TypeScript, ESLint,
 and the production Next.js build (Webpack) pass. The default Turbopack build
 exited without diagnostics in the local sandbox, so Webpack was used for the
 verified build.
@@ -147,6 +147,13 @@ returns it. Abort errors remain distinguishable from normalized network, HTTP,
 content-type, JSON, and schema errors, and provider details are not exposed
 through adapter messages.
 
+Raw Blob uploads now use an isolated randomized `uploads/` prefix. After the
+FastAPI import returns a validated manifest with `visualization_status: ready`,
+the browser calls the same-origin Next.js cleanup route to delete that raw
+`.dem`; the durable `replays/<replay_id>/` artifacts remain. An incomplete or
+failed import keeps the raw object available for recovery, and cleanup failure
+does not discard an otherwise usable prepared replay.
+
 The uploaded-replay boundary now matches the backend's repeatable per-player
 run contract. Analysis metadata accepts the `coaching` state, nullable
 `selected_player_id`, and keyed `player_runs`; selectable players require the
@@ -251,8 +258,10 @@ outcomes are not rendered in the coaching result.
 - `src/adapters/replay-api.ts` - typed transport for upload, preparation,
   direct or Blob URL import, status, player selection, coaching, recovery, and
   visualization retrieval
-- `src/app/api/blob/upload/route.ts` - same-origin Vercel Blob client-token
+- `src/app/api/blob/upload/route.ts` - same-origin Vercel Blob presigned-upload
   route restricted to `.dem`, public object storage, and a 1 GB maximum
+- `src/app/api/blob/cleanup/route.ts` - same-origin deletion route restricted
+  to temporary public `uploads/*.dem` objects
 - `src/lib/http.ts` - shared public API base URL and browser abort detection
 - `.env.example` - local direct-upload defaults and the Vercel Blob mode switch
 - `src/domain/replay.ts` - strict replay manifest, analysis, result, and
@@ -292,8 +301,9 @@ must allow the frontend origin through `REDECIDE_API_ALLOWED_ORIGINS`.
 
 `NEXT_PUBLIC_REPLAY_UPLOAD_MODE` defaults to `direct`, which sends the file to
 the local or configured FastAPI base URL. Set it to `blob` in Vercel and connect
-a public Blob store so Vercel supplies the server-only `BLOB_READ_WRITE_TOKEN`.
-Never expose that token through a `NEXT_PUBLIC_*` variable.
+a public Blob store so the Next.js upload and cleanup routes receive the
+server-only connected-store credentials. Never expose Blob credentials through
+a `NEXT_PUBLIC_*` variable.
 
 The Next.js image allowlist permits only the referenced repository's thumbnail
 folder on `raw.githubusercontent.com` for non-bundled future maps.
@@ -302,18 +312,19 @@ folder on `raw.githubusercontent.com` for non-bundled future maps.
 
 From `frontend/`, `pnpm run verify` passes:
 
-- Vitest: 10 files and 103 tests passed, including backend-shaped per-player run
-  metadata, sample invariants, both bundled processed saves, and 20 upload adapter and Blob
-  token-route tests covering direct and public-Blob transports, multipart
-  selection, limits, cancellation, safe failures, same-origin checks, and token
-  constraints. The intent tests cover per-moment isolation, loading-to-success,
+- Vitest: 11 files and 108 tests passed, including backend-shaped per-player run
+  metadata, sample invariants, both bundled processed saves, and 25 upload
+  adapter, Blob token-route, and cleanup-route tests covering direct and
+  public-Blob transports, multipart selection, limits, cancellation, safe
+  failures, same-origin checks, token constraints, temporary-prefix isolation,
+  and success-only deletion. The intent tests cover per-moment isolation, loading-to-success,
   same-text retry state, and stale response rejection. Landing-page assertions
   match the current upload and processed-replay wording.
 - TypeScript: passed
 - ESLint: passed with no warnings
 - Next.js production build: passed in both default direct mode and explicit
   Blob mode; `/` and `/_not-found` prerendered, with `/analysis` and
-  `/api/blob/upload` rendered on demand
+  `/api/blob/upload` and `/api/blob/cleanup` rendered on demand
 
 Browser verification against the documented sample responses confirmed:
 
@@ -355,10 +366,12 @@ viewer and event inspector remain free of horizontal overflow.
   backend's documented current limitation. Browser QA used validated replay
   fixtures for post-upload states and did not send user replay data.
 - A real public Vercel Blob has not yet completed the hosted end-to-end flow.
-  Blob objects are public to anyone with their URL and are not automatically
-  deleted after FastAPI imports them. The token route checks same-origin browser
-  requests and upload constraints, but a public production deployment still
-  needs authentication or platform-level protection to prevent upload abuse.
+  Temporary Blob objects are deleted on validated successful import, but a
+  failed or interrupted import intentionally retains its object, and cleanup is
+  best-effort if Vercel deletion is unavailable. The routes check same-origin
+  browser requests and upload constraints, but a public production deployment
+  still needs authentication or platform-level protection to prevent upload
+  abuse.
 - Only Inferno currently has a paired saved coaching result for the processed
   save catalog. Uploaded replays use their live completed analysis. The player
   intent UI and typed request lifecycle are implemented, but submission remains
@@ -374,3 +387,5 @@ frontend implements the `/api/replay/*` and `/api/analysis/*` contracts,
 including the disabled-by-default public Blob URL import, and the sample and
 upload flows share preparation, player selection, repeat coaching, result
 recovery, visualization unlock, and replay playback endpoints end to end.
+The internal Next.js `/api/blob/cleanup` route does not change the FastAPI
+contract; it removes only temporary raw uploads after successful import.

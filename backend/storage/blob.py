@@ -32,9 +32,21 @@ class BlobArtifactRef:
 
 
 def blob_storage_enabled() -> bool:
-    """Return whether the process explicitly opted into Vercel Blob storage."""
+    """Return whether durable Blob artifacts can be used by this process.
 
-    return os.getenv("REDECIDE_STORAGE_BACKEND", "filesystem").strip().lower() == "blob"
+    The current Python Blob SDK accepts legacy read/write tokens, but not the
+    newer ``BLOB_STORE_ID`` + OIDC connection used by new Vercel projects.
+    That specific configuration must use ephemeral filesystem artifacts rather
+    than feeding an OIDC token to the SDK's legacy-token parser.
+    """
+
+    requested = (
+        os.getenv("REDECIDE_STORAGE_BACKEND", "filesystem").strip().lower()
+        == "blob"
+    )
+    if not requested:
+        return False
+    return not (os.getenv("BLOB_STORE_ID") and _legacy_blob_token() is None)
 
 
 def _value(obj: Any, name: str, default: Any = None) -> Any:
@@ -67,11 +79,9 @@ class BlobArtifactStore:
     """JSON artifact persistence using Vercel's official Python SDK.
 
     The SDK currently requires a Blob read/write token for direct server-side
-    operations. New Vercel Blob project connections expose a short-lived OIDC
-    token instead of ``BLOB_READ_WRITE_TOKEN``; the Python SDK exposes both
-    features but does not yet wire them together, so this adapter passes the
-    runtime OIDC token explicitly. Legacy read/write-token connections remain
-    supported by the SDK's normal environment-variable lookup.
+    operations. New OIDC-only project connections are handled by
+    :func:`blob_storage_enabled` and use the writable ephemeral filesystem
+    until the Python SDK supports Blob OIDC directly.
     """
 
     def __init__(
@@ -104,7 +114,7 @@ class BlobArtifactStore:
                 "add vercel>=0.5.0 to the backend runtime dependencies"
             ) from exc
         try:
-            return BlobClient(token=_blob_oidc_token())
+            return BlobClient(token=_legacy_blob_token())
         except Exception as exc:  # pragma: no cover - depends on runtime credentials
             raise BlobStorageConfigurationError(
                 "Blob storage is enabled but BlobClient could not initialize; "
@@ -165,22 +175,14 @@ def replay_blob_store() -> BlobArtifactStore:
     return BlobArtifactStore(prefix=os.getenv("REDECIDE_BLOB_REPLAY_PREFIX", "replays"))
 
 
-def _blob_oidc_token() -> str | None:
-    """Return the connected store's short-lived OIDC token when applicable."""
+def _legacy_blob_token() -> str | None:
+    """Return a configured token understood by the current Python Blob SDK."""
 
-    if os.getenv("BLOB_READ_WRITE_TOKEN") or os.getenv("VERCEL_BLOB_READ_WRITE_TOKEN"):
-        return None
-    if not os.getenv("BLOB_STORE_ID"):
-        return None
-    try:
-        from vercel.oidc import VercelOidcTokenError, get_vercel_oidc_token_sync
-    except ImportError:  # pragma: no cover - deployment dependency boundary
-        return None
-
-    try:
-        return get_vercel_oidc_token_sync()
-    except VercelOidcTokenError:  # pragma: no cover - SDK reports auth on Blob use
-        return None
+    for name in ("BLOB_READ_WRITE_TOKEN", "VERCEL_BLOB_READ_WRITE_TOKEN"):
+        value = os.getenv(name)
+        if value and value.strip():
+            return value.strip()
+    return None
 
 
 def analysis_blob_store() -> BlobArtifactStore:

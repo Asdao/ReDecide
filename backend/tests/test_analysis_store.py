@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import tempfile
 import unittest
 from pathlib import Path
@@ -8,6 +9,7 @@ from unittest.mock import patch
 from backend.app.analysis_store import (
     analysis_result_path,
     analysis_state_path,
+    analysis_store_root,
     load_analysis_result,
     load_analysis_state,
     save_analysis_result,
@@ -16,6 +18,14 @@ from backend.app.analysis_store import (
 
 
 class AnalysisStoreTests(unittest.TestCase):
+    def test_vercel_default_uses_writable_temporary_storage(self) -> None:
+        with patch.dict(os.environ, {"VERCEL": "1"}, clear=False):
+            os.environ.pop("REDECIDE_ANALYSIS_STORE", None)
+            self.assertEqual(
+                analysis_store_root(),
+                Path(tempfile.gettempdir()) / "redecide" / "analysis",
+            )
+
     def test_state_and_result_round_trip_atomically(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

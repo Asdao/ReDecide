@@ -4,8 +4,10 @@ from __future__ import annotations
 
 import json
 import os
+import tempfile
+from collections.abc import Mapping
 from pathlib import Path
-from typing import Any, Mapping
+from typing import Any
 from urllib.parse import quote
 from uuid import uuid4
 
@@ -19,7 +21,12 @@ from backend.storage.blob import (
 def analysis_store_root() -> Path:
     """Return the directory that holds persisted analysis artifacts."""
 
-    return Path(os.getenv("REDECIDE_ANALYSIS_STORE", "data/runtime/analysis"))
+    configured = os.getenv("REDECIDE_ANALYSIS_STORE")
+    if configured:
+        return Path(configured)
+    if os.getenv("VERCEL"):
+        return Path(tempfile.gettempdir()) / "redecide" / "analysis"
+    return Path("data/runtime/analysis")
 
 
 def analysis_state_path(analysis_id: str, *, root: str | Path | None = None) -> Path:
@@ -146,8 +153,8 @@ def _atomic_json_read(path: Path, *, artifact_name: str) -> dict[str, Any]:
 
 __all__ = [
     "analysis_result_path",
-    "analysis_store_root",
     "analysis_state_path",
+    "analysis_store_root",
     "load_analysis_result",
     "load_analysis_state",
     "save_analysis_result",

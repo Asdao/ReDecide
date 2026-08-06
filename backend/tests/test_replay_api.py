@@ -3,14 +3,25 @@
 from __future__ import annotations
 
 import importlib
+import tempfile
 import time
+from pathlib import Path
 from typing import Any
 
 import pytest
 
-
 pytest.importorskip("fastapi")
 pytest.importorskip("httpx")
+
+
+def test_vercel_replay_store_defaults_to_writable_temporary_directory(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    store = importlib.import_module("backend.replay_api.store")
+    monkeypatch.setenv("VERCEL", "1")
+    monkeypatch.delenv("REDECIDE_REPLAY_STORE", raising=False)
+
+    assert store.replay_root() == Path(tempfile.gettempdir()) / "redecide" / "replays"
 
 
 def test_visualization_payload_contains_all_players_positions_and_events() -> None:
@@ -130,8 +141,9 @@ def test_coaching_api_consumes_shared_coaching_branch(tmp_path: Any, monkeypatch
     coaching = {"replay_id": replay_id, "header": {}, "ticks": [], "rounds": []}
     save_replay_artifacts(replay_id, visualization={"replay_id": replay_id}, coaching=coaching)
 
-    import backend.app.main as coaching_module
     from fastapi.testclient import TestClient
+
+    import backend.app.main as coaching_module
 
     captured: dict[str, Any] = {}
 

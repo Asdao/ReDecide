@@ -19,6 +19,12 @@
       }
     },
     {
+      "source": "/api/blob/cleanup",
+      "destination": {
+        "service": "frontend"
+      }
+    },
+    {
       "source": "/api/(.*)",
       "destination": {
         "service": "backend"
