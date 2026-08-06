@@ -98,7 +98,9 @@ slightly left; resuming playback restores the centered
 map. Inferno's saved coaching is attached to the matching flameZ damage event at
 tick 2579, shown as a distinct blue timeline marker, and rendered in the moment
 inspector. Analysis-backed moments now also render the intent follow-up composer
-at the bottom of the inspector. Its typed, per-moment request lifecycle keeps a
+pinned to the bottom of the inspector. The textbox keeps its base height and
+scrolls internally instead of resizing. Its typed, per-moment request lifecycle
+keeps a
 one-time submitted intent attached to the stable event ID, disables editing,
 preserves the old coaching behind the rotating loading border, ignores stale
 responses, and replaces only that moment's coaching after a successful response.

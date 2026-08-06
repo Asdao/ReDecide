@@ -1526,6 +1526,8 @@ input[type="file"] {
   right: 1.25rem;
   width: min(33rem, calc(100% - 2.5rem));
   min-height: 0;
+  display: flex;
+  flex-direction: column;
   overflow-y: auto;
   border: 2px solid var(--accent);
   background: rgb(14 18 25 / 94%);
@@ -1628,7 +1630,7 @@ input[type="file"] {
 }
 
 .moment-intent {
-  margin-top: 1.25rem;
+  margin-top: auto;
   border-top: 1px solid var(--line);
   padding-top: 1.25rem;
 }
@@ -1649,8 +1651,11 @@ input[type="file"] {
 }
 
 .moment-intent textarea {
+  height: 5.5rem;
   min-height: 5.5rem;
-  resize: vertical;
+  max-height: 5.5rem;
+  overflow-y: auto;
+  resize: none;
   border: 1px solid var(--line);
   border-radius: 0;
   background: #090d12;
