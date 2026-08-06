@@ -64,3 +64,59 @@ restart FastAPI only after the frontend Blob upload is ready.
 
 Do not build the intent text box yet. The uploaded-replay backend does not
 support it yet.
+
+## Update — 2026-08-06
+
+### The three user flows
+
+| Flow | Current state |
+|---|---|
+| Upload a `.dem` | The frontend is connected to the upload and analysis APIs. The complete chain has not yet been proven with a real `.dem` and a live model provider. |
+| Use a sample match | The old sample screen finds a sample and player, but stops before the replay viewer. |
+| Open a processed replay | The Inferno example opens the replay viewer and includes one saved coaching result. This is the strongest demo path today. |
+
+### What the timeline means
+
+- For the selected player, the timeline marks damage they received and their
+  deaths.
+- It does not mark damage they dealt or kills they made.
+- The backend may find several eligible post-contact decisions, but it
+  currently uses `candidates[0]`: the earliest eligible decision for the
+  selected player.
+- Therefore, one analysis run produces advice for one decision. The other
+  damage and death markers are replay navigation points, not separate AI
+  reviews. 
+- but justin thinks that this is sufficient to showcase for the hackathon?
+
+### Where the advice appears
+
+The frontend is designed to show advice in the replay viewer's **Moment
+inspector**. For the saved Inferno example, the user selects `flameZ` and opens
+the blue analysis marker. The advice appears under **What could be done
+better**.
+
+### What is verified and what is not
+
+- The parser, replay engine, API, frontend, and agent-harness automated tests
+  pass.
+- A real `.dem` has not yet completed the full upload-to-viewer flow.
+- A real provider call has not yet completed the full chain. Tests use fake
+  provider responses, and this checkout has no configured provider key.
+- Player intent and follow-up questions are not implemented.
+- Replay playback, seeking, marker selection, and inspector opening still need
+  a clean manual browser test before the demo.
+
+### The trained model and the language model
+
+The trained replay model produces probabilities and recommendation signals.
+The optional live language model turns safe replay facts into readable coaching
+text. These are separate parts. Initial coaching can later use a deterministic
+text fallback, so the whole product does not have to fail when the provider is
+unavailable. No model retraining is required for that fallback.
+
+### Main operational gaps
+
+- The frontend timeout and backend provider timeout are not aligned.
+- Direct uploads need a configured size limit.
+- Vercel Blob import is disabled and untested end to end.
+- Runtime replay files need a clear expiry and cleanup policy.
