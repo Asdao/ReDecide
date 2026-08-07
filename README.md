@@ -27,7 +27,7 @@ decisions, especially whether to reset or re-engage after taking damage.
 
 The trained replay model supplies probabilities and decision signals. The LLM
 is an explanation layer; it does not parse the replay or replace the evidence
-checks.
+checks. This is necessary for better results.
 
 ## Project guides
 
