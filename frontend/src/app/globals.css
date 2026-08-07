@@ -1763,16 +1763,17 @@ input[type="file"] {
 }
 
 .moment-intent form {
+  --moment-intent-control-size: 4rem;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr) var(--moment-intent-control-size);
   gap: 0.55rem;
   align-items: stretch;
 }
 
 .moment-intent textarea {
-  height: 5.5rem;
-  min-height: 5.5rem;
-  max-height: 5.5rem;
+  height: var(--moment-intent-control-size);
+  min-height: var(--moment-intent-control-size);
+  max-height: var(--moment-intent-control-size);
   overflow-y: auto;
   resize: none;
   border: 1px solid var(--line);
@@ -1805,6 +1806,13 @@ input[type="file"] {
   font-weight: 800;
   text-transform: uppercase;
   cursor: pointer;
+}
+
+.moment-intent form button {
+  width: var(--moment-intent-control-size);
+  min-width: var(--moment-intent-control-size);
+  aspect-ratio: 1;
+  padding: 0.5rem;
 }
 
 .moment-intent form button:disabled {

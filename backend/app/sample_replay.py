@@ -50,7 +50,7 @@ QUICK_SAMPLE_URL = (
     "3dmax-vs-falcons-m2-ancient-20mb.dem"
 )
 QUICK_SAMPLE_FILENAME = "3dmax-vs-falcons-m2-ancient-20mb.dem"
-QUICK_SAMPLE_DISPLAY_NAME = "3DMAX vs Falcons — Ancient (20 MB sample)"
+QUICK_SAMPLE_DISPLAY_NAME = "3DMAX vs Falcons LITE"
 QUICK_SAMPLE_DESCRIPTION = "Smaller Ancient match sample for quicker analysis."
 QUICK_SAMPLE_MAX_BYTES = 64 * 1024 * 1024
 
@@ -112,7 +112,7 @@ class BlobSampleReplay:
         if expected_bytes is not None and expected_bytes > self.max_bytes:
             raise ValueError("expected sample size exceeds sample max_bytes")
         self.expected_bytes = expected_bytes
-        self.display_name = display_name or "3DMAX vs Falcons — Ancient"
+        self.display_name = display_name or "3DMAX vs Falcons"
         self.description = description or "Ancient match sample prepared from the hosted replay."
         self.map_name = map_name
         self.replay_id = replay_id or (

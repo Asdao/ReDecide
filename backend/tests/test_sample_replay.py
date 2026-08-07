@@ -64,7 +64,7 @@ def test_public_sample_selection_runs_ingestion_and_analysis(
         "samples": [
             {
                 "sample_id": "sample-ancient",
-                "display_name": "3DMAX vs Falcons — Ancient",
+                "display_name": "3DMAX vs Falcons",
                 "description": "Ancient match sample prepared from the hosted replay.",
                 "map": "de_ancient",
                 "players": [],
@@ -123,7 +123,7 @@ def test_public_sample_catalog_supports_selecting_the_quick_hosted_demo(
         url="https://store123.public.blob.vercel-storage.com/quick.dem",
         sample_id="sample-ancient-20mb",
         filename="quick.dem",
-        display_name="3DMAX vs Falcons — Ancient (20 MB sample)",
+        display_name="3DMAX vs Falcons LITE",
         downloader=download_quick,
         loader=lambda _path: _record(),
         max_bytes=100,
@@ -136,6 +136,10 @@ def test_public_sample_catalog_supports_selecting_the_quick_hosted_demo(
     assert [sample["sample_id"] for sample in samples.json()["samples"]] == [
         "sample-ancient",
         "sample-ancient-20mb",
+    ]
+    assert [sample["display_name"] for sample in samples.json()["samples"]] == [
+        "3DMAX vs Falcons",
+        "3DMAX vs Falcons LITE",
     ]
 
     response = client.post("/api/analyze", json={"sample_id": "sample-ancient-20mb"})

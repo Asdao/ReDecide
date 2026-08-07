@@ -173,7 +173,7 @@ describe("uploaded replay screens", () => {
     const html = renderReplayState({
       status: "players-error",
       sampleId: "sample-ancient-20mb",
-      sourceName: "3DMAX vs Falcons — Ancient (20 MB sample)",
+      sourceName: "3DMAX vs Falcons LITE",
       manifest,
       analysis,
       error: {
