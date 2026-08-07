@@ -76,9 +76,10 @@ function SampleBar({
   return (
     <li>
       <button
-        className={`sample-bar${isSelected ? " selected" : ""}${selectionFailed ? " failed" : ""}`}
+        className={`sample-bar${isSelecting ? " loading-border" : ""}${isSelected ? " selected" : ""}${selectionFailed ? " failed" : ""}`}
         type="button"
         disabled={unavailable || isSelecting}
+        aria-busy={isSelecting}
         aria-pressed={isSelected}
         onClick={() => onSelect(sample.sample_id)}
       >

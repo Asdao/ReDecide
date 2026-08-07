@@ -614,6 +614,34 @@ describe("sample replay screens", () => {
     expect(html).toContain("Open analysis");
   });
 
+  it("animates the selected sample border while its preparation is running", () => {
+    const html = renderToStaticMarkup(
+      createElement(SampleSelectorScreen, {
+        status: "ready",
+        samples: [
+          {
+            sample_id: "nuke-sample",
+            display_name: "Nuke example",
+            description: "A sample coaching moment",
+            map: "de_nuke",
+            players: [],
+            recommended_player: null,
+            available: true,
+          },
+        ],
+        selectingSampleId: "nuke-sample",
+        onBack: () => undefined,
+        onRetry: () => undefined,
+        onSelect: () => undefined,
+      }),
+    );
+
+    expect(html).toContain('class="sample-bar loading-border"');
+    expect(html).toContain('disabled=""');
+    expect(html).toContain('aria-busy="true"');
+    expect(html).toContain("Preparing");
+  });
+
   it("uses an official map name instead of the backend map identifier", () => {
     const html = renderToStaticMarkup(
       createElement(SampleSelectorScreen, {

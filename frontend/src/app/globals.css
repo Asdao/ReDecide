@@ -626,7 +626,7 @@ input[type="file"] {
   opacity: 0;
 }
 
-.sample-bar:is(:hover, :focus-visible) {
+.sample-bar:not(:disabled):is(:hover, :focus-visible) {
   border-color: var(--accent);
   background: var(--surface-raised);
   transform: translateX(3px);
@@ -669,7 +669,7 @@ input[type="file"] {
   transition: filter 150ms ease, transform 200ms ease;
 }
 
-.sample-bar:is(:hover, :focus-visible) .sample-map-image {
+.sample-bar:not(:disabled):is(:hover, :focus-visible) .sample-map-image {
   filter: saturate(1) contrast(1.08);
   transform: scale(1.025);
 }
@@ -855,6 +855,19 @@ input[type="file"] {
   -webkit-mask-composite: xor;
   mask-composite: exclude;
   animation: loading-border-orbit 1.6s linear infinite;
+}
+
+.sample-bar.loading-border::after {
+  width: auto;
+  opacity: 1;
+}
+
+.sample-bar.loading-border:disabled {
+  opacity: 1;
+}
+
+.sample-bar.loading-border:disabled > * {
+  opacity: 0.62;
 }
 
 @keyframes loading-border-orbit {
