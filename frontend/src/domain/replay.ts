@@ -108,16 +108,42 @@ export const replayManifestSchema = z
 export const analysisJobSchema = z
   .object({
     analysis_id: requiredString,
-    status: z.enum(["processing", "ready", "complete", "failed"]),
+    status: z.enum(["processing", "ready", "coaching", "complete", "failed"]),
     players_available: z.boolean(),
     result_available: z.boolean(),
+    selected_player_id: requiredString.nullable(),
+    player_runs: z.record(
+      requiredString,
+      z
+        .object({
+          status: z.enum(["unknown", "running", "complete", "failed"]),
+          result_available: z.boolean(),
+          run_id: requiredString.optional(),
+        })
+        .strict(),
+    ),
     logs_url: requiredString,
     events_url: requiredString,
     result_url: requiredString,
   })
   .strict();
 
-export const analysisPlayerSchema = z
+export const analysisProgressEventSchema = z
+  .object({
+    analysis_id: requiredString,
+    schema_version: z.literal("pipeline_progress_v1").optional(),
+    stage: requiredString,
+    progress: z.number().min(0).max(100),
+    message: requiredString,
+    done: z.boolean().optional(),
+    preparation_progress: z.number().min(0).max(100).optional(),
+    player_id: requiredString.optional(),
+    run_id: requiredString.optional(),
+    result_available: z.boolean().optional(),
+  })
+  .passthrough();
+
+const analysisResultPlayerSchema = z
   .object({
     player_id: requiredString,
     display_name: requiredString.nullable(),
@@ -129,10 +155,17 @@ export const analysisPlayerSchema = z
   })
   .strict();
 
+export const analysisPlayerSchema = analysisResultPlayerSchema
+  .extend({
+    analysis_available: z.boolean(),
+    analysis_status: z.enum(["unknown", "not_started", "running", "complete", "failed"]),
+  })
+  .strict();
+
 export const analysisPlayersSchema = z
   .object({
     analysis_id: requiredString,
-    status: z.enum(["processing", "ready", "complete", "failed"]),
+    status: z.enum(["processing", "ready", "coaching", "complete", "failed"]),
     players: z.array(analysisPlayerSchema),
   })
   .strict()
@@ -197,7 +230,7 @@ export const replayAnalysisResultSchema = z
     source: requiredString,
     replay_id: requiredString,
     map_name: requiredString,
-    players: z.array(analysisPlayerSchema),
+    players: z.array(analysisResultPlayerSchema),
     events: z.array(analysisEventSchema),
     key_events: z.array(analysisEventSchema),
     filter_contract: z
@@ -320,6 +353,7 @@ export const replayVisualizationSchema = z
 
 export type ReplayManifest = z.infer<typeof replayManifestSchema>;
 export type AnalysisJob = z.infer<typeof analysisJobSchema>;
+export type AnalysisProgressEvent = z.infer<typeof analysisProgressEventSchema>;
 export type AnalysisPlayer = z.infer<typeof analysisPlayerSchema>;
 export type AnalysisPlayers = z.infer<typeof analysisPlayersSchema>;
 export type ReplayAnalysisResult = z.infer<typeof replayAnalysisResultSchema>;

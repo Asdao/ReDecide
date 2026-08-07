@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import decisionPacket from "../../../backend/tests/fixtures/decision_packet.valid.json";
 import {
   analysisFlowReducer,
   initialAnalysisFlowState,
@@ -11,7 +12,12 @@ import {
   landingViewHref,
   withLandingHistoryMarker,
 } from "@/domain/landing-navigation";
-import { mapAssetKey, mapThumbnailUrl, samplesResponseSchema } from "@/domain/samples";
+import {
+  mapAssetKey,
+  mapThumbnailUrl,
+  samplePreparationSchema,
+  samplesResponseSchema,
+} from "@/domain/samples";
 
 const sample = {
   sample_id: "fixture-mirage-01",
@@ -73,6 +79,35 @@ describe("backend sample flow", () => {
     expect(samplesResponseSchema.parse({ samples: [] }).samples).toEqual([]);
     expect(samplesResponseSchema.parse({ samples: [sample] }).samples).toHaveLength(1);
     expect(samplesResponseSchema.parse({ samples: [sample, { ...sample, sample_id: "two" }] }).samples).toHaveLength(2);
+  });
+
+  it("enforces the backend sample invariants and stage payload", () => {
+    expect(() =>
+      samplesResponseSchema.parse({
+        samples: [{ ...sample, players: ["PlayerA", "PlayerA"] }],
+      }),
+    ).toThrow("sample players must be unique");
+    expect(() =>
+      samplesResponseSchema.parse({
+        samples: [{ ...sample, recommended_player: "MissingPlayer" }],
+      }),
+    ).toThrow("recommended_player must appear in players");
+    expect(samplePreparationSchema.parse(preparation)).toEqual(preparation);
+    expect(() =>
+      samplePreparationSchema.parse({ ...preparation, decision_packet: {} }),
+    ).toThrow();
+    expect(
+      samplePreparationSchema.parse({
+        stage: "INTENT_REQUIRED",
+        analysis_id: "fixture-analysis-01",
+        players: ["PlayerA"],
+        decision_packet: decisionPacket,
+        neutral_summary: {
+          timestamp_seconds: 96.45,
+          text: "PlayerA exposed again 0.9 seconds after contact",
+        },
+      }).stage,
+    ).toBe("INTENT_REQUIRED");
   });
 
   it("moves from the landing page to a loaded backend list", () => {

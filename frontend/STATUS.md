@@ -1,6 +1,6 @@
 # Frontend Status
 
-Last verified: 2026-08-05 (Asia/Singapore)
+Last verified: 2026-08-06 (Asia/Singapore)
 
 ## Status
 
@@ -49,6 +49,11 @@ and all uploaded-replay progress states. The former
 floating square markers and pulse animations were removed. The moving border is
 a solid, hard-edged orange segment without a translucent gradient ramp, and the
 global reduced-motion treatment still collapses it to a static border state.
+Uploaded analysis preparation and coaching now subscribe to the backend-provided
+`events_url`. Validated SSE messages replace static loading copy with the latest
+backend stage and percentage; malformed stream records are ignored, request
+identity remains scoped to the active analysis, and polling continues to own
+completion and failure recovery when streaming is unavailable.
 
 The analysis route renders the reviewed local radar for the selected replay with the
 selected player in blue, same-side players in green, and opponents in red.
@@ -66,9 +71,16 @@ timeline, scrubber, elapsed time, and event inspector. The viewer supports
 play/pause, five-second rewind/fast-forward, 0.5x through 8x playback, direct
 scrubbing, round jumps, and stable kill/objective event markers. Selecting a
 marker seeks to its exact tick and exposes the known event facts without
-starting another model call. Timeline markers are perspective-specific: they
-show only damage received and deaths where the selected player is the victim,
-and refresh immediately when the perspective changes. Playback detects the
+starting another model call. Timeline markers are perspective-specific:
+ordinary markers show damage received and deaths where the selected player is
+the victim, while the selected analysis point is always included for its
+analyzed player even when that player was the attacker. An analysis point
+replaces competing damage or death markers for the same replay event, uses the blue
+analysis treatment, and opens the same coaching inspector for uploaded and
+processed saves. If the visualization omits the exact event row, the frontend
+synthesizes the marker from the validated selected decision. Round-zero analysis
+aliases and duplicate event facts are discarded when resolving that fallback
+marker. Markers refresh immediately when the perspective changes. Playback detects the
 first selected-player event crossed by the authoritative clock, seeks to its
 exact tick, opens the event inspector, and pauses automatically. Event and round
 tracks use the range thumb's usable inset so markers align with the playback
@@ -79,8 +91,12 @@ with no persistent focus or selected outline after clicking or automatic
 pausing. The marker track now uses a roving keyboard tab stop, so it contributes
 one stop instead of every replay event to the page tab order; Left/Right and
 Home/End move between markers and keyboard focus remains visibly outlined. The
-wider right-side inspector uses an orange border on all four sides;
-saved coaching uses a borderless blue background. The inspector has no separate
+wider right-side inspector matches its border to the selected marker: tan for
+damage, red for death, and blue for an analysis-backed moment. A 100-damage
+event is classified as death, and a same-tick duplicate kill marker is folded
+into that stable damage event. The analysis legend swatch has the same visual
+thickness as the damage and death swatches.
+Saved coaching uses a borderless blue background. The inspector has no separate
 saved-analysis note or clear button. Player
 and round selectors suppress the browser's native white focus ring while
 retaining the product-colored container state.
@@ -97,7 +113,26 @@ slides a wider inspector in from the right and shifts the centered radar
 slightly left; resuming playback restores the centered
 map. Inferno's saved coaching is attached to the matching flameZ damage event at
 tick 2579, shown as a distinct blue timeline marker, and rendered in the moment
-inspector. The viewer never starts a model request.
+inspector. Analysis-backed moments now also render the intent follow-up composer
+pinned to the bottom of the inspector. The textbox keeps its base height and
+scrolls internally instead of resizing. Its typed, per-moment request lifecycle
+keeps a one-time submitted intent attached to the stable event ID, disables editing,
+preserves the old coaching behind the rotating loading border, ignores stale
+responses, and replaces only that moment's coaching after a successful response.
+The composer remains visibly disabled in the running app until the backend
+provides a documented endpoint and a submission function is connected; the
+viewer does not invent or call an unsupported API.
+The radar workspace always renders a compact win-rate strip directly under the
+live radar status and above the moment inspector. The strip is capped at half
+the inspector's maximum width. The selected player's current team is flushed
+left in the legend's green, `Win rate` is centered, and the opposing team is
+flushed right in the legend's red with its team name after the percentage. The
+split bar uses the same perspective-aware colors, matches the round indicator's
+thickness, and sits close beneath the values. Playback carries forward the
+latest backend estimate at or before the current tick in the same round. Before
+a fresh round receives its first estimate,
+or when analysis data is unavailable, the strip shows a muted 50/50 baseline
+instead of borrowing from another round or a future tick.
 
 The processed replay adapter accepts the documented backend
 `replay_visualization_v1` output without requiring the sanitized Mirage shape.
@@ -115,14 +150,26 @@ longer part of the rendered flow. The landing page now exposes a labelled,
 keyboard-focusable `.dem` picker alongside the existing sample-match action.
 
 The frontend now also has a typed, UI-independent adapter for the complete
-uploaded-replay API sequence. It uploads one `.dem` through
-`POST /api/replay/upload`, prepares analysis by stable `replay_id`, reads job
-and player status, submits the selected stable `player_id` for coaching,
-recovers completed results without rerunning coaching, and distinguishes
-visualization processing, locked, failed, and ready responses. Every successful
-JSON response is validated before the adapter returns it. Abort errors remain
-distinguishable from normalized network, HTTP, content-type, JSON, and schema
-errors, and backend error details are not exposed through adapter messages.
+uploaded-replay API sequence. Its configurable upload transport defaults to a
+direct multipart `POST /api/replay/upload` for local development. Vercel can
+instead upload the `.dem` directly from the browser to a public Blob store,
+then submit only its URL and original filename to `POST /api/replay/import-url`.
+Blob uploads use multipart transfer above 100 MB and reject files above the
+backend-aligned 1 GB limit before transfer. The adapter prepares analysis by
+stable `replay_id`, reads job and player status, submits the selected stable
+`player_id` for coaching, recovers completed results without rerunning coaching,
+and distinguishes visualization processing, locked, failed, and ready
+responses. Every successful JSON response is validated before the adapter
+returns it. Abort errors remain distinguishable from normalized network, HTTP,
+content-type, JSON, and schema errors, and provider details are not exposed
+through adapter messages.
+
+The uploaded-replay boundary now matches the backend's repeatable per-player
+run contract. Analysis metadata accepts the `coaching` state, nullable
+`selected_player_id`, and keyed `player_runs`; selectable players require the
+backend-provided `analysis_available` and `analysis_status` fields. Completed
+analysis results retain their separate unadorned player shape, so selector-only
+run state is not incorrectly required in saved or live result artifacts.
 
 The main reducer now models the complete supported upload lifecycle without UI
 coupling: uploading, preparing analysis, waiting for players, choosing a stable
@@ -145,6 +192,10 @@ shapes, including unique stable player IDs, valid round boundaries, selected
 decision ownership, and agreement between the selected decision and coaching
 analysis. Manifest validation also keeps visualization failures, coaching
 completion, and visualization unlock state internally consistent.
+Compatibility sample contracts now mirror the backend's unique-player and
+recommended-player rules and enforce the payload associated with each
+preparation stage. Both bundled processed replay JSON files and the Inferno
+saved-analysis JSON remain validated directly from disk in the test suite.
 
 The replay state machine is now connected to the adapter and rendered screens.
 Choosing a `.dem` uploads it once, prepares analysis by `replay_id`, polls the
@@ -215,8 +266,12 @@ outcomes are not rendered in the coaching result.
 - `src/adapters/samples-api.ts` - `GET /api/samples` and `POST /api/analyze`
   transport with JSON/content/status checks
 - `src/adapters/replay-api.ts` - typed transport for upload, preparation,
-  status, player selection, coaching, recovery, and visualization retrieval
+  direct or Blob URL import, status, player selection, coaching, recovery, and
+  visualization retrieval
+- `src/app/api/blob/upload/route.ts` - same-origin Vercel Blob client-token
+  route restricted to `.dem`, public object storage, and a 1 GB maximum
 - `src/lib/http.ts` - shared public API base URL and browser abort detection
+- `.env.example` - local direct-upload defaults and the Vercel Blob mode switch
 - `src/domain/replay.ts` - strict replay manifest, analysis, result, and
   visualization boundary schemas
 - `src/domain/maps.ts` - shared official and fallback display names for CS2 map
@@ -250,6 +305,11 @@ Set `NEXT_PUBLIC_API_BASE_URL` in `frontend/.env.local`. Local development
 defaults to `http://127.0.0.1:8000` when the variable is absent. The backend
 must allow the frontend origin through `REDECIDE_API_ALLOWED_ORIGINS`.
 
+`NEXT_PUBLIC_REPLAY_UPLOAD_MODE` defaults to `direct`, which sends the file to
+the local or configured FastAPI base URL. Set it to `blob` in Vercel and connect
+a public Blob store so Vercel supplies the server-only `BLOB_READ_WRITE_TOKEN`.
+Never expose that token through a `NEXT_PUBLIC_*` variable.
+
 The Next.js image allowlist permits only the referenced repository's thumbnail
 folder on `raw.githubusercontent.com` for non-bundled future maps.
 
@@ -257,14 +317,21 @@ folder on `raw.githubusercontent.com` for non-bundled future maps.
 
 From `frontend/`, `pnpm run verify` passes:
 
-- Vitest: 7 files, 84 tests passed, including both full processed replay files,
-  concurrent analysis/replay preparation, repeated player selection, and
-  uploaded-viewer navigation, the matching Inferno analysis, and the replay
-  timeline's single keyboard tab stop
+- Vitest: 9 files and 108 tests passed, including backend-shaped per-player run
+  metadata, sample invariants, both bundled processed saves, and 20 upload adapter and Blob
+  token-route tests covering direct and public-Blob transports, multipart
+  selection, limits, cancellation, safe failures, same-origin checks, and token
+  constraints. The intent tests cover per-moment isolation, loading-to-success,
+  same-text retry state, stale response rejection, same-round win-estimate
+  selection, CT/T perspective swaps, lethal-damage deduplication, attacker-side
+  analysis precedence, synthetic analysis markers, analysis-event cleanup, and
+  validated SSE progress delivery. Landing-
+  page assertions match the current upload and processed-replay wording.
 - TypeScript: passed
 - ESLint: passed with no warnings
-- Next.js production build: passed; `/` and `/_not-found` prerendered and
-  `/analysis` rendered on demand
+- Next.js production build: passed in both default direct mode and explicit
+  Blob mode; `/` and `/_not-found` prerendered, with `/analysis` and
+  `/api/blob/upload` rendered on demand
 
 Browser verification against the documented sample responses confirmed:
 
@@ -307,15 +374,24 @@ viewer and event inspector remain free of horizontal overflow.
 - A real native `.dem` has not yet completed the full backend flow, matching the
   backend's documented current limitation. Browser QA used validated replay
   fixtures for post-upload states and did not send user replay data.
+- A real public Vercel Blob has not yet completed the hosted end-to-end flow.
+  Blob objects are public to anyone with their URL and are not automatically
+  deleted after FastAPI imports them. The token route checks same-origin browser
+  requests and upload constraints, but a public production deployment still
+  needs authentication or platform-level protection to prevent upload abuse.
 - Only Inferno currently has a paired saved coaching result for the processed
-  save catalog. Uploaded replays use their live completed analysis. Player
-  intent remains disabled because no public backend contract exists.
+  save catalog. Uploaded replays use their live completed analysis. The player
+  intent UI and typed request lifecycle are implemented, but submission remains
+  disabled because no public backend endpoint or response contract exists.
 
 ## Contract/API impact
 
-No backend contract changes. The local processed-replay adapter and uploaded
+No backend contract changes and no intent endpoint was invented. The local
+processed-replay adapter and uploaded
 flow consume the documented `replay_visualization_v1` shape directly. In
 addition to the compatibility sample APIs, the frontend adapter implements the
-documented `/api/replay/*` and `/api/analysis/*` contracts. The rendered upload
-flow now consumes preparation, player selection, repeat coaching, result
-recovery, visualization unlock, and replay playback endpoints end to end.
+documented `/api/replay/*` and `/api/analysis/*` contracts, including the
+disabled-by-default public Blob URL import. The rendered upload flow now
+consumes preparation, player selection, repeat coaching, result recovery, SSE
+progress, visualization unlock, and replay playback endpoints end to end. No
+backend files or contracts were changed.

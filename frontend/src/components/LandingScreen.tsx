@@ -61,13 +61,13 @@ export function LandingScreen({
         </div>
         <div className="action-notes">
           <p className="action-note action-note-accent" id="upload-help">
-            Upload once; the backend prepares player selection and coaching.
+            Upload your match and view its analysis.
           </p>
           <p className="action-note action-note-steel" id="sample-note">
             Choose from the sample matches currently available from the backend.
           </p>
           <p className="action-note action-note-steel" id="showcase-note">
-            Choose an already-processed replay and go straight to its 2D viewer.
+            Choose an already-processed replay and go straight to its analysis.
           </p>
         </div>
       </div>

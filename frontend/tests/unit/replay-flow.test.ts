@@ -37,6 +37,8 @@ const analysis = analysisJobSchema.parse({
   status: "processing",
   players_available: false,
   result_available: false,
+  selected_player_id: null,
+  player_runs: {},
   logs_url: "/api/analysis/analysis-1/logs",
   events_url: "/api/analysis/analysis-1/events",
   result_url: "/api/analysis/analysis-1/result",
@@ -45,7 +47,11 @@ const analysis = analysisJobSchema.parse({
 const players = analysisPlayersSchema.parse({
   analysis_id: "analysis-1",
   status: "ready",
-  players: backendResult.players,
+  players: backendResult.players.map((player) => ({
+    ...player,
+    analysis_available: player.decision_ids.length > 0,
+    analysis_status: "not_started",
+  })),
 }).players;
 
 const result = replayAnalysisResultSchema.parse({
