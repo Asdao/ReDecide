@@ -286,6 +286,44 @@ describe("uploaded replay screens", () => {
     expect(html).not.toContain('<button type="button" class="death"');
   });
 
+  it("labels multiple analysed moments as analysis without showing their count", () => {
+    const secondDecision = {
+      ...result.selected_decision,
+      decision_id: `${result.selected_decision.decision_id}:second`,
+      contact_tick: 200,
+      decision_open_tick: 200,
+      action_close_tick: 300,
+    };
+    const multiMomentResult = replayAnalysisResultSchema.parse({
+      ...result,
+      decision_candidates: [...result.decision_candidates, secondDecision],
+      analyses: [
+        {
+          selected_decision: result.selected_decision,
+          coach_analysis: result.coach_analysis,
+        },
+        {
+          selected_decision: secondDecision,
+          coach_analysis: {
+            ...result.coach_analysis,
+            decision_id: secondDecision.decision_id,
+          },
+        },
+      ],
+      summary: { ...result.summary, analysis_count: 2 },
+    });
+    const html = renderToStaticMarkup(createElement(ReplayAnalysisScreen, {
+      initialPlayerId: result.selected_decision.player_id,
+      initialReplay: uploadedReplay,
+      initialAnalysis: multiMomentResult,
+      uploaded: true,
+      onChoosePlayer: () => undefined,
+    }));
+
+    expect(html).toContain('<span><i class="coaching"></i>Analysis</span>');
+    expect(html).not.toContain("2 analyses");
+  });
+
   it("labels time between rounds without repeating the round in the timeline legend", () => {
     const waitingReplay: ProcessedReplay = {
       ...uploadedReplay,

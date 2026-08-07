@@ -305,20 +305,6 @@ export function ReplayAnalysisScreen({
     [seek, timelineEvents],
   );
 
-  const moveAnalysedMoment = useCallback((direction: "next" | "previous") => {
-    if (analysedEvents.length === 0) return;
-    const currentIndex = selectedEventId
-      ? analysedEvents.findIndex((event) => event.event_id === selectedEventId)
-      : -1;
-    const delta = direction === "next" ? 1 : -1;
-    const targetIndex = currentIndex < 0
-      ? (direction === "next" ? 0 : analysedEvents.length - 1)
-      : clamp(currentIndex + delta, 0, analysedEvents.length - 1);
-    const targetEvent = analysedEvents[targetIndex];
-    seek(targetEvent.tick, targetEvent.event_id);
-    requestAnimationFrame(() => eventMarkerRefs.current.get(targetEvent.event_id)?.focus());
-  }, [analysedEvents, seek, selectedEventId]);
-
   const requestContextualAnalysis = useCallback((keyPointId: string, intent: string) => {
     if (!submitMomentIntent || !analysisId || !replay || !selectedPlayerId) return;
 
@@ -484,13 +470,6 @@ export function ReplayAnalysisScreen({
                 <h2 id="inspector-title">
                   {eventLabel(selectedEvent, selectedEventAnalysis)}
                 </h2>
-                {selectedEventHasAnalysis && analysedEvents.length > 1 ? (
-                  <div className="analysis-moment-navigation" aria-label="Analysed moments">
-                    <span>{analysedEvents.findIndex((event) => event.event_id === selectedEvent?.event_id) + 1} of {analysedEvents.length}</span>
-                    <button type="button" onClick={() => moveAnalysedMoment("previous")} aria-label="Previous analysed moment">Previous</button>
-                    <button type="button" onClick={() => moveAnalysedMoment("next")} aria-label="Next analysed moment">Next</button>
-                  </div>
-                ) : null}
               </div>
               <p className="inspector-summary">
                 {selectedEventHasAnalysis && selectedEventAnalysis?.selected_decision.role === "attacker"
@@ -796,7 +775,7 @@ export function ReplayAnalysisScreen({
           <div className="timeline-caption">
             <span><i className="damage" />Damage</span>
             <span><i className="death" />Death</span>
-            {analysedEvents.length > 0 ? <span><i className="coaching" />{analysedEvents.length === 1 ? "Analysis" : `${analysedEvents.length} analyses`}</span> : null}
+            {analysedEvents.length > 0 ? <span><i className="coaching" />Analysis</span> : null}
             <span>Tick {Math.round(currentTick)}</span>
           </div>
         </section>
