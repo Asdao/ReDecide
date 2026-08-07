@@ -1,5 +1,8 @@
+// Vercel Services routes same-origin /api requests to FastAPI through the
+// root vercel.json rewrites. Local standalone-backend development can still
+// provide an absolute API base URL.
 export const apiBaseUrl =
-  process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/$/, "") ?? "http://127.0.0.1:8000";
+  process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/$/, "") ?? "";
 
 export type ReplayUploadMode = "direct" | "blob";
 

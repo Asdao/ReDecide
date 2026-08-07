@@ -33,6 +33,21 @@ def test_ingestion_builders_preserve_replay_contract() -> None:
     assert payload["events"][0]["event"] == "damage"
 
 
+def test_visualization_drops_unassigned_player_snapshots() -> None:
+    record = _record()
+    record["ticks"] = [
+        {"tick": 10, "steamid": "p1", "player_name": "One", "team_name": "CT"},
+        {"tick": 10, "steamid": "spectator", "player_name": "Admin", "team_name": None},
+        {"tick": 20, "steamid": "p2", "player_name": "Two", "side": "terrorist"},
+    ]
+
+    payload = visualization_payload(record, replay_id="a" * 32)
+
+    assert [tick["steamid"] for tick in payload["ticks"]] == ["p1", "p2"]
+    assert [tick["side"] for tick in payload["ticks"]] == ["ct", "t"]
+    assert {player["player_id"] for player in payload["players"]} == {"p1", "p2"}
+
+
 def test_start_replay_persists_coaching_and_manifest(tmp_path: Any, monkeypatch: Any) -> None:
     monkeypatch.setenv("REDECIDE_REPLAY_STORE", str(tmp_path / "replays"))
     with ThreadPoolExecutor(max_workers=1) as executor:

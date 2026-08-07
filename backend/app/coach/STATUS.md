@@ -1,12 +1,12 @@
 # AI Coach and Reliability Status
 
-Last verified: 2026-08-04 (Asia/Singapore)
+Last verified: 2026-08-07 (Asia/Singapore)
 
 Owner: Person 3 - AI Coach, Rubric, and Reliability
 
 ## Status
 
-**Replay Engine analysis connector and FastAPI Pi adapter implemented; the frozen
+**Replay Engine analysis connector and FastAPI coach adapters implemented; the frozen
 RE:DECIDE `DecisionCard` layer remains separate.**
 
 `backend/app/coach/replay_engine_connector.py` accepts one normalized replay mapping and
@@ -17,18 +17,17 @@ Native `.dem` parsing belongs to `backend/replay_engine/training/test_harness.py
 replacement-extractor adapter; the backend connector intentionally receives
 normalized JSON only.
 
-`backend/app/coach/pi_connector.py` is the default coach adapter constructed by
-`backend.app.main.create_app()`. It receives one already-selected replay-job
-decision, removes post-cutoff events, anonymizes player identifiers, disables
-Pi tools, and launches `agent-harness`. Every Pi process inherits deployment
-variables and uses the repository-root `.env` through `HARNESS_ENV_FILE` when
-no explicit dotenv path is configured. Strict JSON and the provider's narrow
-unquoted two-field object are normalized before `merge_pi_output` restores the
-authoritative decision and player identity. Runtime requests execute the
-installed `tsx` entrypoint directly with Node; pnpm is confined to setup and
-development, avoiding install/build-policy checks inside FastAPI. This is an executable provider
-adapter, but it is not yet the versioned rubric, validator, or frozen
-`DecisionCard` implementation described below.
+`backend/app/main.py` selects `HttpCoachAdapter` by default when an
+OpenAI-compatible base URL and API key are present. This Python HTTP path
+receives one already-selected replay-job decision and returns the same strict
+two-field coaching fragment without spawning Node.js. Set
+`REDECIDE_COACH_MODE=pi` to explicitly use `PiCoachAdapter`, which removes
+post-cutoff events, anonymizes player identifiers, disables Pi tools, and
+launches `agent-harness`. The Pi process inherits deployment variables and
+uses the repository-root `.env` through `HARNESS_ENV_FILE` when no explicit
+dotenv path is configured. Both paths are executable provider adapters, but
+neither is yet the versioned rubric, validator, or frozen `DecisionCard`
+implementation described below.
 
 The harness default follows the active release pointer in
 `backend/replay_engine/model/artifacts/releases/current.json`; pin `version` or pass an explicit
@@ -36,8 +35,8 @@ The harness default follows the active release pointer in
 
 Both connectors are internal backend boundaries. The browser must not import
 Replay Engine, load model artifacts, run Pi, or receive provider credentials. The
-current FastAPI replay-job routes call `PiCoachAdapter` after player selection
-and return player-scoped UI JSON. Converting that result into the frozen
+current FastAPI replay-job routes call the configured coach adapter after
+player selection and return player-scoped UI JSON. Converting that result into the frozen
 `DecisionPacket` plus `DecisionCard` product response remains separate work.
 
 ## Required input and output
@@ -384,7 +383,7 @@ uv run pytest backend/tests/test_coach_replay_engine_connector.py backend/replay
 
 Result: 16 passed on 2026-08-04.
 
-Latest FastAPI/Pi/demo regression:
+Latest FastAPI/coach/demo regression:
 
 ```powershell
 uv run pytest backend/tests/test_pi_connector.py backend/tests/test_analysis_api.py "backend/replay_engine/backend demo/test_cli.py" -q
@@ -393,6 +392,11 @@ uv run pytest backend/tests/test_pi_connector.py backend/tests/test_analysis_api
 Result: 18 passed on 2026-08-04. A separate synthetic, replay-free provider
 request also confirmed that the configured DeepSeek endpoint and key can
 respond; no secret value was printed or recorded.
+
+Repository-wide maintenance validation on 2026-08-07 passed 280 Python tests
+with 3 expected skips and no warnings (one optional legacy Vercel-SDK check and
+two private processed-replay-fixture checks). No live provider call was made
+during this maintenance run.
 
 The user-facing Replay Engine smoke runner is:
 
@@ -467,7 +471,7 @@ contradictory evidence, confidence caps, and safe abstention.
 
 ## Known limitations and blockers
 
-- The Pi replay-job response is a two-field coaching fragment, not the frozen
+- The replay-job coach response is a two-field coaching fragment, not the frozen
   version `1.0` `DecisionCard`.
 - Production provider availability, account policy, and spend limits still
   require deployment-level configuration and monitoring.

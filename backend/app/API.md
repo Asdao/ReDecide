@@ -3,7 +3,7 @@
 Run the public backend from the repository root:
 
 ```powershell
-uv run uvicorn backend.app.main:app --reload --port 8000
+uv run uvicorn backend.app.main:app --env-file .env --reload --port 8000
 ```
 
 Open the interactive API page at `http://127.0.0.1:8000/docs`.
@@ -109,14 +109,36 @@ them unless specifically required.
 ### `GET /api/samples`
 
 - **Input:** None.
-- **Output:** JSON list containing the old built-in sample match.
-- **Summary:** Returns the test sample used by the frozen-contract demonstration.
+- **Output:** The stable `SamplesResponse` shape with the hosted Ancient samples.
+- **Summary:** Lists the public samples without downloading or parsing either demo. The
+  catalog includes the original full-size sample. On Vercel (`VERCEL=1`), it
+  also includes a separately selectable `3dmax-vs-falcons-m2-ancient-20mb`
+  quick sample.
 
 ### `POST /api/analyze`
 
-- **Input:** JSON containing the old fixture `sample_id` and optional player name.
-- **Output:** JSON containing the old fixture preparation stage and possible `DecisionPacket`.
-- **Summary:** Prepares the built-in test sample; it is not part of the uploaded-replay flow.
+- **Input:** JSON containing one of the sample ids returned by `GET /api/samples`,
+  such as `{"sample_id":"3dmax-vs-falcons-m2-ancient-20mb"}`.
+- **Output:** `{sample_id, replay_id, manifest, analysis}`. `manifest` is the
+  `replay_manifest_v1` payload and `analysis` is the normal analysis-job metadata.
+- **Summary:** Downloads and parses the hosted sample only when its deterministic
+  replay artifacts are absent or invalid, then runs the real replay preparation
+  pipeline. Subsequent requests reuse the cached manifest/coaching/visualization
+  artifacts only when their internal cache metadata exactly matches the current
+  sample source and pipeline cache version.
+
+The primary hosted sample's current deterministic `replay_id` is
+`a9b8732ecaadca5ec78218ac6c647258`; the 20 MB sample uses
+`5b575a75255d339223c5df6e52c33ec7`. These IDs are content/configuration
+fingerprints, not permanent public constants. Increment
+`REDECIDE_SAMPLE_CACHE_VERSION` when sample preparation semantics change so a
+deployment cannot reuse artifacts produced by incompatible code. The raw source
+is validated as an allowlisted public Vercel Blob URL and by expected size for
+the full sample; `REDECIDE_SAMPLE_SHA256` can additionally pin its exact digest.
+The quick sample has a built-in SHA-256 digest check.
+The frontend can continue with `/api/analysis/{analysis_id}/players`,
+`/api/analysis/{analysis_id}/run`, `/api/analysis/{analysis_id}/result`, and
+`/api/replay/{replay_id}/json` using the returned IDs.
 
 ## Unavailable API
 
@@ -134,8 +156,23 @@ them unless specifically required.
 
 ## Current requirements and limits
 
-- Live coaching requires Node.js, installed `agent-harness` dependencies, and a valid provider API key.
+- With `HARNESS_MODEL_BASE_URL` and `DEEPSEEK_API_KEY` (or
+  `HARNESS_MODEL_API_KEY`) configured, live coaching uses the Python HTTP
+  adapter by default. Start Uvicorn with `--env-file .env`, because Uvicorn
+  does not load a repository `.env` implicitly.
+- The legacy Pi subprocess remains available by setting
+  `REDECIDE_COACH_MODE=pi`; that mode requires Node.js and installed
+  `agent-harness` dependencies.
 - Direct upload expects the `.dem` file; the separate Blob URL route is disabled by default.
 - No real `.dem` has completed the full flow yet.
-- Analysis jobs are lost when the backend restarts.
+- On Vercel Services, analysis state and results automatically use the private
+  frontend Blob binding and survive function restarts. Set
+  `REDECIDE_STORAGE_BACKEND=filesystem` only to opt out explicitly.
+  The default local filesystem mode persists under `data/runtime/analysis`.
+- Preparation exceptions retain a generic public job error while their full
+  traceback and analysis ID are written to server runtime logs.
 - Player intent and follow-up questions are not implemented.
+- Each selected player run coaches up to ten distinct moments by default. Set
+  `REDECIDE_ANALYSES_PER_PLAYER` to an integer from 1 to 10 to change the quota.
+  Results expose an additive `analyses` array; `selected_decision` and
+  `coach_analysis` remain aliases for the first entry.

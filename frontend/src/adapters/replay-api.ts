@@ -1,4 +1,4 @@
-import { upload } from "@vercel/blob/client";
+import { uploadPresigned } from "@vercel/blob/client";
 import { z } from "zod";
 import {
   analysisJobSchema,
@@ -22,6 +22,7 @@ import {
 } from "@/lib/http";
 
 const REPLAY_BLOB_UPLOAD_URL = "/api/blob/upload";
+const REPLAY_BLOB_CLEANUP_URL = "/api/blob/cleanup";
 const REPLAY_BLOB_MULTIPART_THRESHOLD_BYTES = 100 * 1024 * 1024;
 const REPLAY_BLOB_MAX_BYTES = 1024 * 1024 * 1024;
 
@@ -246,6 +247,23 @@ async function uploadReplayDirect(file: File, signal?: AbortSignal): Promise<Rep
   return parseSuccessful(response, replayManifestSchema, "upload");
 }
 
+async function deleteTemporaryReplayBlob(blobUrl: string): Promise<void> {
+  try {
+    await fetch(REPLAY_BLOB_CLEANUP_URL, {
+      method: "POST",
+      headers: {
+        Accept: "application/json",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ url: blobUrl }),
+      keepalive: true,
+    });
+  } catch {
+    // Cleanup is best-effort: a prepared replay must remain usable if Blob
+    // deletion is temporarily unavailable.
+  }
+}
+
 async function uploadReplayViaBlob(file: File, signal?: AbortSignal): Promise<ReplayManifest> {
   if (file.size > REPLAY_BLOB_MAX_BYTES) {
     throw new ReplayApiError("Choose a .dem file smaller than 1 GB.", {
@@ -256,7 +274,7 @@ async function uploadReplayViaBlob(file: File, signal?: AbortSignal): Promise<Re
 
   let blobUrl: string;
   try {
-    const blob = await upload(`replays/${file.name}`, file, {
+    const blob = await uploadPresigned(`uploads/${file.name}`, file, {
       access: "public",
       handleUploadUrl: REPLAY_BLOB_UPLOAD_URL,
       contentType: "application/octet-stream",
@@ -287,7 +305,11 @@ async function uploadReplayViaBlob(file: File, signal?: AbortSignal): Promise<Re
     },
     "upload",
   );
-  return parseSuccessful(response, replayManifestSchema, "upload");
+  const manifest = await parseSuccessful(response, replayManifestSchema, "upload");
+  if (manifest.visualization_status === "ready") {
+    await deleteTemporaryReplayBlob(blobUrl);
+  }
+  return manifest;
 }
 
 export async function uploadReplay(

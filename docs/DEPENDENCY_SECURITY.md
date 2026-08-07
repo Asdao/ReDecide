@@ -2,8 +2,9 @@
 
 The repository's JavaScript projects use pnpm lockfiles and share the
 dependency-security policy documented in [`../security/README.md`](../security/README.md).
-There is no scheduled dependency bot; updates are manual and are verified by
-CI in [`.github/workflows/dependency-security.yml`](../.github/workflows/dependency-security.yml).
+Dependency updates remain manual and require review. Pull requests are checked
+by the dependency-security gate and the dependency-review workflow; a separate
+scheduled audit runs registry checks for both Node and Python lockfiles.
 
 ## Before installing
 
@@ -15,7 +16,8 @@ node security/check-lockfiles.mjs
 
 This checks the pinned pnpm version, release-age and trust settings, explicit
 build approvals, the no-auto-install script policy, lockfile format, SHA-512
-integrity values, and forbidden exotic sources.
+integrity values, forbidden exotic sources, and duplicate npm/Yarn/Bun lockfiles
+that could create a second dependency graph.
 
 ## Safe install and audit
 
@@ -64,3 +66,6 @@ high-severity audit, then runs each project's tests, typecheck, and build
 gates. The workflow has read-only content permissions, does not persist GitHub
 credentials after checkout, and does not receive application credentials.
 Concurrent runs for the same branch are cancelled to avoid wasting CI minutes.
+The scheduled [dependency audit](../.github/workflows/dependency-audit.yml)
+repeats the Node audits and exports both uv lockfiles to hashed requirements
+for an isolated `pip-audit` check.

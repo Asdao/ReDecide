@@ -31,6 +31,29 @@ def _client_for_app(app: Any) -> Any:
     return TestClient(app)
 
 
+def test_default_analysis_log_dir_uses_vercel_tmp(
+    tmp_path: Any, monkeypatch: Any
+) -> None:
+    orchestration = importlib.import_module("backend.app.orchestration")
+    monkeypatch.setenv("VERCEL", "1")
+    monkeypatch.delenv("REDECIDE_ANALYSIS_LOG_DIR", raising=False)
+    monkeypatch.setattr(orchestration.tempfile, "gettempdir", lambda: str(tmp_path))
+
+    service = orchestration.AnalysisService()
+
+    assert service.log_dir == tmp_path / "redecide" / "analysis-logs"
+    assert service.log_dir.is_dir()
+
+
+def test_default_analysis_quota_is_ten(monkeypatch: Any) -> None:
+    orchestration = importlib.import_module("backend.app.orchestration")
+    monkeypatch.delenv("REDECIDE_ANALYSES_PER_PLAYER", raising=False)
+
+    service = orchestration.AnalysisService()
+
+    assert service.analyses_per_player == 10
+
+
 def _load_client(tmp_path: Any) -> Any:
     """Return a TestClient for the application when the walking skeleton exists."""
 
@@ -674,3 +697,26 @@ def test_player_without_decision_candidates_returns_clear_422(tmp_path: Any) -> 
 
     assert run.status_code == 422, run.text
     assert run.json()["detail"] == "selected player has no first-contact decision candidate"
+
+
+def test_preparation_failure_logs_the_internal_exception_but_keeps_public_state_safe(
+    tmp_path: Any, caplog: Any
+) -> None:
+    def failing_pipeline(_replay: dict[str, Any]) -> Any:
+        raise ValueError("specific parser invariant failed")
+        yield  # pragma: no cover - makes this callable an iterator pipeline
+
+    orchestration = importlib.import_module("backend.app.orchestration")
+    service = orchestration.AnalysisService(
+        log_dir=tmp_path, pipeline=failing_pipeline
+    )
+
+    with caplog.at_level("ERROR", logger="backend.app.orchestration"):
+        metadata = service.prepare({"replay_id": "cached-sample"})
+
+    analysis_id = metadata["analysis_id"]
+    assert metadata["status"] == "failed"
+    assert service.get_job(analysis_id).error == "replay preparation failed"
+    assert "specific parser invariant failed" in caplog.text
+    assert "specific parser invariant failed" not in service.logs(analysis_id)
+    assert '"message":"replay preparation failed"' in service.logs(analysis_id)

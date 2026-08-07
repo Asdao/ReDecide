@@ -169,6 +169,24 @@ describe("uploaded replay screens", () => {
     expect(sampleHtml).toContain('aria-busy="true"');
   });
 
+  it("offers a fresh preparation retry for failed hosted samples", () => {
+    const html = renderReplayState({
+      status: "players-error",
+      sampleId: "sample-ancient-20mb",
+      sourceName: "3DMAX vs Falcons LITE",
+      manifest,
+      analysis,
+      error: {
+        code: "prepare-failed",
+        message: "The replay could not be prepared for player selection.",
+        retryable: true,
+      },
+    });
+
+    expect(html).toContain("Retry sample preparation");
+    expect(html).not.toContain("Check players again");
+  });
+
   it("renders display names and disables players without a coaching decision", () => {
     const unavailablePlayer = { ...players[0], decision_ids: [] };
     const nukeManifest = replayManifestSchema.parse({
@@ -198,10 +216,17 @@ describe("uploaded replay screens", () => {
       manifest,
       player: players[1],
       phase: "coaching",
+      progress: {
+        analysis_id: "analysis-1",
+        stage: "calling_pi",
+        progress: 85,
+        message: "Generating coaching analysis.",
+      },
       onReturnToPlayers: () => undefined,
     }));
 
-    expect(html).toContain("around 30 seconds");
+    expect(html).toContain("Generating coaching analysis.");
+    expect(html).not.toContain("85%");
     expect(html).toContain("T One");
     expect(html).toContain("%2Fradars%2Fde_mirage.png");
     expect(html).toContain("radar-frame loading-border replay-map-loading-frame");
@@ -225,6 +250,38 @@ describe("uploaded replay screens", () => {
     expect(html).not.toContain("Perspective");
     expect(html).not.toContain("eventual_winner");
     expect(html).not.toContain("round_score");
+  });
+
+  it("places health left of win rate and applies the strict health color thresholds", () => {
+    for (const [health, level] of [
+      [60, "healthy"],
+      [59, "low"],
+      [20, "low"],
+      [19, "critical"],
+    ] as const) {
+      const healthReplay: ProcessedReplay = {
+        ...uploadedReplay,
+        ticks: uploadedReplay.ticks.map((tick) => ({ ...tick, health })),
+      };
+      const html = renderToStaticMarkup(createElement(ReplayAnalysisScreen, {
+        initialPlayerId: "t1",
+        initialReplay: healthReplay,
+        uploaded: true,
+        onChoosePlayer: () => undefined,
+      }));
+      const headingEnd = html.indexOf('<div class="radar-indicators">');
+      const healthIndex = html.indexOf(`class="selected-player-health ${level}"`);
+      const winRateIndex = html.indexOf('class="radar-win-rate');
+
+      expect(headingEnd).toBeGreaterThan(-1);
+      expect(healthIndex).toBeGreaterThan(headingEnd);
+      expect(winRateIndex).toBeGreaterThan(healthIndex);
+      expect(html).toContain(`${health} HP`);
+      expect(html).toContain('role="progressbar"');
+      expect(html).toContain('aria-label="T One health"');
+      expect(html).toContain(`aria-valuenow="${health}"`);
+      expect(html).toContain(`style="width:${health}%"`);
+    }
   });
 
   it("renders an attacker analysis point ahead of same-tick damage or death", () => {
@@ -266,6 +323,88 @@ describe("uploaded replay screens", () => {
     expect(html).toContain("Damage dealt · Saved analysis");
     expect(html).toContain('<span><i class="coaching"></i>Analysis</span>');
     expect(html).not.toContain('<button type="button" class="death"');
+  });
+
+  it("renders same-tick victim damage and elimination as one death marker for every replay source", () => {
+    const replayWithSameTickDeath: ProcessedReplay = {
+      ...uploadedReplay,
+      events: [
+        {
+          event_id: "damage",
+          event: "damage",
+          tick: 164,
+          round_num: 1,
+          attacker_id: "ct1",
+          victim_id: "t1",
+          damage_health: 24,
+          weapon: "ak47",
+        },
+        {
+          event_id: "death",
+          event: "kill",
+          tick: 164,
+          round_num: 1,
+          attacker_id: "ct1",
+          victim_id: "t1",
+          headshot: true,
+        },
+      ],
+      ticks: [
+        uploadedReplay.ticks[0],
+        { ...uploadedReplay.ticks[0], tick: 300 },
+      ],
+    };
+
+    for (const uploaded of [false, true]) {
+      const html = renderToStaticMarkup(createElement(ReplayAnalysisScreen, {
+        initialPlayerId: "t1",
+        initialReplay: replayWithSameTickDeath,
+        uploaded,
+        onChoosePlayer: () => undefined,
+      }));
+
+      expect(html.match(/<button type="button" class="death"/g)).toHaveLength(1);
+      expect(html).not.toContain('<button type="button" class="damage"');
+      expect(html).toContain("Headshot death");
+    }
+  });
+
+  it("labels multiple analysed moments as analysis without showing their count", () => {
+    const secondDecision = {
+      ...result.selected_decision,
+      decision_id: `${result.selected_decision.decision_id}:second`,
+      contact_tick: 200,
+      decision_open_tick: 200,
+      action_close_tick: 300,
+    };
+    const multiMomentResult = replayAnalysisResultSchema.parse({
+      ...result,
+      decision_candidates: [...result.decision_candidates, secondDecision],
+      analyses: [
+        {
+          selected_decision: result.selected_decision,
+          coach_analysis: result.coach_analysis,
+        },
+        {
+          selected_decision: secondDecision,
+          coach_analysis: {
+            ...result.coach_analysis,
+            decision_id: secondDecision.decision_id,
+          },
+        },
+      ],
+      summary: { ...result.summary, analysis_count: 2 },
+    });
+    const html = renderToStaticMarkup(createElement(ReplayAnalysisScreen, {
+      initialPlayerId: result.selected_decision.player_id,
+      initialReplay: uploadedReplay,
+      initialAnalysis: multiMomentResult,
+      uploaded: true,
+      onChoosePlayer: () => undefined,
+    }));
+
+    expect(html).toContain('<span><i class="coaching"></i>Analysis</span>');
+    expect(html).not.toContain("2 analyses");
   });
 
   it("labels time between rounds without repeating the round in the timeline legend", () => {
@@ -475,6 +614,34 @@ describe("sample replay screens", () => {
     expect(html).toContain("Open analysis");
   });
 
+  it("animates the selected sample border while its preparation is running", () => {
+    const html = renderToStaticMarkup(
+      createElement(SampleSelectorScreen, {
+        status: "ready",
+        samples: [
+          {
+            sample_id: "nuke-sample",
+            display_name: "Nuke example",
+            description: "A sample coaching moment",
+            map: "de_nuke",
+            players: [],
+            recommended_player: null,
+            available: true,
+          },
+        ],
+        selectingSampleId: "nuke-sample",
+        onBack: () => undefined,
+        onRetry: () => undefined,
+        onSelect: () => undefined,
+      }),
+    );
+
+    expect(html).toContain('class="sample-bar loading-border"');
+    expect(html).toContain('disabled=""');
+    expect(html).toContain('aria-busy="true"');
+    expect(html).toContain("Preparing");
+  });
+
   it("uses an official map name instead of the backend map identifier", () => {
     const html = renderToStaticMarkup(
       createElement(SampleSelectorScreen, {
@@ -499,5 +666,7 @@ describe("sample replay screens", () => {
     expect(html).toContain('<span class="sample-map-name">Nuke</span>');
     expect(html).toContain('alt="Nuke map thumbnail"');
     expect(html).toContain('Choose a <span class="accent-word">match</span>.');
+    expect(html).not.toContain('class="sample-meta"');
+    expect(html).not.toContain("Recommended: Player One");
   });
 });

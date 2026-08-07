@@ -17,6 +17,7 @@ import {
   mapAssetKey,
   mapThumbnailUrl,
   samplePreparationSchema,
+  sampleReplayPreparationSchema,
   samplesResponseSchema,
 } from "@/domain/samples";
 
@@ -36,6 +37,33 @@ const preparation = {
   players: ["PlayerA"],
   decision_packet: null,
   neutral_summary: null,
+};
+
+const replayPreparation = {
+  sample_id: sample.sample_id,
+  replay_id: "sample-replay-01",
+  manifest: {
+    schema_version: "replay_manifest_v1" as const,
+    replay_id: "sample-replay-01",
+    source: "Mirage post-contact example.dem",
+    map: { name: "de_mirage", tick_rate: 64 },
+    players: [{ player_id: "p1", display_name: "PlayerA", sides: ["CT"] }],
+    rounds: [{ round_num: 1, start: 0, end: 100 }],
+    visualization_status: "ready" as const,
+    coaching_status: "ready" as const,
+    visualization_unlocked: false,
+  },
+  analysis: {
+    analysis_id: "sample-analysis-01",
+    status: "ready" as const,
+    players_available: true,
+    result_available: false,
+    selected_player_id: null,
+    player_runs: {},
+    logs_url: "/api/analysis/sample-analysis-01/logs",
+    events_url: "/api/analysis/sample-analysis-01/events",
+    result_url: "/api/analysis/sample-analysis-01/result",
+  },
 };
 
 describe("backend sample flow", () => {
@@ -125,6 +153,7 @@ describe("backend sample flow", () => {
         },
       }).stage,
     ).toBe("INTENT_REQUIRED");
+    expect(sampleReplayPreparationSchema.parse(replayPreparation)).toEqual(replayPreparation);
   });
 
   it("moves from the landing page to a loaded backend list", () => {
@@ -158,6 +187,21 @@ describe("backend sample flow", () => {
       samples: [sample],
       sampleId: sample.sample_id,
       preparation,
+    });
+
+    const waiting = analysisFlowReducer(selecting, {
+      type: "SAMPLE_REPLAY_READY",
+      sampleId: sample.sample_id,
+      sourceName: "Mirage post-contact example",
+      preparation: replayPreparation,
+      playersRequestId: "players-1",
+    });
+    expect(waiting).toMatchObject({
+      status: "waiting-for-players",
+      sampleId: sample.sample_id,
+      manifest: replayPreparation.manifest,
+      analysis: replayPreparation.analysis,
+      requestId: "players-1",
     });
   });
 

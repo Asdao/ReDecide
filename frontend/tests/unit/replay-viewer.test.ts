@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
+  analysisEntryForEvent,
   analysisTimelineEvents,
   buildReplayFrames,
   cleanAnalysisEvents,
@@ -238,6 +239,35 @@ describe("processed replay viewer", () => {
     ]);
   });
 
+  it("keeps victim coaching attached when same-tick damage is collapsed into death", () => {
+    const analysis = replayAnalysisResultSchema.parse(JSON.parse(readFileSync(
+      resolve(process.cwd(), "public/replays/inferno-processed.analysis.json"),
+      "utf8",
+    )));
+    const victimAnalysis = {
+      ...analysis,
+      selected_decision: {
+        ...analysis.selected_decision,
+        player_id: "p1",
+        opponent_id: "p2",
+        role: "victim",
+        round_number: 1,
+        contact_tick: 110,
+        event_category: "damage",
+      },
+    };
+    const events = [
+      { event_id: "damage", event: "damage", tick: 110, round_num: 1, attacker_id: "p2", victim_id: "p1", damage_health: 24, weapon: "ak47" },
+      { event_id: "death", event: "kill", tick: 110, round_num: 1, attacker_id: "p2", victim_id: "p1", headshot: true },
+    ];
+
+    const selectedEvents = analysisTimelineEvents(events, "p1", victimAnalysis);
+    expect(selectedEvents).toMatchObject([
+      { event_id: "death", event: "kill", damage_health: 24, weapon: "ak47", headshot: true },
+    ]);
+    expect(analysisEntryForEvent(selectedEvents[0], victimAnalysis)).toBeDefined();
+  });
+
   it("synthesizes a selected analysis point and filters unusable analysis aliases", () => {
     const analysis = replayAnalysisResultSchema.parse(JSON.parse(readFileSync(
       resolve(process.cwd(), "public/replays/inferno-processed.analysis.json"),
@@ -262,32 +292,69 @@ describe("processed replay viewer", () => {
     ]);
   });
 
-  it("labels 100 damage as death and removes its duplicate kill marker", () => {
-    const events = [
+  it("renders every analysed decision as its own timeline marker", () => {
+    const analysis = replayAnalysisResultSchema.parse(JSON.parse(readFileSync(
+      resolve(process.cwd(), "public/replays/inferno-processed.analysis.json"),
+      "utf8",
+    )));
+    const first = {
+      selected_decision: analysis.selected_decision,
+      coach_analysis: analysis.coach_analysis,
+    };
+    const second = {
+      selected_decision: {
+        ...analysis.selected_decision,
+        decision_id: "decision-second",
+        round_number: analysis.selected_decision.round_number + 1,
+        contact_tick: analysis.selected_decision.contact_tick + 100,
+      },
+      coach_analysis: {
+        ...analysis.coach_analysis,
+        decision_id: "decision-second",
+        what_could_be_done_better: "Take a safer follow-up angle.",
+      },
+    };
+    const multi = { ...analysis, analyses: [first, second] };
+
+    expect(analysisTimelineEvents([], analysis.selected_decision.player_id, multi)).toHaveLength(2);
+    expect(analysisTimelineEvents([], analysis.selected_decision.player_id, multi).map(({ tick }) => tick))
+      .toEqual([first.selected_decision.contact_tick, second.selected_decision.contact_tick]);
+  });
+
+  it("collapses same-tick damage and death into one death regardless of damage or input order", () => {
+    const damageEvent =
       {
-        event_id: "lethal-damage",
+        event_id: "damage",
         event: "damage",
         tick: 200,
         round_num: 2,
         attacker_id: "p2",
         victim_id: "p1",
-        damage_health: 100,
+        damage_health: 24,
         weapon: "ak47",
-      },
+      };
+    const killEvent =
       {
-        event_id: "duplicate-kill",
+        event_id: "death",
         event: "kill",
         tick: 200,
         round_num: 2,
         attacker_id: "p2",
         victim_id: "p1",
         headshot: true,
-      },
-    ];
+      };
 
-    const selectedEvents = playerTimelineEvents(events, "p1");
-    expect(selectedEvents.map(({ event_id }) => event_id)).toEqual(["lethal-damage"]);
-    expect(replayEventIsDeath(selectedEvents[0])).toBe(true);
-    expect(selectedEvents[0]).toMatchObject({ headshot: true, weapon: "ak47" });
+    for (const events of [[damageEvent, killEvent], [killEvent, damageEvent]]) {
+      const selectedEvents = playerTimelineEvents(events, "p1");
+      expect(selectedEvents).toHaveLength(1);
+      expect(selectedEvents[0]).toMatchObject({
+        event_id: "death",
+        event: "kill",
+        damage_health: 24,
+        headshot: true,
+        weapon: "ak47",
+      });
+      expect(replayEventIsDeath(selectedEvents[0])).toBe(true);
+    }
   });
 });

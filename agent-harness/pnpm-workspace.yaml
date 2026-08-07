@@ -3,6 +3,7 @@ minimumReleaseAgeStrict: true
 blockExoticSubdeps: true
 trustPolicy: no-downgrade
 verifyDepsBeforeRun: error
+enableGlobalVirtualStore: false
 
 minimumReleaseAgeExclude:
   - undici@8.9.0

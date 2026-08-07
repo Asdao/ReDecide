@@ -3,13 +3,13 @@ import unittest
 from pathlib import Path
 from typing import Any
 
+from backend.app.orchestration import _select_diverse_candidates
 from backend.app.replay.pipeline import (
     extract_players_for_selector,
     merge_pi_output,
     stream_replay_pipeline,
 )
 from backend.replay_engine.harness import load_replay_record
-
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 PROCESSED_REPLAY = (
@@ -164,6 +164,7 @@ class ReplayPipelineTests(unittest.TestCase):
         replay = load_replay_record(_processed_replay(self))
         result = list(stream_replay_pipeline(replay, max_timeline_points=4))[-1]["result"]
         candidate = result["decision_candidates"][0]
+        result["selected_decisions"] = [candidate]
 
         merged = merge_pi_output(
             result,
@@ -180,7 +181,59 @@ class ReplayPipelineTests(unittest.TestCase):
         self.assertEqual(merged["coach_analysis"]["source"], "pi")
         self.assertEqual(merged["selected_decision"]["decision_id"], candidate["decision_id"])
         self.assertEqual(merged["selected_decision"]["player_name"], candidate["display_name"])
+        self.assertNotIn("selected_decisions", merged)
         self.assertNotIn("coach_analysis", result)
+
+    def test_multi_analysis_selection_spans_the_candidate_range(self) -> None:
+        candidates = [
+            {"decision_id": f"r{round_number}", "round_number": round_number}
+            for round_number in range(1, 25)
+        ]
+
+        selected = _select_diverse_candidates(candidates, limit=5)
+
+        self.assertEqual(
+            [item["round_number"] for item in selected],
+            [1, 6, 12, 18, 24],
+        )
+
+    def test_multi_analysis_aliases_follow_selected_candidates(self) -> None:
+        candidates = [
+            {
+                "decision_id": f"r{round_number}",
+                "round_number": round_number,
+                "player_id": "player-1",
+                "display_name": "Player One",
+            }
+            for round_number in range(1, 5)
+        ]
+        result = {
+            "decision_candidates": candidates,
+            "selected_decision": candidates[0],
+            "selected_decisions": [candidates[0], candidates[3]],
+            "players": [{"player_id": "player-1", "display_name": "Player One"}],
+        }
+
+        merged = merge_pi_output(
+            result,
+            {
+                "analyses": [
+                    {
+                        "decision_id": "decision_001",
+                        "what_could_be_done_better": "Hold the opening angle.",
+                    },
+                    {
+                        "decision_id": "decision_002",
+                        "what_could_be_done_better": "Wait for the late-round rotation.",
+                    },
+                ]
+            },
+        )
+
+        self.assertEqual(
+            [entry["selected_decision"]["decision_id"] for entry in merged["analyses"]],
+            ["r1", "r4"],
+        )
 
 
 if __name__ == "__main__":

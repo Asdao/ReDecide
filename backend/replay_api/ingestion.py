@@ -2,7 +2,7 @@
 
 This module owns the shared flow used by HTTP uploads and Blob imports:
 loading a native demo record, creating the replay manifest, persisting the
-coaching branch, and generating the visualization branch in the background.
+coaching branch, and generating the visualization branch inside the request.
 Transport adapters should only validate/download bytes and then call these
 functions.
 """
@@ -10,7 +10,6 @@ functions.
 from __future__ import annotations
 
 from collections.abc import Mapping
-from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Any
 from uuid import uuid4
@@ -36,24 +35,31 @@ def load_native_demo(path: Path) -> Mapping[str, Any]:
 def start_replay(
     record: Mapping[str, Any],
     filename: str,
-    executor: ThreadPoolExecutor,
+    executor: object | None = None,
+    *,
+    replay_id: str | None = None,
 ) -> dict[str, Any]:
-    """Persist initial replay state and schedule visualization generation."""
+    """Persist a complete replay and return its ready manifest.
 
-    replay_id = uuid4().hex
+    ``executor`` is retained as an ignored compatibility argument for callers
+    from the original background-processing implementation.  Vercel Functions
+    may be frozen as soon as a response is returned, so visualization must be
+    generated within the request before this function returns.
+    """
+
+    replay_id = replay_id or uuid4().hex
     manifest = replay_manifest(record, replay_id=replay_id)
     manifest["source"] = filename
     coaching_record = dict(record)
     coaching_record["replay_id"] = replay_id
     save_coaching_artifact(replay_id, coaching_record)
     save_replay_manifest(replay_id, manifest)
-    executor.submit(finish_visualization, record, replay_id, manifest)
-    return manifest
+    return finish_visualization(record, replay_id, manifest)
 
 
 def finish_visualization(
     record: Mapping[str, Any], replay_id: str, manifest: Mapping[str, Any]
-) -> None:
+) -> dict[str, Any]:
     """Generate and persist visualization JSON, recording a safe failure state."""
 
     try:
@@ -67,13 +73,14 @@ def finish_visualization(
             "visualization_error": "visualization JSON generation failed",
         }
     save_replay_manifest(replay_id, completed)
+    return completed
 
 
 def replay_manifest(record: Mapping[str, Any], *, replay_id: str) -> dict[str, Any]:
-    """Build the lightweight manifest returned before visualization completes."""
+    """Build the lightweight manifest used by the replay API."""
 
     header = record.get("header") if isinstance(record.get("header"), Mapping) else {}
-    ticks = [row for row in record.get("ticks", []) if isinstance(row, Mapping)]
+    ticks = visualization_ticks(record.get("ticks", []))
     rounds = [
         {
             "round_num": first(row, "round_num"),
@@ -110,7 +117,7 @@ def visualization_payload(
     """Build the JSON contract consumed by the 2D replay frontend."""
 
     header = record.get("header") if isinstance(record.get("header"), Mapping) else {}
-    ticks = [row for row in record.get("ticks", []) if isinstance(row, Mapping)]
+    ticks = visualization_ticks(record.get("ticks", []))
     rounds = [row for row in record.get("rounds", []) if isinstance(row, Mapping)]
     return {
         "schema_version": "replay_visualization_v1",
@@ -132,6 +139,44 @@ def visualization_payload(
     }
 
 
+def visualization_ticks(value: Any) -> list[dict[str, Any]]:
+    """Return player snapshots with a supported CT/T side only.
+
+    Demo parsers can emit spectator/admin rows with no team assignment. Those
+    rows are not renderable by the frontend replay contract, so remove them at
+    the artifact boundary and canonicalize supported aliases to ``ct``/``t``.
+    """
+
+    ticks: list[dict[str, Any]] = []
+    if not isinstance(value, list):
+        return ticks
+    for row in value:
+        if not isinstance(row, Mapping):
+            continue
+        side = team_side(row)
+        if side is None:
+            continue
+        normalized = dict(row)
+        normalized["side"] = side
+        ticks.append(normalized)
+    return ticks
+
+
+def team_side(value: Mapping[str, Any]) -> str | None:
+    """Normalize parser team aliases to the two playable CS sides."""
+
+    for key in ("side", "team_name", "team"):
+        raw = value.get(key)
+        if raw is None or not str(raw).strip():
+            continue
+        side = str(raw).strip().lower().replace("_", "").replace("-", "").replace(" ", "")
+        if side in {"ct", "counterterrorist"}:
+            return "ct"
+        if side in {"t", "terrorist", "terrorists"}:
+            return "t"
+    return None
+
+
 def players_from_ticks(ticks: list[Mapping[str, Any]]) -> list[dict[str, Any]]:
     players: dict[str, dict[str, Any]] = {}
     for tick in ticks:
@@ -145,8 +190,8 @@ def players_from_ticks(ticks: list[Mapping[str, Any]]) -> list[dict[str, Any]]:
             key, {"player_id": key, "display_name": None, "sides": []}
         )
         player["display_name"] = player["display_name"] or first(tick, "player_name", "name")
-        side = first(tick, "team_name", "team", "side")
-        if side not in (None, "") and side not in player["sides"]:
+        side = team_side(tick)
+        if side is not None and side not in player["sides"]:
             player["sides"].append(side)
     return sorted(
         players.values(),
@@ -208,5 +253,7 @@ __all__ = [
     "players_from_ticks",
     "replay_manifest",
     "start_replay",
+    "team_side",
     "visualization_payload",
+    "visualization_ticks",
 ]

@@ -5,7 +5,6 @@ from __future__ import annotations
 import os
 from pathlib import Path
 import tempfile
-from concurrent.futures import ThreadPoolExecutor
 from typing import Any, Mapping
 from uuid import uuid4
 
@@ -24,14 +23,13 @@ from backend.replay_api.store import load_replay_manifest, visualization_path
 try:
     from fastapi import FastAPI, File, HTTPException, UploadFile
     from fastapi.middleware.cors import CORSMiddleware
-    from fastapi.responses import FileResponse, JSONResponse
+    from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 except ImportError as exc:  # pragma: no cover - dependency boundary
     raise RuntimeError("FastAPI is required to run backend.replay_api.main") from exc
 
 
 def create_app() -> FastAPI:
     app = FastAPI(title="RE:DECIDE Replay API", version="1.0")
-    executor = ThreadPoolExecutor(max_workers=2, thread_name_prefix="replay-json")
     allowed_origins = [
         origin.strip()
         for origin in os.getenv(
@@ -54,10 +52,10 @@ def create_app() -> FastAPI:
 
     @app.post("/api/replay/upload", status_code=202)
     async def upload(file: UploadFile = File(...)) -> dict[str, Any]:
-        """Parse once and return map/player metadata before full JSON generation."""
+        """Parse once and return map/player metadata with artifacts ready."""
 
         filename, record = await _parse_upload(file)
-        return _start_replay(record, filename, executor)
+        return _start_replay(record, filename)
 
     @app.get("/api/replay/{replay_id}/status")
     def replay_status(replay_id: str) -> dict[str, Any]:
@@ -67,7 +65,7 @@ def create_app() -> FastAPI:
             raise HTTPException(status_code=404, detail="replay not found") from exc
 
     @app.get("/api/replay/{replay_id}/json", response_model=None)
-    def replay_json(replay_id: str) -> FileResponse | JSONResponse:
+    def replay_json(replay_id: str) -> FileResponse | JSONResponse | RedirectResponse:
         try:
             manifest = load_replay_manifest(replay_id)
             path = visualization_path(replay_id)
@@ -77,6 +75,17 @@ def create_app() -> FastAPI:
             return JSONResponse(
                 status_code=403,
                 content={"replay_id": replay_id, "status": "locked_until_coaching_complete"},
+            )
+        if isinstance(path, str):
+            # Blob responses are served directly by Vercel's CDN, avoiding a
+            # second Function invocation and the serverless response-size cap.
+            source = Path(str(manifest.get("source") or "replay.dem"))
+            return RedirectResponse(
+                path,
+                status_code=307,
+                headers={
+                    "Content-Disposition": f'attachment; filename="{source.stem}.replay.json"'
+                },
             )
         if not path.is_file():
             if manifest.get("visualization_status") == "failed":
@@ -97,7 +106,7 @@ def create_app() -> FastAPI:
         """Compatibility alias for the player-first upload flow."""
 
         filename, record = await _parse_upload(file)
-        return _start_replay(record, filename, executor)
+        return _start_replay(record, filename)
 
     return app
 
@@ -135,12 +144,14 @@ def _replay_manifest(record: Mapping[str, Any], *, replay_id: str) -> dict[str, 
 def _start_replay(
     record: Mapping[str, Any],
     filename: str,
-    executor: ThreadPoolExecutor,
+    executor: object | None = None,
 ) -> dict[str, Any]:
     return _ingest_start_replay(record, filename, executor)
 
 
-def _finish_visualization(record: Mapping[str, Any], replay_id: str, manifest: Mapping[str, Any]) -> None:
+def _finish_visualization(
+    record: Mapping[str, Any], replay_id: str, manifest: Mapping[str, Any]
+) -> dict[str, Any]:
     from backend.replay_api.ingestion import finish_visualization
 
     finish_visualization(record, replay_id, manifest)

@@ -1,5 +1,5 @@
 import { z } from "zod";
-import type { ReplayAnalysisResult } from "./replay";
+import type { ReplayAnalysisEntry, ReplayAnalysisResult } from "./replay";
 
 const requiredString = z.string().trim().min(1);
 const nonnegativeInteger = z.number().int().nonnegative();
@@ -461,28 +461,32 @@ export function playerTimelineEvents(
       (event.event === "damage" || event.event === "kill") &&
       event.victim_id === playerId,
   );
-  const lethalDamageMoments = new Set(
-    relevantEvents
-      .filter((event) => event.event === "damage" && replayEventIsDeath(event))
-      .map((event) => `${event.round_num}:${event.tick}:${event.victim_id}`),
-  );
-  const killByMoment = new Map(
-    relevantEvents
-      .filter((event) => event.event === "kill")
-      .map((event) => [`${event.round_num}:${event.tick}:${event.victim_id}`, event]),
-  );
+  const momentKey = (event: ReplayEvent) => `${event.round_num}:${event.tick}:${event.victim_id}`;
+  const killByMoment = new Map<string, ReplayEvent>();
+  for (const event of relevantEvents) {
+    if (event.event === "kill" && !killByMoment.has(momentKey(event))) {
+      killByMoment.set(momentKey(event), event);
+    }
+  }
 
   return relevantEvents.flatMap((event) => {
-    const moment = `${event.round_num}:${event.tick}:${event.victim_id}`;
-    if (event.event === "kill" && lethalDamageMoments.has(moment)) {
-      return [];
-    }
-    if (event.event === "damage" && lethalDamageMoments.has(moment)) {
-      const killEvent = killByMoment.get(moment);
+    const moment = momentKey(event);
+    const killEvent = killByMoment.get(moment);
+    if (killEvent) {
+      if (event !== killEvent) return [];
+
+      const damageEvent = relevantEvents.find((candidate) =>
+        candidate.event === "damage" &&
+        momentKey(candidate) === moment &&
+        (!killEvent.attacker_id || candidate.attacker_id === killEvent.attacker_id)
+      ) ?? relevantEvents.find((candidate) =>
+        candidate.event === "damage" && momentKey(candidate) === moment
+      );
       return [{
-        ...event,
-        headshot: killEvent?.headshot ?? event.headshot,
-        weapon: event.weapon ?? killEvent?.weapon,
+        ...killEvent,
+        damage_health: killEvent.damage_health ?? damageEvent?.damage_health,
+        headshot: killEvent.headshot ?? damageEvent?.headshot,
+        weapon: killEvent.weapon ?? damageEvent?.weapon,
       }];
     }
     return [event];
@@ -491,7 +495,7 @@ export function playerTimelineEvents(
 
 export function eventMatchesAnalysis(
   event: ReplayEvent,
-  analysis: ReplayAnalysisResult,
+  analysis: Pick<ReplayAnalysisResult, "selected_decision"> | ReplayAnalysisEntry,
 ): boolean {
   const decision = analysis.selected_decision;
   const playerMatches = decision.role === "victim"
@@ -511,6 +515,32 @@ export function eventMatchesAnalysis(
     playerMatches &&
     opponentMatches
   );
+}
+
+/** Normalize legacy singular coaching payloads to the multi-moment shape. */
+export function replayAnalysisEntries(
+  analysis: ReplayAnalysisResult,
+): ReplayAnalysisEntry[] {
+  return analysis.analyses?.length
+    ? analysis.analyses
+    : [{ selected_decision: analysis.selected_decision, coach_analysis: analysis.coach_analysis }];
+}
+
+export function analysisEntryForEvent(
+  event: ReplayEvent,
+  analysis?: ReplayAnalysisResult,
+): ReplayAnalysisEntry | undefined {
+  return analysis ? replayAnalysisEntries(analysis).find((entry) =>
+    eventMatchesAnalysis(event, entry) || (
+      replayEventIsDeath(event) &&
+      entry.selected_decision.event_category === "damage" &&
+      entry.selected_decision.role === "victim" &&
+      event.round_num === entry.selected_decision.round_number &&
+      event.tick === entry.selected_decision.contact_tick &&
+      event.victim_id === entry.selected_decision.player_id &&
+      event.attacker_id === entry.selected_decision.opponent_id
+    )
+  ) : undefined;
 }
 
 export function cleanAnalysisEvents(
@@ -535,8 +565,11 @@ export function cleanAnalysisEvents(
   });
 }
 
-function syntheticAnalysisEvent(analysis: ReplayAnalysisResult): ReplayEvent {
-  const decision = analysis.selected_decision;
+function syntheticAnalysisEvent(
+  analysis: ReplayAnalysisResult,
+  entry: ReplayAnalysisEntry,
+): ReplayEvent {
+  const decision = entry.selected_decision;
   const cleanEvents = cleanAnalysisEvents([...analysis.events, ...analysis.key_events]);
   const anchor = cleanEvents.find((event) =>
     event.is_coaching_anchor &&
@@ -565,19 +598,39 @@ export function analysisTimelineEvents(
   analysis?: ReplayAnalysisResult,
 ): ReplayEvent[] {
   const playerEvents = playerTimelineEvents(events, playerId);
-  if (!analysis || analysis.selected_decision.player_id !== playerId) {
+  if (!analysis) {
     return playerEvents;
   }
 
-  const analysisEvent = events.find((event) => eventMatchesAnalysis(event, analysis))
-    ?? syntheticAnalysisEvent(analysis);
-  const withoutCompetingMoment = playerEvents.filter((event) => !(
+  const analysisEvents = replayAnalysisEntries(analysis)
+    .filter((entry) => entry.selected_decision.player_id === playerId)
+    .map((entry) => {
+      const matchingEvent = events.find((event) => eventMatchesAnalysis(event, entry));
+      const matchingDeath = entry.selected_decision.role === "victim"
+        ? playerEvents.find((event) =>
+            replayEventIsDeath(event) &&
+            event.round_num === entry.selected_decision.round_number &&
+            event.tick === entry.selected_decision.contact_tick &&
+            event.victim_id === entry.selected_decision.player_id &&
+            event.attacker_id === entry.selected_decision.opponent_id
+          )
+        : undefined;
+      return matchingDeath ?? matchingEvent ?? syntheticAnalysisEvent(analysis, entry);
+    });
+  if (analysisEvents.length === 0) return playerEvents;
+
+  const withoutCompetingMoments = playerEvents.filter((event) => !analysisEvents.some((analysisEvent) =>
     event.round_num === analysisEvent.round_num &&
     event.tick === analysisEvent.tick &&
     event.attacker_id === analysisEvent.attacker_id &&
     event.victim_id === analysisEvent.victim_id
   ));
-  return [...withoutCompetingMoment, analysisEvent].sort(
+  const seenEventIds = new Set<string>();
+  return [...withoutCompetingMoments, ...analysisEvents].filter((event) => {
+    if (seenEventIds.has(event.event_id)) return false;
+    seenEventIds.add(event.event_id);
+    return true;
+  }).sort(
     (left, right) => left.tick - right.tick || left.event_id.localeCompare(right.event_id),
   );
 }

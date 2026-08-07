@@ -18,6 +18,8 @@ venv/
 # trees everywhere and accidental package-manager files created at repo root.
 node_modules/
 .pnpm-store/
+/_frontend_runtime_backups_*/
+/_frontend-dev.*.log
 /package.json
 /package-lock.json
 /pnpm-lock.yaml
@@ -57,3 +59,5 @@ data/eval/human/*
 !backend/replay_engine/model/artifacts/full_replay_value.manifest.json
 !backend/replay_engine/model/artifacts/full_replay_calibrator.json
 !backend/replay_engine/model/artifacts/small_snapshot_value.json
+.vercel
+.env*

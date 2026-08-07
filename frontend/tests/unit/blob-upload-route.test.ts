@@ -1,8 +1,14 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-const handleUploadMock = vi.hoisted(() => vi.fn());
+const { handleUploadPresignedMock, issueSignedTokenMock } = vi.hoisted(() => ({
+  handleUploadPresignedMock: vi.fn(),
+  issueSignedTokenMock: vi.fn(),
+}));
 
-vi.mock("@vercel/blob/client", () => ({ handleUpload: handleUploadMock }));
+vi.mock("@vercel/blob", () => ({ issueSignedToken: issueSignedTokenMock }));
+vi.mock("@vercel/blob/client", () => ({
+  handleUploadPresigned: handleUploadPresignedMock,
+}));
 
 import { POST } from "@/app/api/blob/upload/route";
 
@@ -20,7 +26,8 @@ function uploadRequest(body: unknown, origin?: string): Request {
 
 afterEach(() => {
   vi.unstubAllEnvs();
-  handleUploadMock.mockReset();
+  handleUploadPresignedMock.mockReset();
+  issueSignedTokenMock.mockReset();
 });
 
 describe("Vercel Blob upload route", () => {
@@ -30,15 +37,15 @@ describe("Vercel Blob upload route", () => {
     const response = await POST(
       uploadRequest(
         {
-          type: "blob.generate-client-token",
-          payload: { pathname: "replays/match.dem", multipart: false, clientPayload: null },
+          type: "blob.generate-presigned-url",
+          payload: { pathname: "uploads/match.dem", multipart: false, clientPayload: null },
         },
         "https://redecide.example",
       ),
     );
 
     expect(response.status).toBe(404);
-    expect(handleUploadMock).not.toHaveBeenCalled();
+    expect(handleUploadPresignedMock).not.toHaveBeenCalled();
   });
 
   it("rejects cross-origin requests for upload tokens", async () => {
@@ -47,58 +54,79 @@ describe("Vercel Blob upload route", () => {
     const response = await POST(
       uploadRequest(
         {
-          type: "blob.generate-client-token",
-          payload: { pathname: "replays/match.dem", multipart: false, clientPayload: null },
+          type: "blob.generate-presigned-url",
+          payload: { pathname: "uploads/match.dem", multipart: false, clientPayload: null },
         },
         "https://attacker.example",
       ),
     );
 
     expect(response.status).toBe(403);
-    expect(handleUploadMock).not.toHaveBeenCalled();
+    expect(handleUploadPresignedMock).not.toHaveBeenCalled();
   });
 
   it("issues a bounded token configuration for same-origin .dem uploads", async () => {
     vi.stubEnv("NEXT_PUBLIC_REPLAY_UPLOAD_MODE", "blob");
-    handleUploadMock.mockResolvedValue({
-      type: "blob.generate-client-token",
-      clientToken: "test-token",
+    handleUploadPresignedMock.mockResolvedValue({
+      type: "blob.generate-presigned-url",
+      presignedUrlPayload: { delegationToken: "delegation", signature: "signature", params: {} },
+    });
+    issueSignedTokenMock.mockResolvedValue({
+      delegationToken: "delegation",
+      clientSigningToken: "signing-token",
+      validUntil: Date.now() + 60_000,
     });
 
     const response = await POST(
       uploadRequest(
         {
-          type: "blob.generate-client-token",
-          payload: { pathname: "replays/match.dem", multipart: true, clientPayload: null },
+          type: "blob.generate-presigned-url",
+          payload: { pathname: "uploads/match.dem", multipart: true, clientPayload: null },
         },
         "https://redecide.example",
       ),
     );
 
     expect(response.status).toBe(200);
-    const options = handleUploadMock.mock.calls[0]?.[0] as {
-      onBeforeGenerateToken: (pathname: string) => Promise<Record<string, unknown>>;
+    const options = handleUploadPresignedMock.mock.calls[0]?.[0] as {
+      getSignedToken: (pathname: string) => Promise<Record<string, unknown>>;
     };
-    await expect(options.onBeforeGenerateToken("replays/match.dem")).resolves.toEqual({
+    await expect(options.getSignedToken("uploads/match.dem")).resolves.toEqual({
+      token: {
+        delegationToken: "delegation",
+        clientSigningToken: "signing-token",
+        validUntil: expect.any(Number),
+      },
+      urlOptions: {
+        allowedContentTypes: ["application/octet-stream"],
+        maximumSizeInBytes: 1024 * 1024 * 1024,
+        addRandomSuffix: true,
+        cacheControlMaxAge: 60,
+      },
+    });
+    expect(issueSignedTokenMock).toHaveBeenCalledWith({
+      pathname: "uploads/match.dem",
+      operations: ["put"],
       allowedContentTypes: ["application/octet-stream"],
       maximumSizeInBytes: 1024 * 1024 * 1024,
-      addRandomSuffix: true,
-      cacheControlMaxAge: 60,
     });
-    await expect(options.onBeforeGenerateToken("replays/match.zip")).rejects.toThrow(
+    await expect(options.getSignedToken("uploads/match.zip")).rejects.toThrow(
+      "Only .dem replay uploads are allowed.",
+    );
+    await expect(options.getSignedToken("replays/match.dem")).rejects.toThrow(
       "Only .dem replay uploads are allowed.",
     );
   });
 
   it("allows Vercel's completion callback and returns safe failures", async () => {
     vi.stubEnv("NEXT_PUBLIC_REPLAY_UPLOAD_MODE", "blob");
-    handleUploadMock
+    handleUploadPresignedMock
       .mockResolvedValueOnce({ type: "blob.upload-completed", response: "ok" })
       .mockRejectedValueOnce(new Error("private token detail"));
     const callback = {
       type: "blob.upload-completed",
       payload: {
-        blob: { url: "https://store.public.blob.vercel-storage.com/replays/match.dem" },
+        blob: { url: "https://store.public.blob.vercel-storage.com/uploads/match.dem" },
       },
     };
 
@@ -106,8 +134,8 @@ describe("Vercel Blob upload route", () => {
     const failed = await POST(
       uploadRequest(
         {
-          type: "blob.generate-client-token",
-          payload: { pathname: "replays/match.dem", multipart: false, clientPayload: null },
+          type: "blob.generate-presigned-url",
+          payload: { pathname: "uploads/match.dem", multipart: false, clientPayload: null },
         },
         "https://redecide.example",
       ),

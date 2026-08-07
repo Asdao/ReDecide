@@ -1,12 +1,14 @@
 # CS2 Match Analysis Prototype
 
-This repository contains an early Counter-Strike 2 replay-analysis prototype.
-Its current focus is **replay-value prediction**: given a structured snapshot of
-a round, estimate the chance that the CT side wins. A separate agent harness can
-explain bounded simulator results in natural language.
+This package is the Counter-Strike 2 replay-analysis subsystem used by the
+RE:DECIDE application. Its core focus is **replay-value prediction**: given a
+structured snapshot of a round, estimate the chance that the CT side wins. The
+unified FastAPI service and Next.js frontend provide the product-level upload,
+player selection, coaching, and replay-viewer flow around this subsystem.
 
-The project is not yet a complete “upload a match and receive a full coaching
-report” application.
+A separate agent harness remains available for the legacy Pi coaching path;
+the normal backend configuration uses the Python HTTP coach when a provider is
+configured.
 
 ## Current pipeline
 
@@ -168,7 +170,7 @@ smoke check.
 - `training/` — feature extraction, replay storage, training, calibration, and
   evaluation scripts.
 - `extractor/` — standalone replay parsing and normalization package.
-- `agent-harness/` — TypeScript/Pi boundary with the bounded simulator tool.
+- `../../agent-harness/` — optional TypeScript/Pi boundary with the bounded simulator tool.
 - `backend/replay_engine/model/artifacts/` — generated model artifacts and metrics.
 - `docs/` — detailed plans, training notes, reliability guidance, and target
   analysis architecture.
@@ -187,21 +189,19 @@ The supported imports, lifecycle, error types, and examples are documented in
 [`docs/MODULE_API.md`](docs/MODULE_API.md). Lower-level files remain available to
 the facades and CLI commands but are not the stable application interface.
 
-## What is not implemented yet
+## Scope and remaining work
 
-The following are planned rather than complete:
+The replay engine exposes the combined replay-analysis report consumed by the
+backend coach connector. It does not itself own HTTP upload routes, frontend
+state, player selection, provider calls, or the frozen `DecisionCard` contract.
+Those responsibilities live in the surrounding application layers. See the
+[backend API](../app/API.md) and the
+[analysis-pipeline guide](../../agent-harness/docs/ANALYSIS_PIPELINE.md) for
+those boundaries.
 
-- a production web UI for uploading and analyzing a full match;
-- an `analyze_replay` endpoint/tool;
-- automatic pivotal-decision detection;
-- before/after win-score comparison for a player decision;
-- a complete evidence-backed Decision Card;
-- reliable player-specific counterfactual coaching across a whole match.
-
-The target design is described in
-[`agent-harness/docs/ANALYSIS_PIPELINE.md`](../agent-harness/docs/ANALYSIS_PIPELINE.md).
-The reliability rules for any future LLM coaching layer are in
-[`03_AI_COACH_RELIABILITY.md`](../03_AI_COACH_RELIABILITY.md).
+The engine's probabilistic recommendations remain estimates. Unsupported or
+high-uncertainty candidate states should abstain rather than become definitive
+coaching instructions.
 
 ## Important limitation
 

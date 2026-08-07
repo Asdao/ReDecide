@@ -1,7 +1,7 @@
 import {
-  samplePreparationSchema,
+  sampleReplayPreparationSchema,
   samplesResponseSchema,
-  type SamplePreparation,
+  type SampleReplayPreparation,
   type SampleSummary,
 } from "@/domain/samples";
 import { apiBaseUrl } from "@/lib/http";
@@ -32,7 +32,7 @@ export async function getSamples(signal?: AbortSignal): Promise<SampleSummary[]>
 export async function selectSample(
   sampleId: string,
   signal?: AbortSignal,
-): Promise<SamplePreparation> {
+): Promise<SampleReplayPreparation> {
   const response = await fetch(`${apiBaseUrl}/api/analyze`, {
     method: "POST",
     headers: {
@@ -48,5 +48,5 @@ export async function selectSample(
     throw new Error("The selected sample could not be prepared.");
   }
 
-  return samplePreparationSchema.parse(payload);
+  return sampleReplayPreparationSchema.parse(payload);
 }
