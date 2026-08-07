@@ -551,7 +551,7 @@ describe("replay API adapter", () => {
     );
     expect(result).toEqual(intentResponse);
     expect(fetchMock).toHaveBeenCalledWith(
-      "http://127.0.0.1:8000/api/analysis/analysis-1/intent",
+      "/api/analysis/analysis-1/intent",
       expect.objectContaining({
         method: "POST",
         body: JSON.stringify({

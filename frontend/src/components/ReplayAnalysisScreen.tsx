@@ -103,15 +103,12 @@ export function ReplayAnalysisScreen({
   const [playbackRate, setPlaybackRate] = useState(1);
   const [selectedPlayerId, setSelectedPlayerId] = useState(initialPlayerId ?? "");
   const [selectedEventId, setSelectedEventId] = useState<string>();
-<<<<<<< HEAD
   const [intentInputText, setIntentInputText] = useState("");
   const [intentLoading, setIntentLoading] = useState(false);
   const [intentResponse, setIntentResponse] = useState<IntentCoachingResponse>();
   const [intentError, setIntentError] = useState<string>();
-=======
   const [intentDrafts, setIntentDrafts] = useState<Readonly<Record<string, string>>>({});
   const [intentStates, dispatchIntent] = useReducer(momentIntentReducer, {});
->>>>>>> origin/01/integration
   const currentTickRef = useRef(initialTick);
   const lastAnimationTime = useRef<number | undefined>(undefined);
   const eventMarkerRefs = useRef(new Map<string, HTMLButtonElement>());
@@ -614,8 +611,6 @@ export function ReplayAnalysisScreen({
                       </button>
                     </div>
                   ) : null}
-                </section>
-              ) : null}
                 </section>
               ) : null}
 
