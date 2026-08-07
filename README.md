@@ -2,37 +2,93 @@
 
 > **Don't replay the match. Replay the decision.**
 
-RE:DECIDE is a Counter-Strike 2 replay coach. A player uploads a `.dem`
-match, chooses who to review, and receives focused feedback on post-contact
-decisions, especially whether to reset or re-engage after taking damage.
+RE:DECIDE is a Counter-Strike 2 replay-coaching prototype. It parses `.dem`
+telemetry, lets the user choose a player, identifies post-contact decision
+moments, and presents win-chance signals and coaching in an interactive radar
+and timeline.
 
 ## How it works
 
 ```text
-.dem upload -> replay parsing -> player selection -> decision and win-chance analysis
-            -> coaching advice -> interactive radar and timeline
+.dem or sample -> parse replay -> choose player -> select safe decision moments
+               -> generate coaching -> inspect the replay and timeline
 ```
 
 ## Main parts
 
-| Part | Purpose | Software |
+| Part | What it does | Main software |
 |---|---|---|
-| Frontend | Uploads replays and shows the radar, timeline, players, events, and advice | Next.js, React, TypeScript, Tailwind CSS, Zod |
-| Unified backend | Connects upload, analysis, player selection, coaching, and results | Python, FastAPI, Pydantic, Uvicorn |
-| Replay parser | Turns CS2 `.dem` telemetry into structured match events | Python, Awpy |
-| Replay model | Estimates win chances and produces decision signals | LightGBM, Python |
-| Coaching adapter | Turns safe replay evidence into readable coaching | Python HTTP adapter by default; optional Node.js/TypeScript Pi harness |
-| Contracts and reliability | Validates data, preserves the evidence cutoff, and keeps outputs consistent | Pydantic, deterministic checks |
-| Runtime data | Stores replay, analysis, and visualization artifacts | Local JSON files under `data/runtime/`, or Vercel Blob in Services deployments |
+| Frontend | Upload, player selection, radar, timeline, events, and advice | Next.js, React, TypeScript, Tailwind CSS, Zod |
+| Backend | Upload, preparation, player analysis, coaching, and results | Python, FastAPI, Pydantic |
+| Replay engine | Parses CS2 telemetry and calculates replay/model signals | Awpy, LightGBM, Python |
+| Coach | Explains bounded replay evidence using a configured provider | Python HTTP adapter; optional Node.js Pi harness |
+| Storage | Keeps replay and analysis artifacts | Local filesystem; optional Vercel Blob |
 
-The trained replay model supplies probabilities and decision signals. The LLM
-is an explanation layer; it does not parse the replay or replace the evidence
-checks. This is necessary for better results.
+The replay pipeline selects the evidence and prevents later match information
+from entering the coaching prompt. The language model explains that evidence;
+it does not parse the `.dem` or decide which replay facts are valid.
+
+## Run locally
+
+Requirements:
+
+- Python 3.12+ and `uv`
+- Node.js 24 and `pnpm` 11
+- A provider API key only when testing live coaching
+
+From the repository root in PowerShell:
+
+```powershell
+Copy-Item .env.example .env
+@(
+  'NEXT_PUBLIC_API_BASE_URL=http://127.0.0.1:8000'
+  'NEXT_PUBLIC_REPLAY_UPLOAD_MODE=direct'
+) | Set-Content frontend/.env.local
+notepad .env
+```
+
+For live HTTP coaching, add the key to the root `.env`:
+
+```text
+DEEPSEEK_API_KEY=your-real-key-here
+```
+
+Then start both services:
+
+```powershell
+.\scripts\start-dev.ps1
+```
+
+Open:
+
+- Product: `http://localhost:3000`
+- Backend API: `http://127.0.0.1:8000/docs`
+
+The launcher installs locked dependencies and creates either local environment
+file if it is missing. The bundled processed-replay viewer can run without a
+provider key; live coaching cannot.
+
+### Environment files
+
+| Location | Setting | When it is needed |
+|---|---|---|
+| Root `.env` | `DEEPSEEK_API_KEY` | Required only for live HTTP coaching |
+| Root `.env` | `HARNESS_MODEL_BASE_URL` and `HARNESS_MODEL` | Provider endpoint and model; defaults are included in `.env.example` |
+| Root `.env` | `REDECIDE_COACH_MODE` | Optional: blank selects automatically, `http` forces provider HTTP, and `pi` uses the legacy Node harness |
+| Root `.env` | `REDECIDE_ANALYSES_PER_PLAYER` | Optional analysis quota from 1 to 10; default is 10 |
+| `frontend/.env.local` | `NEXT_PUBLIC_API_BASE_URL=http://127.0.0.1:8000` | Connects local Next.js to local FastAPI |
+| `frontend/.env.local` | `NEXT_PUBLIC_REPLAY_UPLOAD_MODE=direct` | Uses direct local `.dem` upload |
+
+Keep provider keys only in the root `.env`; never put secrets in a
+`NEXT_PUBLIC_*` variable or commit a real `.env` file. Vercel Blob is not
+required locally. Its server-side variables and service binding are covered by
+the deployment guide.
 
 ## Project guides
 
-- [Setup and run guide](docs/README.md)
+- [Detailed setup and run guide](docs/README.md)
 - [Current product state](docs/CURRENT_STATE.md)
 - [Backend API](backend/app/API.md)
-- [Frontend implementation status](frontend/STATUS.md)
+- [Frontend status](frontend/STATUS.md)
 - [Vercel deployment](docs/VERCEL_DEPLOYMENT.md)
+- [Dependency security](docs/DEPENDENCY_SECURITY.md)

@@ -1,6 +1,6 @@
 # Current state of RE:DECIDE
 
-Last reviewed: 2026-08-07 (Asia/Singapore)
+Last reviewed: 2026-08-08 (Asia/Singapore)
 
 ## Product flow
 
@@ -107,3 +107,35 @@ suite passed 280 tests with 3 expected skips and no warnings when installed
 with the `test` extra. One skip covers the absent optional legacy Vercel SDK;
 two require a private processed-replay fixture that is not in this checkout.
 The OIDC service-binding deployment path remains covered.
+
+## Update - 2026-08-08
+
+### Working
+
+- The frontend adapters and FastAPI routes are connected for the main flow:
+  upload a `.dem` or choose a sample, prepare it, choose a player, run coaching,
+  and open the replay viewer.
+- The backend can select up to ten first-contact moments for one player and
+  spreads the selected moments across the match instead of always using only
+  the first candidate.
+- The viewer shows the radar, timeline, player positions, damage and death
+  events, win-rate estimates, and coaching advice.
+- The processed replay catalog contains Mirage and Inferno. Inferno has one
+  saved coaching result; Mirage is replay-only.
+- The dependency-security jobs pass after updating `pytest`. GitHub Dependency
+  Review is skipped because that feature is unavailable for this private
+  repository, while the separate Node and Python security audits still run.
+
+### Needs configuration
+
+- Live HTTP coaching needs a provider URL, model name, and API key in the root
+  `.env`. The root `.env.example` contains safe defaults and blank credentials.
+- Without a configured HTTP provider, the backend falls back to the older
+  Pi/Node path, which needs Node.js and the optional agent-harness dependencies.
+
+### Missing
+
+- The intent textbox exists in the viewer, but it remains disabled because no
+  public backend endpoint and response contract are connected to it.
+- There is no reviewed human evaluation set or versioned coaching rubric yet. #the intent+coaching engine
+
