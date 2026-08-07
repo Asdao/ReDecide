@@ -60,6 +60,21 @@ class IntentCoachingTests(TestCase):
         validated = IntentCoachingEngine._validate_and_filter_facts(raw_facts, valid_ids)
         self.assertEqual(validated, ["valid_past_fact"])
 
+    def test_intent_engine_calculates_feasibility_score(self) -> None:
+        engine = IntentCoachingEngine()
+        pipeline_result = {
+            "selected_decision": {
+                "decision_id": "r1:p1:t2500",
+                "known_before_decision": [
+                    {"evidence_id": "utility_flash_deployed", "category": "utility", "statement": "pop flash thrown"},
+                    {"evidence_id": "teammate_angle_hold", "category": "support", "statement": "teammate holding trade angle"},
+                ]
+            }
+        }
+        selected, valid_ids, open_tick = engine._extract_decision_context(pipeline_result)
+        score = engine.calculate_feasibility_score(selected, "I wanted to swing with flash", valid_ids)
+        self.assertGreaterEqual(score, 0.70)
+
     def test_pi_adapter_evaluates_intent_offline_fallback(self) -> None:
         adapter = PiCoachAdapter()
         pipeline_result = {

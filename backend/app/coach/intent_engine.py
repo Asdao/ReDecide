@@ -45,6 +45,8 @@ class IntentCoachingEngine:
             pipeline_result, decision_id=decision_id, player_id=player_id
         )
 
+        score = self.calculate_feasibility_score(selected, clean_intent, valid_evidence_ids)
+
         prompt = self.build_intent_prompt(selected, clean_intent, open_tick)
 
         # Attempt execution via PiCoachAdapter
@@ -56,12 +58,14 @@ class IntentCoachingEngine:
                 if not isinstance(facts_raw, list):
                     facts_raw = []
                 validated_facts = self._validate_and_filter_facts(facts_raw, valid_evidence_ids)
+                raw_feasibility = str(
+                    payload.get("intent_feasibility", "Moderate risk given pre-engagement positions")
+                )
+                formatted_feasibility = f"Score {int(score * 100)}/100 — {raw_feasibility}"
 
                 return {
                     "user_intent": clean_intent,
-                    "intent_feasibility": str(
-                        payload.get("intent_feasibility", "Moderate risk given pre-engagement positions")
-                    ),
+                    "intent_feasibility": formatted_feasibility,
                     "coordination_gap": str(
                         payload.get("coordination_gap", "Unconfirmed assumption about teammate position")
                     ),
@@ -78,7 +82,41 @@ class IntentCoachingEngine:
             logger.warning("Pi intent coaching fallback invoked: %s", exc)
 
         # Grounded offline fallback logic
-        return self._offline_fallback(clean_intent, open_tick, valid_evidence_ids)
+        return self._offline_fallback(clean_intent, open_tick, valid_evidence_ids, score=score)
+
+    def calculate_feasibility_score(
+        self,
+        selected: Mapping[str, Any],
+        user_intent: str,
+        valid_evidence_ids: set[str],
+    ) -> float:
+        """Calculate a quantitative feasibility score (0.0 to 1.0) based on pre-decision telemetry."""
+        base_score = 0.50
+
+        raw_evidence = selected.get("known_before_decision", [])
+        if isinstance(raw_evidence, list):
+            for item in raw_evidence:
+                if not isinstance(item, Mapping):
+                    continue
+                category = str(item.get("category", "")).lower()
+                statement = str(item.get("statement", "")).lower()
+                ev_id = str(item.get("evidence_id", "")).lower()
+
+                if "utility" in category or "flash" in statement or "smoke" in statement:
+                    base_score += 0.15
+                if "support" in statement or "trade" in statement or "teammate" in category:
+                    base_score += 0.15
+                if "isolated" in statement or "no_support" in ev_id or "exposed" in statement:
+                    base_score -= 0.15
+                if "opponent_angle_hold" in ev_id or "enemy_advantage" in statement:
+                    base_score -= 0.10
+
+        clean_intent_lower = user_intent.lower()
+        if any(w in clean_intent_lower for w in ["swing", "entry", "push", "rush"]):
+            if "displacement_below_threshold" in valid_evidence_ids:
+                base_score -= 0.10
+
+        return max(0.05, min(0.95, round(base_score, 2)))
 
     def build_intent_prompt(
         self,
@@ -211,10 +249,11 @@ class IntentCoachingEngine:
         clean_intent: str,
         open_tick: int,
         valid_evidence_ids: set[str],
+        score: float = 0.40,
     ) -> dict[str, Any]:
         """Deterministic offline fallback grounded in pre-decision evidence."""
 
-        feasibility = "Moderate Risk — Action relies on unconfirmed teammate synchronization."
+        feasibility = f"Score {int(score * 100)}/100 — Moderate Risk (Action relies on unconfirmed teammate synchronization)."
         gap = (
             f"You acted on the assumption ('{clean_intent}'), but before tick {open_tick}, "
             "there was no visual or audio confirmation of utility support or entry commitment."
