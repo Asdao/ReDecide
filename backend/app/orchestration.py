@@ -444,8 +444,12 @@ class AnalysisService:
             source_result = job.result or job.prepared_result or job.replay or {}
             
             from backend.app.coach.intent_engine import IntentCoachingEngine
-            from backend.app.coach.pi_connector import PiCoachAdapter
-            adapter = self.coach_adapter if isinstance(self.coach_adapter, PiCoachAdapter) else PiCoachAdapter()
+            from backend.app.coach.pi_connector import HttpCoachAdapter, PiCoachAdapter
+            adapter = (
+                self.coach_adapter
+                if isinstance(self.coach_adapter, (PiCoachAdapter, HttpCoachAdapter))
+                else PiCoachAdapter()
+            )
             engine = IntentCoachingEngine(coach_adapter=adapter)
             evaluation = engine.evaluate_intent(
                 source_result,

@@ -121,14 +121,14 @@ class HttpCoachAdapter:
         self.timeout_seconds = timeout_seconds
         self._client = client
 
-    def __call__(self, pipeline_result: Mapping[str, Any]) -> str:
+    def run_prompt(self, prompt: str) -> str:
+        """Send a raw prompt string to the HTTP model endpoint."""
         if not self.base_url:
             raise PiCoachError("HARNESS_MODEL_BASE_URL is required for HTTP coaching")
         if not self.api_key:
             raise PiCoachError(
                 "HARNESS_MODEL_API_KEY or DEEPSEEK_API_KEY is required for HTTP coaching"
             )
-        prompt = build_coach_prompt(pipeline_result)
         endpoint = self.base_url.rstrip("/")
         if not endpoint.endswith("/chat/completions"):
             endpoint = f"{endpoint}/chat/completions"
@@ -159,6 +159,11 @@ class HttpCoachAdapter:
             raise PiCoachError("HTTP coaching provider returned an invalid response") from exc
         if not isinstance(content, str):
             raise PiCoachError("HTTP coaching provider returned non-text content")
+        return content
+
+    def __call__(self, pipeline_result: Mapping[str, Any]) -> str:
+        prompt = build_coach_prompt(pipeline_result)
+        content = self.run_prompt(prompt)
         return normalize_coach_response(content, expected_decision_ids=_expected_decision_ids(pipeline_result))
 
 
