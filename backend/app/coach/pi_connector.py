@@ -50,8 +50,8 @@ class PiCoachAdapter:
         self.timeout_seconds = timeout_seconds
         self._runner = runner
 
-    def __call__(self, pipeline_result: Mapping[str, Any]) -> str:
-        prompt = self.build_prompt(pipeline_result)
+    def run_prompt(self, prompt: str) -> str:
+        """Execute a raw prompt string via the Node/harness subprocess runner."""
         executable = self._resolve_node()
         command = [
             executable,
@@ -76,7 +76,11 @@ class PiCoachAdapter:
             raise PiCoachError("Pi coaching process could not be started") from exc
         if completed.returncode != 0:
             raise PiCoachError("Pi coaching process failed")
-        response = completed.stdout.strip()
+        return completed.stdout.strip()
+
+    def __call__(self, pipeline_result: Mapping[str, Any]) -> str:
+        prompt = self.build_prompt(pipeline_result)
+        response = self.run_prompt(prompt)
         payload = _response_payload(response)
         self._validate_response(payload)
         return json.dumps(
@@ -144,70 +148,10 @@ class PiCoachAdapter:
         pipeline_result: Mapping[str, Any],
         user_intent: str,
     ) -> dict[str, Any]:
-        prompt = self.build_intent_prompt(pipeline_result, user_intent)
-        selected = pipeline_result.get("selected_decision", {})
-        decision_id = str(selected.get("decision_id", "decision_001"))
-        open_tick = _integer(selected.get("decision_open_tick"), 0)
-        
-        # Try running harness if node environment is available
-        try:
-            executable = self._resolve_node()
-            command = [
-                executable,
-                str(self.harness_root / "node_modules" / "tsx" / "dist" / "cli.mjs"),
-                str(self.harness_root / "src" / "main.ts"),
-                "--no-tools",
-            ]
-            completed = self._runner(
-                command,
-                cwd=self.harness_root,
-                input=prompt,
-                capture_output=True,
-                env=self._process_environment(),
-                text=True,
-                timeout=self.timeout_seconds,
-                check=False,
-            )
-            if completed.returncode == 0:
-                payload = _decode_pi_output(completed.stdout.strip())
-                if "in_depth_coaching" in payload:
-                    return {
-                        "user_intent": user_intent,
-                        "intent_feasibility": str(payload.get("intent_feasibility", "Moderate risk given pre-engagement positions")),
-                        "coordination_gap": str(payload.get("coordination_gap", "Unconfirmed assumption about teammate position")),
-                        "recommended_cs2_adjustment": str(payload.get("recommended_cs2_adjustment", "Wait for utility setup or explicit callout")),
-                        "in_depth_coaching": str(payload["in_depth_coaching"]),
-                        "knowledge_cutoff_tick": open_tick,
-                        "facts_referenced": [item.get("evidence_id", "") for item in selected.get("known_before_decision", []) if isinstance(item, dict)],
-                    }
-        except (PiCoachError, OSError, subprocess.SubprocessError):
-            pass
+        from backend.app.coach.intent_engine import IntentCoachingEngine
 
-        # Fallback evaluation for offline mode or test execution
-        clean_intent = user_intent.strip()
-        feasibility = "Moderate Risk — Action relies on unconfirmed teammate synchronization."
-        gap = (
-            f"You acted on the assumption ('{clean_intent}'), but before tick {open_tick}, "
-            "there was no visual or audio confirmation of utility support or entry commitment."
-        )
-        recommendation = (
-            "Initiate contact only after receiving a pop-flash or explicit audio callout. "
-            "If your teammate is not swinging in tandem, hold a passive angle or reset positioning to avoid an isolated duel."
-        )
-        in_depth = (
-            f"Given your intent ('{clean_intent}'), executing the entry alone created a high-risk 1v1 duel. "
-            f"Prior to knowledge cutoff tick {open_tick}, line-of-sight and distance telemetry indicate your teammate was not in position to trade immediately. "
-            f"{recommendation}"
-        )
-        return {
-            "user_intent": clean_intent,
-            "intent_feasibility": feasibility,
-            "coordination_gap": gap,
-            "recommended_cs2_adjustment": recommendation,
-            "in_depth_coaching": in_depth,
-            "knowledge_cutoff_tick": open_tick,
-            "facts_referenced": ["displacement_below_threshold", "opponent_angle_hold"],
-        }
+        engine = IntentCoachingEngine(coach_adapter=self)
+        return engine.evaluate_intent(pipeline_result, user_intent)
 
     def _resolve_node(self) -> str:
         if self.node_executable:

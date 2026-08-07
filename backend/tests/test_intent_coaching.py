@@ -1,8 +1,10 @@
 from unittest import TestCase
+import json
 from fastapi.testclient import TestClient
 
 from backend.app.contracts import IntentCoachingRequest, IntentCoachingResponse
 from backend.app.coach.pi_connector import PiCoachAdapter
+from backend.app.coach.intent_engine import IntentCoachingEngine
 from backend.app.main import create_app
 from backend.app.orchestration import AnalysisService, FIXTURE_ANALYSIS_ID
 
@@ -29,6 +31,34 @@ class IntentCoachingTests(TestCase):
         self.assertIn("I expected my teammate to swing with me", prompt)
         self.assertIn("facts known BEFORE action_close_tick", prompt)
         self.assertIn("HOLD_FOR_SUPPORT", prompt)
+
+    def test_intent_engine_temporal_cutoff_and_subjective_framing(self) -> None:
+        engine = IntentCoachingEngine()
+        pipeline_result = {
+            "selected_decision": {
+                "decision_id": "r1:p1:t2500",
+                "observed_action": "HOLD_FOR_SUPPORT",
+                "decision_open_tick": 2500,
+                "known_before_decision": [
+                    {"evidence_id": "valid_past_fact", "tick": 2400},
+                    {"evidence_id": "future_fact_should_be_stripped", "tick": 2600},
+                ]
+            }
+        }
+        selected, valid_ids, open_tick = engine._extract_decision_context(pipeline_result)
+        self.assertEqual(open_tick, 2500)
+        self.assertIn("valid_past_fact", valid_ids)
+        self.assertNotIn("future_fact_should_be_stripped", valid_ids)
+
+        prompt = engine.build_intent_prompt(selected, "I wanted to flash for entry", open_tick)
+        self.assertIn("subjective post-hoc explanation", prompt)
+        self.assertIn("BEFORE or AT decision_open_tick", prompt)
+
+    def test_intent_engine_filters_hallucinated_facts(self) -> None:
+        raw_facts = ["valid_past_fact", "hallucinated_nonexistent_fact", "another_fake_id"]
+        valid_ids = {"valid_past_fact", "another_real_fact"}
+        validated = IntentCoachingEngine._validate_and_filter_facts(raw_facts, valid_ids)
+        self.assertEqual(validated, ["valid_past_fact"])
 
     def test_pi_adapter_evaluates_intent_offline_fallback(self) -> None:
         adapter = PiCoachAdapter()

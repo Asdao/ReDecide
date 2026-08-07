@@ -416,10 +416,16 @@ class AnalysisService:
         with job.lock:
             source_result = job.result or job.prepared_result or job.replay or {}
             
-            # Use coach adapter evaluate_intent if available or fallback
+            from backend.app.coach.intent_engine import IntentCoachingEngine
             from backend.app.coach.pi_connector import PiCoachAdapter
             adapter = self.coach_adapter if isinstance(self.coach_adapter, PiCoachAdapter) else PiCoachAdapter()
-            evaluation = adapter.evaluate_intent(source_result, intent_text)
+            engine = IntentCoachingEngine(coach_adapter=adapter)
+            evaluation = engine.evaluate_intent(
+                source_result,
+                intent_text,
+                player_id=player_id,
+                decision_id=decision_id,
+            )
             
             response = {
                 "analysis_id": analysis_id,
