@@ -169,6 +169,24 @@ describe("uploaded replay screens", () => {
     expect(sampleHtml).toContain('aria-busy="true"');
   });
 
+  it("offers a fresh preparation retry for failed hosted samples", () => {
+    const html = renderReplayState({
+      status: "players-error",
+      sampleId: "sample-ancient-20mb",
+      sourceName: "3DMAX vs Falcons — Ancient (20 MB sample)",
+      manifest,
+      analysis,
+      error: {
+        code: "prepare-failed",
+        message: "The replay could not be prepared for player selection.",
+        retryable: true,
+      },
+    });
+
+    expect(html).toContain("Retry sample preparation");
+    expect(html).not.toContain("Check players again");
+  });
+
   it("renders display names and disables players without a coaching decision", () => {
     const unavailablePlayer = { ...players[0], decision_ids: [] };
     const nukeManifest = replayManifestSchema.parse({

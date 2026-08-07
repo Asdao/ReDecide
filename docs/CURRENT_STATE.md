@@ -49,8 +49,9 @@ new upload; Inferno includes a saved coaching result.
 - A public Vercel Blob upload/import has not yet completed a hosted end-to-end
   run. The frontend supports Blob mode, but the backend import route remains
   disabled by default and accepts public Blob URLs only.
-- Durable Vercel Blob restoration across a second FastAPI invocation still
-  needs a hosted sample run.
+- Vercel Services automatically use durable Blob restoration when the private
+  frontend service binding is present, so repeat sample runs can cross FastAPI
+  instances without losing replay or analysis state.
 - Player intent and follow-up questions have UI scaffolding, but submission is
   disabled because no public backend endpoint or response contract exists.
 - Only Inferno currently has a paired saved coaching result in the processed

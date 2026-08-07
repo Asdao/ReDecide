@@ -3,14 +3,13 @@ import unittest
 from pathlib import Path
 from typing import Any
 
+from backend.app.orchestration import _select_diverse_candidates
 from backend.app.replay.pipeline import (
     extract_players_for_selector,
     merge_pi_output,
     stream_replay_pipeline,
 )
-from backend.app.orchestration import _select_diverse_candidates
 from backend.replay_engine.harness import load_replay_record
-
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 PROCESSED_REPLAY = (
@@ -196,6 +195,44 @@ class ReplayPipelineTests(unittest.TestCase):
         self.assertEqual(
             [item["round_number"] for item in selected],
             [1, 6, 12, 18, 24],
+        )
+
+    def test_multi_analysis_aliases_follow_selected_candidates(self) -> None:
+        candidates = [
+            {
+                "decision_id": f"r{round_number}",
+                "round_number": round_number,
+                "player_id": "player-1",
+                "display_name": "Player One",
+            }
+            for round_number in range(1, 5)
+        ]
+        result = {
+            "decision_candidates": candidates,
+            "selected_decision": candidates[0],
+            "selected_decisions": [candidates[0], candidates[3]],
+            "players": [{"player_id": "player-1", "display_name": "Player One"}],
+        }
+
+        merged = merge_pi_output(
+            result,
+            {
+                "analyses": [
+                    {
+                        "decision_id": "decision_001",
+                        "what_could_be_done_better": "Hold the opening angle.",
+                    },
+                    {
+                        "decision_id": "decision_002",
+                        "what_could_be_done_better": "Wait for the late-round rotation.",
+                    },
+                ]
+            },
+        )
+
+        self.assertEqual(
+            [entry["selected_decision"]["decision_id"] for entry in merged["analyses"]],
+            ["r1", "r4"],
         )
 
 

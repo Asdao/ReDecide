@@ -138,7 +138,30 @@ def test_local_filesystem_default_ignores_service_binding(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.delenv("REDECIDE_STORAGE_BACKEND", raising=False)
+    monkeypatch.delenv("VERCEL", raising=False)
     monkeypatch.setenv("REDECIDE_BLOB_SERVICE_URL", "http://localhost:3000")
+
+    assert blob_storage_enabled() is False
+
+
+def test_vercel_service_binding_enables_blob_by_default(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("REDECIDE_STORAGE_BACKEND", raising=False)
+    monkeypatch.delenv("BLOB_READ_WRITE_TOKEN", raising=False)
+    monkeypatch.delenv("VERCEL_BLOB_READ_WRITE_TOKEN", raising=False)
+    monkeypatch.setenv("VERCEL", "1")
+    monkeypatch.setenv("REDECIDE_BLOB_SERVICE_URL", "https://frontend.internal")
+
+    assert blob_storage_enabled() is True
+
+
+def test_vercel_can_explicitly_keep_filesystem_storage(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("VERCEL", "1")
+    monkeypatch.setenv("REDECIDE_BLOB_SERVICE_URL", "https://frontend.internal")
+    monkeypatch.setenv("REDECIDE_STORAGE_BACKEND", "filesystem")
 
     assert blob_storage_enabled() is False
 

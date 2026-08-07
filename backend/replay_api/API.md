@@ -11,6 +11,8 @@ manifest.json       -> safe map/player/status metadata
 
 The default local artifact root is `data/runtime/replays/<replay_id>/`.
 With `REDECIDE_STORAGE_BACKEND=blob`, replay artifacts are durable Blob JSON.
+Vercel Services enable this automatically when their private Blob service
+binding is present, unless filesystem storage is explicitly selected.
 New Vercel OIDC connections use the private `REDECIDE_BLOB_SERVICE_URL`
 service binding declared in `vercel.json`; local development does not set that
 binding and continues to use the filesystem by default.

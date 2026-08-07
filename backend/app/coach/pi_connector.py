@@ -8,20 +8,20 @@ response.
 
 from __future__ import annotations
 
-from collections.abc import Callable, Mapping
 import json
 import os
-from pathlib import Path
 import re
 import shutil
 import subprocess
 import sys
+from collections.abc import Callable, Mapping
+from pathlib import Path
 from typing import Any
 
 import httpx
 
-
 MAX_PROMPT_BYTES = 64 * 1024
+MAX_KNOWN_EVENTS_PER_DECISION = 24
 DEFAULT_TIMEOUT_SECONDS = 180
 
 
@@ -308,12 +308,18 @@ def _model_payload(pipeline_result: Mapping[str, Any]) -> dict[str, Any]:
         ],
     }
 
+    selected_round = _integer(selected.get("round_number"), -1)
     events = []
     for event in pipeline_result.get("key_events", []):
         if not isinstance(event, Mapping):
             continue
         tick = _integer(event.get("tick"), -1)
         if tick < 0 or tick > action_close_tick:
+            continue
+        if (
+            selected_round >= 0
+            and _integer(event.get("round_number"), -1) != selected_round
+        ):
             continue
         participants = [
             aliases[str(value)]
@@ -333,6 +339,12 @@ def _model_payload(pipeline_result: Mapping[str, Any]) -> dict[str, Any]:
                 "is_coaching_anchor": bool(event.get("is_coaching_anchor")),
             }
         )
+
+    # A decision only needs the recent, outcome-blind context from its own
+    # round.  Repeating every earlier match event for each selected decision
+    # made full manual-demo prompts grow quadratically and exceed the 64 KiB
+    # provider boundary.  Keep the closest events when a single round is noisy.
+    events = events[-MAX_KNOWN_EVENTS_PER_DECISION:]
 
     probability = _probability_at_decision(pipeline_result, decision_open_tick)
     return {

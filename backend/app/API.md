@@ -157,8 +157,9 @@ The frontend can continue with `/api/analysis/{analysis_id}/players`,
   `agent-harness` dependencies.
 - Direct upload expects the `.dem` file; the separate Blob URL route is disabled by default.
 - No real `.dem` has completed the full flow yet.
-- With `REDECIDE_STORAGE_BACKEND=blob` on Vercel Services, analysis state and
-  results survive function restarts through the private frontend Blob binding.
+- On Vercel Services, analysis state and results automatically use the private
+  frontend Blob binding and survive function restarts. Set
+  `REDECIDE_STORAGE_BACKEND=filesystem` only to opt out explicitly.
   The default local filesystem mode persists under `data/runtime/analysis`.
 - Player intent and follow-up questions are not implemented.
 - Each selected player run coaches up to ten distinct moments by default. Set

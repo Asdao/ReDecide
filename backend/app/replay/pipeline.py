@@ -8,8 +8,8 @@ replay or model logic into the HTTP layer.
 
 from __future__ import annotations
 
-from collections.abc import Iterator, Mapping
 import json
+from collections.abc import Iterator, Mapping
 from pathlib import Path
 from typing import Any
 
@@ -144,6 +144,11 @@ def merge_pi_output(
     """
 
     result = dict(pipeline_result)
+    selected_candidates = [
+        candidate
+        for candidate in pipeline_result.get("selected_decisions", [])
+        if isinstance(candidate, Mapping)
+    ]
     # This is an internal provider-input field. The public contract exposes
     # the enriched `analyses` array instead.
     result.pop("selected_decisions", None)
@@ -161,9 +166,10 @@ def merge_pi_output(
         for candidate in result.get("decision_candidates", [])
         if isinstance(candidate, Mapping)
     ]
+    alias_candidates = selected_candidates or candidates
     decision_aliases = {
         f"decision_{index:03d}": str(candidate["decision_id"])
-        for index, candidate in enumerate(candidates, start=1)
+        for index, candidate in enumerate(alias_candidates, start=1)
         if candidate.get("decision_id") not in (None, "")
     }
     merged_analyses = []

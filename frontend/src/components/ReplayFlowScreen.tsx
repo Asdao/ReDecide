@@ -265,8 +265,8 @@ export function ReplayFlowScreen({
           <ErrorPanel
             message={state.error.message}
             retryable={state.error.retryable}
-            retryLabel="Check players again"
-            onRetry={onRetryPlayers}
+            retryLabel={isSampleReplay(state) ? "Retry sample preparation" : "Check players again"}
+            onRetry={isSampleReplay(state) ? onRetryPrepare : onRetryPlayers}
             onBack={onBack}
           />
         ) : null}

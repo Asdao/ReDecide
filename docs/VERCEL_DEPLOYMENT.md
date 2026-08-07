@@ -63,7 +63,6 @@ deletes the raw object after a validated successful import.
 Configure the FastAPI service with:
 
 ```text
-REDECIDE_STORAGE_BACKEND=blob
 REDECIDE_BLOB_ACCESS=private
 REDECIDE_API_ALLOWED_ORIGINS=https://<production-domain>,https://<preview-domain>
 REDECIDE_BLOB_IMPORT_ENABLED=true
@@ -74,7 +73,9 @@ HARNESS_MODEL_API_KEY=<server-side-secret>
 
 `DEEPSEEK_API_KEY` may be used instead of `HARNESS_MODEL_API_KEY`. The root
 `vercel.json` injects `REDECIDE_BLOB_SERVICE_URL` through the backend-to-
-frontend service binding; do not copy that binding into local `.env` files.
+frontend service binding, which automatically enables durable Blob storage;
+do not copy that binding into local `.env` files. Set
+`REDECIDE_STORAGE_BACKEND=filesystem` only when intentionally opting out.
 The backend selects the Python HTTP coach when the provider base URL and key
 are present. The legacy Pi subprocess is not needed for the normal deployment.
 

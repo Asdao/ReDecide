@@ -320,6 +320,26 @@ describe("uploaded replay state machine", () => {
       requestId: "players-2",
     });
     expect(retryPlayers).not.toHaveProperty("error");
+
+    const samplePlayerError: AnalysisFlowState = {
+      status: "players-error",
+      sampleId: "sample-ancient-20mb",
+      sourceName: "3DMAX vs Falcons — Ancient (20 MB sample)",
+      manifest,
+      analysis,
+      error: { ...retryableError, code: "prepare-failed" },
+    };
+    const retrySamplePreparation = analysisFlowReducer(samplePlayerError, {
+      type: "RETRY_ANALYSIS_PREPARE",
+      requestId: "prepare-sample-2",
+    });
+    expect(retrySamplePreparation).toMatchObject({
+      status: "preparing-analysis",
+      sampleId: "sample-ancient-20mb",
+      manifest: { replay_id: "api-flow-test" },
+      requestId: "prepare-sample-2",
+    });
+    expect(retrySamplePreparation).not.toHaveProperty("analysis");
   });
 
   it("rejects empty selectors and players without a coaching decision", () => {

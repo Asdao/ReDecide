@@ -1,10 +1,12 @@
 """Small synchronous adapter around Vercel Blob artifact storage.
 
 The adapter is intentionally lazy: importing the backend does not require the
-optional ``vercel`` package or Blob credentials.  Callers opt in by setting
-``REDECIDE_STORAGE_BACKEND=blob``.  Local development and tests continue to use
-the filesystem stores by default. Vercel's OIDC-only Blob connection is reached
-through a private Next.js service binding that mints narrowly scoped URLs.
+optional ``vercel`` package or Blob credentials. Callers can opt in by setting
+``REDECIDE_STORAGE_BACKEND=blob``; Vercel deployments opt in automatically when
+their private service binding is present. Local development and tests continue
+to use filesystem stores by default. Vercel's OIDC-only Blob connection is
+reached through a private Next.js service binding that mints narrowly scoped
+URLs.
 """
 
 from __future__ import annotations
@@ -41,14 +43,16 @@ def blob_storage_enabled() -> bool:
 
     Legacy tokens can be used directly by the Python SDK. New OIDC-only Vercel
     connections use the deployment-aware ``REDECIDE_BLOB_SERVICE_URL`` binding.
-    Merely requesting Blob mode is not enough: without either credential path,
-    local and standalone deployments safely keep their filesystem behavior.
+    A Vercel service binding opts the deployment into Blob automatically unless
+    ``REDECIDE_STORAGE_BACKEND=filesystem`` is set explicitly. Local and
+    standalone deployments keep their filesystem behavior.
     """
 
-    requested = (
-        os.getenv("REDECIDE_STORAGE_BACKEND", "filesystem").strip().lower()
-        == "blob"
-    )
+    configured_backend = os.getenv("REDECIDE_STORAGE_BACKEND")
+    if configured_backend is None:
+        requested = os.getenv("VERCEL") == "1" and _blob_service_url() is not None
+    else:
+        requested = configured_backend.strip().lower() == "blob"
     if not requested:
         return False
     return _legacy_blob_token() is not None or _blob_service_url() is not None

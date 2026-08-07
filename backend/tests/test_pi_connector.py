@@ -1,14 +1,17 @@
 from __future__ import annotations
 
 import json
-from copy import deepcopy
-from pathlib import Path
 import subprocess
 import tempfile
 import unittest
+from copy import deepcopy
+from pathlib import Path
+
 import httpx
 
 from backend.app.coach.pi_connector import (
+    MAX_KNOWN_EVENTS_PER_DECISION,
+    MAX_PROMPT_BYTES,
     HttpCoachAdapter,
     PiCoachAdapter,
     PiCoachError,
@@ -227,6 +230,56 @@ class PiCoachAdapterTests(unittest.TestCase):
         ])
         self.assertIn('"decisions":[', captured["input"])
         self.assertIn('"decision_id":"decision_002"', captured["input"])
+
+    def test_full_match_prompt_keeps_all_decisions_with_round_local_evidence(self) -> None:
+        pipeline = _pipeline_result()
+        selected_rounds = [1, 4, 7, 10, 13, 16, 19, 22, 25, 29]
+        decisions = []
+        key_events = []
+        for round_number in range(1, 30):
+            round_tick = round_number * 10_000
+            for event_number in range(30):
+                key_events.append(
+                    {
+                        "event_id": f"r{round_number}:event:{event_number}",
+                        "event_type": "damage",
+                        "key_event_type": "first_damage_contact",
+                        "round_number": round_number,
+                        "tick": round_tick + event_number,
+                        "participant_ids": ["steam-secret", "opponent-secret"],
+                        "is_coaching_anchor": event_number == 29,
+                    }
+                )
+            if round_number in selected_rounds:
+                decision = deepcopy(pipeline["selected_decision"])
+                decision.update(
+                    {
+                        "decision_id": f"r{round_number}:psteam-secret:t{round_tick}",
+                        "round_number": round_number,
+                        "decision_open_tick": round_tick,
+                        "contact_tick": round_tick,
+                        "action_close_tick": round_tick + 100,
+                    }
+                )
+                decisions.append(decision)
+
+        pipeline["selected_decision"] = decisions[0]
+        pipeline["selected_decisions"] = decisions
+        pipeline["key_events"] = key_events
+
+        prompt = build_coach_prompt(pipeline)
+        payload = json.loads(prompt.split("DECISION_PAYLOAD=", 1)[1])
+
+        self.assertLessEqual(len(prompt.encode("utf-8")), MAX_PROMPT_BYTES)
+        self.assertEqual(len(payload["decisions"]), len(selected_rounds))
+        for decision_payload, expected_round in zip(
+            payload["decisions"], selected_rounds, strict=True
+        ):
+            known_events = decision_payload["known_events"]
+            self.assertEqual(len(known_events), MAX_KNOWN_EVENTS_PER_DECISION)
+            self.assertTrue(
+                all(event["round_number"] == expected_round for event in known_events)
+            )
 
 
 class HttpCoachAdapterTests(unittest.TestCase):
