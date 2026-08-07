@@ -71,9 +71,14 @@ class ApiWalkingSkeletonTests(unittest.TestCase):
         response = self.client.get("/api/samples")
 
         self.assertEqual(response.status_code, 200)
-        sample = response.json()["samples"][0]
-        self.assertEqual(sample["sample_id"], "fixture-mirage-01")
-        self.assertEqual(sample["players"], ["PlayerA"])
+        samples = response.json()["samples"]
+        self.assertEqual(
+            [sample["sample_id"] for sample in samples],
+            ["3dmax-vs-falcons-m2-ancient"],
+        )
+        sample = samples[0]
+        self.assertEqual(sample["sample_id"], "3dmax-vs-falcons-m2-ancient")
+        self.assertEqual(sample["players"], [])
         self.assertTrue(sample["available"])
 
     def test_unified_gateway_hands_uploaded_replay_to_analysis_service(self) -> None:

@@ -1,4 +1,9 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+
+const blobUploadMock = vi.hoisted(() => vi.fn());
+
+vi.mock("@vercel/blob/client", () => ({ uploadPresigned: blobUploadMock }));
+
 import {
   ReplayApiError,
   getAnalysisPlayers,
@@ -8,6 +13,7 @@ import {
   prepareReplayWorkspace,
   runReplayCoaching,
   submitPlayerIntent,
+  subscribeToAnalysisProgress,
   uploadReplay,
 } from "@/adapters/replay-api";
 
@@ -28,6 +34,8 @@ const job = {
   status: "processing",
   players_available: false,
   result_available: false,
+  selected_player_id: null,
+  player_runs: {},
   logs_url: "/api/analysis/analysis-1/logs",
   events_url: "/api/analysis/analysis-1/events",
   result_url: "/api/analysis/analysis-1/result",
@@ -41,6 +49,12 @@ const player = {
   event_ids: ["event-1"],
   key_event_ids: ["event-1"],
   decision_ids: ["decision-1"],
+};
+
+const selectablePlayer = {
+  ...player,
+  analysis_available: true,
+  analysis_status: "not_started",
 };
 
 const candidate = {
@@ -130,9 +144,61 @@ function jsonResponse(payload: unknown, status = 200): Response {
 
 afterEach(() => {
   vi.unstubAllGlobals();
+  blobUploadMock.mockReset();
 });
 
 describe("replay API adapter", () => {
+  it("validates and forwards SSE analysis progress", () => {
+    class FakeEventSource {
+      static instance: FakeEventSource | undefined;
+      readonly listeners = new Map<string, EventListener>();
+      readonly close = vi.fn();
+      onerror: ((event: Event) => void) | null = null;
+
+      constructor(readonly url: string) {
+        FakeEventSource.instance = this;
+      }
+
+      addEventListener(type: string, listener: EventListenerOrEventListenerObject) {
+        if (typeof listener === "function") {
+          this.listeners.set(type, listener);
+        }
+      }
+
+      emit(type: string, data: unknown) {
+        this.listeners.get(type)?.(new MessageEvent(type, { data: JSON.stringify(data) }));
+      }
+    }
+    vi.stubGlobal("EventSource", FakeEventSource);
+    const onProgress = vi.fn();
+    const unsubscribe = subscribeToAnalysisProgress(job.events_url, { onProgress });
+    const source = FakeEventSource.instance;
+
+    expect(source?.url).toBe("/api/analysis/analysis-1/events");
+    source?.emit("log", {
+      analysis_id: "analysis-1",
+      schema_version: "pipeline_progress_v1",
+      stage: "calling_pi",
+      progress: 85,
+      message: "Generating coaching analysis.",
+      done: false,
+    });
+    source?.emit("log", { analysis_id: "analysis-1", stage: "invalid" });
+    expect(onProgress).toHaveBeenCalledTimes(1);
+    expect(onProgress).toHaveBeenCalledWith(expect.objectContaining({ stage: "calling_pi", progress: 85 }));
+
+    source?.emit("complete", {
+      analysis_id: "analysis-1",
+      stage: "complete",
+      progress: 100,
+      message: "Analysis complete.",
+    });
+    source?.onerror?.(new Event("error"));
+    expect(source?.close).toHaveBeenCalledTimes(1);
+    unsubscribe();
+    expect(source?.close).toHaveBeenCalledTimes(2);
+  });
+
   it("uploads one .dem in the documented multipart field and validates the manifest", async () => {
     const fetchMock = vi.fn().mockResolvedValue(jsonResponse(manifest, 202));
     vi.stubGlobal("fetch", fetchMock);
@@ -140,11 +206,133 @@ describe("replay API adapter", () => {
 
     await expect(uploadReplay(file)).resolves.toEqual(manifest);
     const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
-    expect(url).toBe("http://127.0.0.1:8000/api/replay/upload");
+    expect(url).toBe("/api/replay/upload");
     expect(init.method).toBe("POST");
     expect(init.body).toBeInstanceOf(FormData);
     expect((init.body as FormData).get("file")).toBe(file);
     expect((init.headers as Record<string, string>)["Content-Type"]).toBeUndefined();
+  });
+
+  it("uploads through public Vercel Blob before importing the URL", async () => {
+    const readyManifest = { ...manifest, visualization_status: "ready" };
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(readyManifest, 202));
+    vi.stubGlobal("fetch", fetchMock);
+    blobUploadMock.mockResolvedValue({
+      url: "https://store.public.blob.vercel-storage.com/uploads/match-123.dem",
+    });
+    const file = new File(["demo"], "match.dem", { type: "application/octet-stream" });
+    const controller = new AbortController();
+
+    await expect(uploadReplay(file, controller.signal, "blob")).resolves.toEqual(
+      readyManifest,
+    );
+    expect(blobUploadMock).toHaveBeenCalledWith(
+      "uploads/match.dem",
+      file,
+      expect.objectContaining({
+        access: "public",
+        handleUploadUrl: "/api/blob/upload",
+        contentType: "application/octet-stream",
+        multipart: false,
+        abortSignal: controller.signal,
+      }),
+    );
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe("/api/replay/import-url");
+    expect(init.method).toBe("POST");
+    expect(JSON.parse(String(init.body))).toEqual({
+      url: "https://store.public.blob.vercel-storage.com/uploads/match-123.dem",
+      filename: "match.dem",
+    });
+    const [cleanupUrl, cleanupInit] = fetchMock.mock.calls[1] as [string, RequestInit];
+    expect(cleanupUrl).toBe("/api/blob/cleanup");
+    expect(cleanupInit.method).toBe("POST");
+    expect(JSON.parse(String(cleanupInit.body))).toEqual({
+      url: "https://store.public.blob.vercel-storage.com/uploads/match-123.dem",
+    });
+  });
+
+  it("retains the temporary Blob when processing has not completed", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(manifest, 202));
+    vi.stubGlobal("fetch", fetchMock);
+    blobUploadMock.mockResolvedValue({
+      url: "https://store.public.blob.vercel-storage.com/uploads/match-123.dem",
+    });
+
+    await expect(
+      uploadReplay(new File(["demo"], "match.dem"), undefined, "blob"),
+    ).resolves.toEqual(manifest);
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("uses multipart Blob upload above 100 MB and rejects files above 1 GB", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(manifest, 202));
+    vi.stubGlobal("fetch", fetchMock);
+    blobUploadMock.mockResolvedValue({
+      url: "https://store.public.blob.vercel-storage.com/uploads/large-123.dem",
+    });
+    const largeFile = new File(["demo"], "large.dem");
+    Object.defineProperty(largeFile, "size", { value: 100 * 1024 * 1024 + 1 });
+
+    await uploadReplay(largeFile, undefined, "blob");
+    expect(blobUploadMock.mock.calls[0]?.[2]).toEqual(
+      expect.objectContaining({ multipart: true }),
+    );
+
+    const oversizedFile = new File(["demo"], "oversized.dem");
+    Object.defineProperty(oversizedFile, "size", { value: 1024 * 1024 * 1024 + 1 });
+    blobUploadMock.mockClear();
+    fetchMock.mockClear();
+
+    await expect(uploadReplay(oversizedFile, undefined, "blob")).rejects.toMatchObject({
+      kind: "invalid-file",
+      operation: "upload",
+      message: "Choose a .dem file smaller than 1 GB.",
+    });
+    expect(blobUploadMock).not.toHaveBeenCalled();
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("preserves Blob upload cancellation and hides provider failures", async () => {
+    blobUploadMock
+      .mockRejectedValueOnce(new DOMException("aborted", "AbortError"))
+      .mockRejectedValueOnce(new Error("private Blob provider detail"));
+    const file = new File(["demo"], "match.dem");
+
+    await expect(uploadReplay(file, undefined, "blob")).rejects.toMatchObject({
+      name: "AbortError",
+    });
+    await expect(uploadReplay(file, undefined, "blob")).rejects.toMatchObject({
+      kind: "network",
+      operation: "upload",
+      message: "The replay could not be uploaded to temporary storage.",
+    });
+  });
+
+  it("explains disabled and oversized Blob imports without exposing backend details", async () => {
+    blobUploadMock.mockResolvedValue({
+      url: "https://store.public.blob.vercel-storage.com/uploads/match-123.dem",
+    });
+    vi.stubGlobal(
+      "fetch",
+      vi
+        .fn()
+        .mockResolvedValueOnce(jsonResponse({ detail: "private route detail" }, 404))
+        .mockResolvedValueOnce(jsonResponse({ detail: "private size detail" }, 413)),
+    );
+    const file = new File(["demo"], "match.dem");
+
+    await expect(uploadReplay(file, undefined, "blob")).rejects.toMatchObject({
+      kind: "not-found",
+      status: 404,
+      message: "Replay uploads are not enabled on the backend.",
+    });
+    await expect(uploadReplay(file, undefined, "blob")).rejects.toMatchObject({
+      kind: "invalid-file",
+      status: 413,
+      message: "Choose a smaller .dem replay file.",
+    });
   });
 
   it("rejects a non-.dem file before sending a request", async () => {
@@ -179,10 +367,10 @@ describe("replay API adapter", () => {
     await expect(prepareReplayWorkspace("replay-1")).resolves.toEqual(job);
     expect(fetchMock).toHaveBeenCalledTimes(2);
     expect(fetchMock.mock.calls[0][0]).toBe(
-      "http://127.0.0.1:8000/api/analysis/prepare",
+      "/api/analysis/prepare",
     );
     expect(fetchMock.mock.calls[1][0]).toBe(
-      "http://127.0.0.1:8000/api/replay/replay-1/json",
+      "/api/replay/replay-1/json",
     );
   });
 
@@ -196,14 +384,14 @@ describe("replay API adapter", () => {
     const fetchMock = vi
       .fn()
       .mockResolvedValueOnce(
-        jsonResponse({ analysis_id: "analysis-1", status: "ready", players: [player] }),
+        jsonResponse({ analysis_id: "analysis-1", status: "ready", players: [selectablePlayer] }),
       )
       .mockResolvedValueOnce(jsonResponse(result));
     vi.stubGlobal("fetch", fetchMock);
 
     await expect(getAnalysisPlayers("analysis-1")).resolves.toEqual({
       state: "ready",
-      value: { analysis_id: "analysis-1", status: "ready", players: [player] },
+      value: { analysis_id: "analysis-1", status: "ready", players: [selectablePlayer] },
     });
     await expect(runReplayCoaching("analysis-1", "p1")).resolves.toEqual(result);
     const [, init] = fetchMock.mock.calls[1] as [string, RequestInit];

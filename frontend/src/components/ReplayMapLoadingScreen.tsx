@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 import { mapDisplayName } from "@/domain/maps";
-import type { AnalysisPlayer, ReplayManifest } from "@/domain/replay";
+import type { AnalysisPlayer, AnalysisProgressEvent, ReplayManifest } from "@/domain/replay";
 import { radarOverviewForMap } from "@/domain/replay-viewer";
 import { ProductHeader } from "./ProductHeader";
 
@@ -10,6 +10,7 @@ type ReplayMapLoadingScreenProps = {
   manifest: ReplayManifest;
   player: AnalysisPlayer;
   phase: "coaching" | "recovery" | "visualization";
+  progress?: AnalysisProgressEvent;
   onReturnToPlayers: () => void;
 };
 
@@ -39,6 +40,7 @@ export function ReplayMapLoadingScreen({
   manifest,
   player,
   phase,
+  progress,
   onReturnToPlayers,
 }: ReplayMapLoadingScreenProps) {
   const mapName = mapDisplayName(manifest.map.name);
@@ -55,7 +57,7 @@ export function ReplayMapLoadingScreen({
         aria-busy="true"
       >
         <p className="sr-only" aria-live="polite" aria-atomic="true">
-          {copy.title}. {copy.detail}
+          {copy.title}. {progress?.message ?? copy.detail}
         </p>
         <header className="analysis-toolbar">
           <div>
@@ -80,10 +82,6 @@ export function ReplayMapLoadingScreen({
                 <p className="eyebrow">Replay workspace</p>
                 <h2>{copy.title}</h2>
               </div>
-              <div className="radar-status">
-                <span>Loading</span>
-                <strong>···</strong>
-              </div>
             </div>
             <div className="radar-frame loading-border replay-map-loading-frame">
               {overview ? (
@@ -97,7 +95,7 @@ export function ReplayMapLoadingScreen({
               ) : null}
               <div className="replay-map-loading-copy">
                 <strong>{copy.title}</strong>
-                <span>{copy.detail}</span>
+                <span>{progress?.message ?? copy.detail}</span>
               </div>
             </div>
           </section>

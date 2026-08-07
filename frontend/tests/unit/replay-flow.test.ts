@@ -37,6 +37,8 @@ const analysis = analysisJobSchema.parse({
   status: "processing",
   players_available: false,
   result_available: false,
+  selected_player_id: null,
+  player_runs: {},
   logs_url: "/api/analysis/analysis-1/logs",
   events_url: "/api/analysis/analysis-1/events",
   result_url: "/api/analysis/analysis-1/result",
@@ -45,7 +47,11 @@ const analysis = analysisJobSchema.parse({
 const players = analysisPlayersSchema.parse({
   analysis_id: "analysis-1",
   status: "ready",
-  players: backendResult.players,
+  players: backendResult.players.map((player) => ({
+    ...player,
+    analysis_available: player.decision_ids.length > 0,
+    analysis_status: "not_started",
+  })),
 }).players;
 
 const result = replayAnalysisResultSchema.parse({
@@ -314,6 +320,26 @@ describe("uploaded replay state machine", () => {
       requestId: "players-2",
     });
     expect(retryPlayers).not.toHaveProperty("error");
+
+    const samplePlayerError: AnalysisFlowState = {
+      status: "players-error",
+      sampleId: "sample-ancient-20mb",
+      sourceName: "3DMAX vs Falcons LITE",
+      manifest,
+      analysis,
+      error: { ...retryableError, code: "prepare-failed" },
+    };
+    const retrySamplePreparation = analysisFlowReducer(samplePlayerError, {
+      type: "RETRY_ANALYSIS_PREPARE",
+      requestId: "prepare-sample-2",
+    });
+    expect(retrySamplePreparation).toMatchObject({
+      status: "preparing-analysis",
+      sampleId: "sample-ancient-20mb",
+      manifest: { replay_id: "api-flow-test" },
+      requestId: "prepare-sample-2",
+    });
+    expect(retrySamplePreparation).not.toHaveProperty("analysis");
   });
 
   it("rejects empty selectors and players without a coaching decision", () => {

@@ -5,14 +5,15 @@ RE:DECIDE has two JavaScript projects:
 - `agent-harness/` — the model-facing coaching process
 - `frontend/` — the Next.js browser application
 
-Both projects use pnpm lockfiles. The repository does not contain
-`package-lock.json` files, so use pnpm rather than `npm install`.
+Both projects use pnpm lockfiles as their authoritative dependency graph. Use
+pnpm rather than `npm install`; legacy npm lockfiles are not the supported local
+installation path.
 
 ## Requirements
 
 - Node.js 24.x
 - pnpm 11.x
-- WSL Ubuntu when working with the WSL Python environment
+- Windows PowerShell for the checkout under `C:\Users\...`
 
 The frontend declares these requirements in `frontend/package.json`. The
 agent harness accepts Node 20+, but the combined setup uses Node 24 because the
@@ -29,22 +30,25 @@ If the versions are wrong, fix the Node/pnpm installation before installing
 dependencies. On systems using Volta, make sure the Volta directory is
 writable and that the WSL terminal is using the intended Node installation.
 
-## Install from the lockfiles
+## Install from the lockfiles on Windows
 
-From a WSL terminal at the repository root:
+From Windows PowerShell at the repository root:
 
-```bash
-bash scripts/install-js-deps.sh
+```powershell
+.\scripts\install-js-deps.ps1
 ```
 
-The script runs the equivalent of:
+The script validates Node, pnpm, and lockfile policy, then runs:
 
-```bash
-cd agent-harness
+```powershell
+cd frontend
 pnpm install --frozen-lockfile
+```
 
-cd ../frontend
-pnpm install --frozen-lockfile
+The legacy Pi coach is optional. Install its dependencies only when needed:
+
+```powershell
+.\scripts\install-js-deps.ps1 -IncludeAgentHarness
 ```
 
 `--frozen-lockfile` ensures that dependency installation follows the checked-in
@@ -112,18 +116,21 @@ Use a WSL interpreter such as:
 /home/numnum/.virtualenvs/GHackathon1/bin/python
 ```
 
-Then open a WSL terminal and run the JavaScript installation script there.
-The JavaScript projects can remain under `/mnt/c/Users/...`; only the Python
-virtual environment needs to live in the native WSL filesystem for reliable
-interpreter discovery and faster indexing.
+Keep the WSL interpreter for Python, but run the frontend's Node and pnpm
+commands from Windows PowerShell. Do not share the Windows checkout's
+`node_modules` with WSL through `/mnt/c/Users/...`; that mixes Windows and Linux
+native binaries and pnpm metadata.
+
+If Linux JavaScript execution is required, create a separate clone under a
+native path such as `~/src/GHackathon`, then run `bash scripts/install-js-deps.sh`
+inside that clone. The Bash helper refuses Windows-mounted `/mnt/<drive>` paths.
 
 ## Common problems
 
 ### `pnpm` or `node` is not found
 
-Install or enable Node 24 and pnpm 11 in the environment where the script is
-running. Windows PowerShell and WSL can have different PATHs; check versions
-from the same WSL terminal that will run the script.
+Install or enable Node 24 and pnpm 11 in Windows PowerShell. Windows and WSL
+have separate PATHs and separate native dependency trees.
 
 ### Volta cannot create its directory
 
@@ -139,13 +146,24 @@ correct project directory and pnpm major version are being used. Only update a
 lockfile deliberately, review the diff, and commit the updated lockfile with
 the corresponding `package.json` change.
 
-### Reinstalling from scratch
+### Reinstalling the Windows frontend from scratch
 
-It is safe to remove generated `node_modules` directories and rerun the script:
+If the environment doctor reports Linux packages in the Windows tree, move the
+generated directory aside and reinstall from PowerShell. Keep backups outside
+`frontend/` so Tailwind never scans diagnostic artifacts:
 
-```bash
-rm -rf agent-harness/node_modules frontend/node_modules
-bash scripts/install-js-deps.sh
+```powershell
+cd C:\Users\n8469\PycharmProjects\GHackathon
+Move-Item frontend\node_modules "$env:TEMP\GHackathon-frontend-node_modules-backup"
+.\scripts\install-js-deps.ps1
 ```
 
 Do not remove `pnpm-lock.yaml` files; they are the reproducibility contract.
+
+Before starting the frontend, you can run the same checks directly:
+
+```powershell
+cd frontend
+pnpm doctor
+pnpm dev
+```

@@ -3,6 +3,7 @@ minimumReleaseAgeStrict: true
 blockExoticSubdeps: true
 trustPolicy: no-downgrade
 verifyDepsBeforeRun: error
+enableGlobalVirtualStore: false
 
 minimumReleaseAgeExclude:
   - get-tsconfig@4.14.1

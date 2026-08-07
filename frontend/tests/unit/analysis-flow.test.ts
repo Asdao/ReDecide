@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import decisionPacket from "../../../backend/tests/fixtures/decision_packet.valid.json";
 import {
   analysisFlowReducer,
   initialAnalysisFlowState,
@@ -11,7 +12,14 @@ import {
   landingViewHref,
   withLandingHistoryMarker,
 } from "@/domain/landing-navigation";
-import { mapAssetKey, mapThumbnailUrl, samplesResponseSchema } from "@/domain/samples";
+import { formatTabTitle, tabLocationForScreen } from "@/domain/tab-title";
+import {
+  mapAssetKey,
+  mapThumbnailUrl,
+  samplePreparationSchema,
+  sampleReplayPreparationSchema,
+  samplesResponseSchema,
+} from "@/domain/samples";
 
 const sample = {
   sample_id: "fixture-mirage-01",
@@ -31,7 +39,50 @@ const preparation = {
   neutral_summary: null,
 };
 
+const replayPreparation = {
+  sample_id: sample.sample_id,
+  replay_id: "sample-replay-01",
+  manifest: {
+    schema_version: "replay_manifest_v1" as const,
+    replay_id: "sample-replay-01",
+    source: "Mirage post-contact example.dem",
+    map: { name: "de_mirage", tick_rate: 64 },
+    players: [{ player_id: "p1", display_name: "PlayerA", sides: ["CT"] }],
+    rounds: [{ round_num: 1, start: 0, end: 100 }],
+    visualization_status: "ready" as const,
+    coaching_status: "ready" as const,
+    visualization_unlocked: false,
+  },
+  analysis: {
+    analysis_id: "sample-analysis-01",
+    status: "ready" as const,
+    players_available: true,
+    result_available: false,
+    selected_player_id: null,
+    player_runs: {},
+    logs_url: "/api/analysis/sample-analysis-01/logs",
+    events_url: "/api/analysis/sample-analysis-01/events",
+    result_url: "/api/analysis/sample-analysis-01/result",
+  },
+};
+
 describe("backend sample flow", () => {
+  it("uses a one-word location in each browser tab title", () => {
+    expect(formatTabTitle(tabLocationForScreen("choose"))).toBe("Home - RE:DECIDE");
+    expect(formatTabTitle(tabLocationForScreen("samples-ready"))).toBe(
+      "Samples - RE:DECIDE",
+    );
+    expect(formatTabTitle(tabLocationForScreen("processed-replays"))).toBe(
+      "Replays - RE:DECIDE",
+    );
+    expect(formatTabTitle(tabLocationForScreen("choosing-player"))).toBe(
+      "Replay - RE:DECIDE",
+    );
+    expect(formatTabTitle(tabLocationForScreen("viewer"))).toBe(
+      "Analysis - RE:DECIDE",
+    );
+  });
+
   it("maps landing views to stable, query-preserving history URLs", () => {
     expect(landingViewFromSearch("")).toBe("home");
     expect(landingViewFromSearch("?view=samples")).toBe("samples");
@@ -75,6 +126,36 @@ describe("backend sample flow", () => {
     expect(samplesResponseSchema.parse({ samples: [sample, { ...sample, sample_id: "two" }] }).samples).toHaveLength(2);
   });
 
+  it("enforces the backend sample invariants and stage payload", () => {
+    expect(() =>
+      samplesResponseSchema.parse({
+        samples: [{ ...sample, players: ["PlayerA", "PlayerA"] }],
+      }),
+    ).toThrow("sample players must be unique");
+    expect(() =>
+      samplesResponseSchema.parse({
+        samples: [{ ...sample, recommended_player: "MissingPlayer" }],
+      }),
+    ).toThrow("recommended_player must appear in players");
+    expect(samplePreparationSchema.parse(preparation)).toEqual(preparation);
+    expect(() =>
+      samplePreparationSchema.parse({ ...preparation, decision_packet: {} }),
+    ).toThrow();
+    expect(
+      samplePreparationSchema.parse({
+        stage: "INTENT_REQUIRED",
+        analysis_id: "fixture-analysis-01",
+        players: ["PlayerA"],
+        decision_packet: decisionPacket,
+        neutral_summary: {
+          timestamp_seconds: 96.45,
+          text: "PlayerA exposed again 0.9 seconds after contact",
+        },
+      }).stage,
+    ).toBe("INTENT_REQUIRED");
+    expect(sampleReplayPreparationSchema.parse(replayPreparation)).toEqual(replayPreparation);
+  });
+
   it("moves from the landing page to a loaded backend list", () => {
     const loading = analysisFlowReducer(initialAnalysisFlowState, { type: "OPEN_SAMPLES" });
     expect(loading).toEqual({ status: "loading-samples" });
@@ -106,6 +187,21 @@ describe("backend sample flow", () => {
       samples: [sample],
       sampleId: sample.sample_id,
       preparation,
+    });
+
+    const waiting = analysisFlowReducer(selecting, {
+      type: "SAMPLE_REPLAY_READY",
+      sampleId: sample.sample_id,
+      sourceName: "Mirage post-contact example",
+      preparation: replayPreparation,
+      playersRequestId: "players-1",
+    });
+    expect(waiting).toMatchObject({
+      status: "waiting-for-players",
+      sampleId: sample.sample_id,
+      manifest: replayPreparation.manifest,
+      analysis: replayPreparation.analysis,
+      requestId: "players-1",
     });
   });
 

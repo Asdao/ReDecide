@@ -1,0 +1,21 @@
+{
+  "schema_version": 1,
+  "redistribution_status": "verify_source_terms_before_upload",
+  "sources": [
+    {
+      "name": "cs2_dataset_demo metadata",
+      "dataset_id": "blanchon/cs2_dataset_demo",
+      "kind": "metadata",
+      "path": "metadata/",
+      "license": "not recorded by downloader; verify upstream license"
+    },
+    {
+      "name": "Awpy map artifacts",
+      "source_manifest": "maps/manifest.json",
+      "kind": "map_navigation_and_overview",
+      "path": "maps/",
+      "license": "verify Awpy artifact terms"
+    }
+  ],
+  "private_data_policy": "raw demos, parsed replays, databases, features, benchmark caches, and user uploads remain under data/private"
+}

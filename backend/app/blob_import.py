@@ -8,7 +8,6 @@ then reuses the existing native-demo parser and replay artifact flow.
 from __future__ import annotations
 
 from collections.abc import Awaitable, Callable, Mapping
-from concurrent.futures import ThreadPoolExecutor
 import os
 from pathlib import Path
 import tempfile
@@ -27,12 +26,6 @@ from backend.replay_api.ingestion import start_replay as _start_replay
 
 PUBLIC_BLOB_HOST_SUFFIX = ".public.blob.vercel-storage.com"
 DEFAULT_MAX_BLOB_BYTES = 1024 * 1024 * 1024
-_VISUALIZATION_EXECUTOR = ThreadPoolExecutor(
-    max_workers=2,
-    thread_name_prefix="blob-replay-json",
-)
-
-
 class BlobFetchError(RuntimeError):
     """Raised when an allowlisted Blob object cannot be downloaded."""
 
@@ -78,14 +71,18 @@ def create_blob_import_router(
     *,
     downloader: BlobDownloader | None = None,
     loader: ReplayLoader | None = None,
-    executor: ThreadPoolExecutor | None = None,
+    executor: object | None = None,
 ) -> APIRouter:
-    """Create the optional router with injectable boundaries for tests."""
+    """Create the optional router with injectable boundaries for tests.
+
+    ``executor`` remains accepted for compatibility with older callers, but
+    is intentionally not used: replay visualization now completes before the
+    import request returns.
+    """
 
     router = APIRouter()
     fetch_blob = downloader or _download_public_blob
     load_demo = loader or _load_native_demo
-    visualization_executor = executor or _VISUALIZATION_EXECUTOR
 
     @router.post("/api/replay/import-url", status_code=202)
     async def import_blob(request: BlobImportRequest) -> dict[str, Any]:
@@ -100,7 +97,7 @@ def create_blob_import_router(
             return _start_replay(
                 record,
                 request.filename,
-                visualization_executor,
+                executor,
             )
         except BlobTooLargeError as exc:
             raise HTTPException(status_code=413, detail=str(exc)) from exc
@@ -119,7 +116,13 @@ def create_blob_import_router(
     return router
 
 
-async def _download_public_blob(url: str, destination: Path, max_bytes: int) -> None:
+async def _download_public_blob(
+    url: str,
+    destination: Path,
+    max_bytes: int,
+    *,
+    expected_bytes: int | None = None,
+) -> None:
     """Stream one allowlisted public Vercel Blob to a bounded local file."""
 
     _validate_public_blob_url(url)
@@ -144,6 +147,12 @@ async def _download_public_blob(url: str, destination: Path, max_bytes: int) -> 
                         declared_size = None
                     if declared_size is not None and declared_size > max_bytes:
                         raise BlobTooLargeError("Vercel Blob exceeds the upload limit")
+                    if (
+                        expected_bytes is not None
+                        and declared_size is not None
+                        and declared_size != expected_bytes
+                    ):
+                        raise BlobFetchError("Vercel Blob size does not match the sample seed")
 
                 received = 0
                 with destination.open("wb") as output:

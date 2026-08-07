@@ -11,6 +11,7 @@ from __future__ import annotations
 import json
 import os
 import time
+from collections.abc import Sequence
 from typing import Any
 
 from fastapi import FastAPI, HTTPException, Request
@@ -19,27 +20,33 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, PlainTextResponse, StreamingResponse
 from pydantic import BaseModel, Field, model_validator
 
+from backend.app.blob_import import BlobFetchError, BlobTooLargeError
+from backend.app.coach import HttpCoachAdapter, PiCoachAdapter
 from backend.app.contracts import (
-    APIErrorCode,
-    APIErrorDetail,
-    APIErrorResponse,
     AnalysisPreparationResponse,
     AnalysisResponse,
     AnalyzeJsonRequest,
     AnalyzeRequest,
+    APIErrorCode,
+    APIErrorDetail,
+    APIErrorResponse,
     HealthResponse,
     IntentCoachingRequest,
     IntentCoachingResponse,
     SamplesResponse,
 )
 from backend.app.errors import IntegrationError
-from backend.app.coach import PiCoachAdapter
 from backend.app.orchestration import (
     AnalysisNotFound,
     AnalysisNotReady,
     AnalysisService,
     FixtureOrchestrator,
     PlayerSelectionError,
+)
+from backend.app.sample_replay import (
+    BlobSampleReplay,
+    SampleReplayError,
+    create_default_sample_replays,
 )
 
 
@@ -54,7 +61,7 @@ class PrepareRequest(BaseModel):
     )
 
     @model_validator(mode="after")
-    def require_exactly_one_source(self) -> "PrepareRequest":
+    def require_exactly_one_source(self) -> PrepareRequest:
         if (self.replay is None) == (self.replay_id is None):
             raise ValueError("provide exactly one of replay or replay_id")
         return self
@@ -90,11 +97,17 @@ def _error_response(
 
 
 def create_fixture_app(
-    *, orchestrator: FixtureOrchestrator | None = None
+    *,
+    orchestrator: FixtureOrchestrator | None = None,
+    sample_replay: BlobSampleReplay | Sequence[BlobSampleReplay] | None = None,
+    analysis_service: AnalysisService | None = None,
+    include_fixture_sample: bool = True,
 ) -> FastAPI:
-    """Create the default four-endpoint API backed by frozen fixtures."""
+    """Create the compatibility API and the hosted real-replay sample."""
 
     fixture = orchestrator or FixtureOrchestrator()
+    hosted_samples = _normalize_hosted_samples(sample_replay)
+    hosted_by_id = {sample.sample_id: sample for sample in hosted_samples}
     fixture_app = FastAPI(title="RE:DECIDE API", version="0.1.0")
     fixture_app.add_middleware(
         CORSMiddleware,
@@ -138,11 +151,30 @@ def create_fixture_app(
 
     @fixture_app.get("/api/samples", response_model=SamplesResponse)
     def samples() -> SamplesResponse:
-        return fixture.list_samples()
+        hosted = SamplesResponse(samples=[sample.summary() for sample in hosted_samples])
+        if not include_fixture_sample:
+            return hosted
+        return SamplesResponse(samples=fixture.list_samples().samples)
 
-    @fixture_app.post("/api/analyze", response_model=AnalysisPreparationResponse)
-    def analyze(request: AnalyzeRequest) -> AnalysisPreparationResponse:
-        """Prepare a neutral fixture packet; never perform coaching here."""
+    @fixture_app.post("/api/analyze", response_model=None)
+    async def analyze(request: AnalyzeRequest) -> dict[str, Any] | AnalysisPreparationResponse:
+        """Prepare either the hosted native sample or the frozen fixture."""
+
+        hosted_sample = hosted_by_id.get(request.sample_id)
+        if hosted_sample is not None:
+            if analysis_service is None:
+                raise HTTPException(status_code=503, detail="sample analysis is unavailable")
+            try:
+                return await hosted_sample.prepare(
+                    analysis=analysis_service,
+                    sample_id=request.sample_id,
+                )
+            except BlobTooLargeError as exc:
+                raise HTTPException(status_code=413, detail=str(exc)) from exc
+            except BlobFetchError as exc:
+                raise HTTPException(status_code=502, detail=str(exc)) from exc
+            except SampleReplayError as exc:
+                raise HTTPException(status_code=422, detail=str(exc)) from exc
 
         return fixture.prepare(request)
 
@@ -156,7 +188,7 @@ def create_fixture_app(
 
 
 def create_analysis_app(*, service: AnalysisService | None = None) -> FastAPI:
-    """Create the asynchronous replay-analysis transport.
+    """Create the request-contained replay-analysis transport.
 
     The transport accepts either normalized replay JSON or a ``replay_id``
     created by the upload API. Tests may inject a deterministic service;
@@ -164,7 +196,7 @@ def create_analysis_app(*, service: AnalysisService | None = None) -> FastAPI:
     """
 
     analysis_app = FastAPI(title="RE:DECIDE Replay Pipeline API", version="1.0")
-    analysis = service or AnalysisService(coach_adapter=PiCoachAdapter())
+    analysis = service or AnalysisService(coach_adapter=_default_coach_adapter())
 
     @analysis_app.get("/api/health")
     def health() -> dict[str, str]:
@@ -295,7 +327,7 @@ def create_analysis_app(*, service: AnalysisService | None = None) -> FastAPI:
                     )
                     yield f"event: {event_name}\ndata: {json.dumps(update)}\n\n"
                 state = analysis.metadata(analysis_id)
-                if state["status"] in {"complete", "failed"} and index >= len(
+                if state["status"] in {"ready", "complete", "failed"} and index >= len(
                     updates
                 ):
                     break
@@ -304,6 +336,44 @@ def create_analysis_app(*, service: AnalysisService | None = None) -> FastAPI:
         return StreamingResponse(stream(), media_type="text/event-stream")
 
     return analysis_app
+
+
+def _default_coach_adapter() -> Any:
+    """Choose the configured coach transport.
+
+    HTTP coaching is the zero-configuration default whenever an
+    OpenAI-compatible provider is configured.  Set ``REDECIDE_COACH_MODE=pi``
+    to retain the legacy local Pi subprocess explicitly.  ``http`` can be
+    selected explicitly when the provider values are injected by the hosting
+    environment (and therefore are not visible during app construction).
+
+    Uvicorn does not read a repository ``.env`` file implicitly.  For local
+    development, start it with ``--env-file .env`` (as documented) or export
+    the provider variables before importing this module.
+    """
+
+    mode = os.getenv("REDECIDE_COACH_MODE", "").strip().lower()
+    if mode == "pi":
+        return PiCoachAdapter()
+    if mode == "http":
+        return HttpCoachAdapter()
+
+    provider_base_url = os.getenv("HARNESS_MODEL_BASE_URL", "").strip()
+    provider_api_key = next(
+        (
+            value.strip()
+            for value in (
+                os.getenv("HARNESS_MODEL_API_KEY", ""),
+                os.getenv("DEEPSEEK_API_KEY", ""),
+            )
+            if value and value.strip()
+        ),
+        "",
+    )
+    provider_configured = bool(provider_base_url and provider_api_key)
+    if provider_configured or os.getenv("VERCEL") == "1":
+        return HttpCoachAdapter()
+    return PiCoachAdapter()
 
 
 def _copy_api_routes(
@@ -327,6 +397,7 @@ def create_app(
     *,
     service: AnalysisService | None = None,
     orchestrator: FixtureOrchestrator | None = None,
+    sample_replay: BlobSampleReplay | Sequence[BlobSampleReplay] | None = None,
 ) -> FastAPI:
     """Create the single public API while preserving component ownership.
 
@@ -359,8 +430,14 @@ def create_app(
     def health() -> dict[str, str]:
         return {"status": "ok"}
 
-    fixture_app = create_fixture_app(orchestrator=orchestrator)
-    analysis_app = create_analysis_app(service=service)
+    analysis_service = service or AnalysisService(coach_adapter=_default_coach_adapter())
+    fixture_app = create_fixture_app(
+        orchestrator=orchestrator,
+        sample_replay=sample_replay,
+        analysis_service=analysis_service,
+        include_fixture_sample=False,
+    )
+    analysis_app = create_analysis_app(service=analysis_service)
 
     # Preserve the typed frozen-contract error handlers on the unified app.
     gateway.exception_handlers.update(fixture_app.exception_handlers)
@@ -390,6 +467,25 @@ def create_app(
     if blob_import_enabled():
         gateway.include_router(create_blob_import_router())
     return gateway
+
+
+def _normalize_hosted_samples(
+    sample_replay: BlobSampleReplay | Sequence[BlobSampleReplay] | None,
+) -> tuple[BlobSampleReplay, ...]:
+    """Normalize the injectable sample boundary and reject ambiguous ids."""
+
+    if sample_replay is None:
+        samples = create_default_sample_replays()
+    elif isinstance(sample_replay, BlobSampleReplay):
+        samples = (sample_replay,)
+    else:
+        samples = tuple(sample_replay)
+    if not samples:
+        raise ValueError("at least one hosted sample is required")
+    ids = [sample.sample_id for sample in samples]
+    if len(set(ids)) != len(ids):
+        raise ValueError("hosted sample ids must be unique")
+    return samples
 
 
 app = create_app()

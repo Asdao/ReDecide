@@ -9,7 +9,24 @@ coaching.json       -> coaching FastAPI and decision pipeline
 manifest.json       -> safe map/player/status metadata
 ```
 
-The default artifact root is `data/runtime/replays/<replay_id>/`.
+The default local artifact root is `data/runtime/replays/<replay_id>/`.
+With `REDECIDE_STORAGE_BACKEND=blob`, replay artifacts are durable Blob JSON.
+Vercel Services enable this automatically when their private Blob service
+binding is present, unless filesystem storage is explicitly selected.
+New Vercel OIDC connections use the private `REDECIDE_BLOB_SERVICE_URL`
+service binding declared in `vercel.json`; local development does not set that
+binding and continues to use the filesystem by default.
+
+These JSON artifacts are server-side application data, not browser cache. A
+successful native replay produces all three files above; analysis jobs separately
+store `analysis/<analysis_id>/state.json` and, after coaching, `result.json`.
+The Vercel deployment runs the authenticated `/api/cron/blob-retention` route
+daily. By default it removes failed analysis groups after 1 day, other analysis
+groups after 14 days, and ordinary replay groups after 30 days. Hosted sample
+replays carry internal `_sample_cache.pinned: true` metadata and are retained.
+The route deletes only complete allowlisted JSON groups, caps each run, keeps a
+group when inspection fails, and can be tested with
+`REDECIDE_RETENTION_DRY_RUN=true`. It is not a public replay-deletion API.
 
 The default frontend origins are `http://localhost:3000` and
 `http://127.0.0.1:3000`. Set `REPLAY_API_ALLOWED_ORIGINS` to a

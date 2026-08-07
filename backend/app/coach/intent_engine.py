@@ -129,7 +129,8 @@ class IntentCoachingEngine:
     ) -> tuple[dict[str, Any], set[str], int]:
         """Filter evidence strictly to ticks <= decision_open_tick and collect valid evidence IDs."""
 
-        selected = dict(pipeline_result.get("selected_decision", {}))
+        raw_selected = pipeline_result.get("selected_decision")
+        selected = dict(raw_selected) if isinstance(raw_selected, Mapping) else {}
         if not selected and "decision_candidates" in pipeline_result:
             candidates = pipeline_result["decision_candidates"]
             if isinstance(candidates, list) and candidates:

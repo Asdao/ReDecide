@@ -1,4 +1,5 @@
 import { z } from "zod";
+import type { ReplayAnalysisEntry, ReplayAnalysisResult } from "./replay";
 
 const requiredString = z.string().trim().min(1);
 const nonnegativeInteger = z.number().int().nonnegative();
@@ -135,6 +136,14 @@ export type ReplaySnapshot = ProcessedReplay["ticks"][number];
 export type ReplayFrame = {
   tick: number;
   snapshots: ReplaySnapshot[];
+};
+
+export type WinTimelinePoint = {
+  round_number: number;
+  tick: number;
+  ct_probability: number;
+  t_probability: number;
+  uncertainty: number;
 };
 
 export type RadarOverview = {
@@ -392,18 +401,237 @@ export function formatReplayTime(tick: number, firstTick: number, tickRate: numb
   return `${minutes}:${remaining.toString().padStart(2, "0")}`;
 }
 
+export function winProbabilityAtMoment(
+  timeline: readonly WinTimelinePoint[],
+  roundNumber: number,
+  tick: number,
+): WinTimelinePoint | undefined {
+  let latest: WinTimelinePoint | undefined;
+  for (const point of timeline) {
+    if (
+      point.round_number === roundNumber &&
+      point.tick <= tick &&
+      (!latest || point.tick > latest.tick)
+    ) {
+      latest = point;
+    }
+  }
+  return latest;
+}
+
+export function winRateForPerspective(
+  point: WinTimelinePoint | undefined,
+  selectedSide: "ct" | "t",
+) {
+  const ctProbability = point?.ct_probability ?? 0.5;
+  const tProbability = point?.t_probability ?? 0.5;
+  return selectedSide === "t"
+    ? {
+        friendlyTeam: "T" as const,
+        friendlyProbability: tProbability,
+        enemyTeam: "CT" as const,
+        enemyProbability: ctProbability,
+        isBaseline: !point,
+      }
+    : {
+        friendlyTeam: "CT" as const,
+        friendlyProbability: ctProbability,
+        enemyTeam: "T" as const,
+        enemyProbability: tProbability,
+        isBaseline: !point,
+      };
+}
+
 export function playerDisplayName(player: ReplayPlayer): string {
   return player.display_name ?? "Unnamed player";
+}
+
+export function replayEventIsDeath(event: ReplayEvent): boolean {
+  return event.event === "kill" || (
+    event.event === "damage" && (event.damage_health ?? 0) >= 100
+  );
 }
 
 export function playerTimelineEvents(
   events: ReplayEvent[],
   playerId: string,
 ): ReplayEvent[] {
-  return events.filter(
+  const relevantEvents = events.filter(
     (event) =>
       (event.event === "damage" || event.event === "kill") &&
       event.victim_id === playerId,
+  );
+  const momentKey = (event: ReplayEvent) => `${event.round_num}:${event.tick}:${event.victim_id}`;
+  const killByMoment = new Map<string, ReplayEvent>();
+  for (const event of relevantEvents) {
+    if (event.event === "kill" && !killByMoment.has(momentKey(event))) {
+      killByMoment.set(momentKey(event), event);
+    }
+  }
+
+  return relevantEvents.flatMap((event) => {
+    const moment = momentKey(event);
+    const killEvent = killByMoment.get(moment);
+    if (killEvent) {
+      if (event !== killEvent) return [];
+
+      const damageEvent = relevantEvents.find((candidate) =>
+        candidate.event === "damage" &&
+        momentKey(candidate) === moment &&
+        (!killEvent.attacker_id || candidate.attacker_id === killEvent.attacker_id)
+      ) ?? relevantEvents.find((candidate) =>
+        candidate.event === "damage" && momentKey(candidate) === moment
+      );
+      return [{
+        ...killEvent,
+        damage_health: killEvent.damage_health ?? damageEvent?.damage_health,
+        headshot: killEvent.headshot ?? damageEvent?.headshot,
+        weapon: killEvent.weapon ?? damageEvent?.weapon,
+      }];
+    }
+    return [event];
+  });
+}
+
+export function eventMatchesAnalysis(
+  event: ReplayEvent,
+  analysis: Pick<ReplayAnalysisResult, "selected_decision"> | ReplayAnalysisEntry,
+): boolean {
+  const decision = analysis.selected_decision;
+  const playerMatches = decision.role === "victim"
+    ? event.victim_id === decision.player_id
+    : decision.role === "attacker"
+      ? event.attacker_id === decision.player_id
+      : event.victim_id === decision.player_id || event.attacker_id === decision.player_id;
+  const opponentMatches = decision.role === "victim"
+    ? event.attacker_id === decision.opponent_id
+    : decision.role === "attacker"
+      ? event.victim_id === decision.opponent_id
+      : event.attacker_id === decision.opponent_id || event.victim_id === decision.opponent_id;
+  return (
+    event.tick === decision.contact_tick &&
+    event.round_num === decision.round_number &&
+    event.event === decision.event_category &&
+    playerMatches &&
+    opponentMatches
+  );
+}
+
+/** Normalize legacy singular coaching payloads to the multi-moment shape. */
+export function replayAnalysisEntries(
+  analysis: ReplayAnalysisResult,
+): ReplayAnalysisEntry[] {
+  return analysis.analyses?.length
+    ? analysis.analyses
+    : [{ selected_decision: analysis.selected_decision, coach_analysis: analysis.coach_analysis }];
+}
+
+export function analysisEntryForEvent(
+  event: ReplayEvent,
+  analysis?: ReplayAnalysisResult,
+): ReplayAnalysisEntry | undefined {
+  return analysis ? replayAnalysisEntries(analysis).find((entry) =>
+    eventMatchesAnalysis(event, entry) || (
+      replayEventIsDeath(event) &&
+      entry.selected_decision.event_category === "damage" &&
+      entry.selected_decision.role === "victim" &&
+      event.round_num === entry.selected_decision.round_number &&
+      event.tick === entry.selected_decision.contact_tick &&
+      event.victim_id === entry.selected_decision.player_id &&
+      event.attacker_id === entry.selected_decision.opponent_id
+    )
+  ) : undefined;
+}
+
+export function cleanAnalysisEvents(
+  events: readonly ReplayAnalysisResult["events"][number][],
+): ReplayAnalysisResult["events"] {
+  const seen = new Set<string>();
+  return events.filter((event) => {
+    if (event.round_number <= 0) {
+      return false;
+    }
+    const fingerprint = [
+      event.event_type,
+      event.round_number,
+      event.tick,
+      [...event.participant_ids].sort().join(","),
+    ].join(":");
+    if (seen.has(fingerprint)) {
+      return false;
+    }
+    seen.add(fingerprint);
+    return true;
+  });
+}
+
+function syntheticAnalysisEvent(
+  analysis: ReplayAnalysisResult,
+  entry: ReplayAnalysisEntry,
+): ReplayEvent {
+  const decision = entry.selected_decision;
+  const cleanEvents = cleanAnalysisEvents([...analysis.events, ...analysis.key_events]);
+  const anchor = cleanEvents.find((event) =>
+    event.is_coaching_anchor &&
+    event.round_number === decision.round_number &&
+    event.tick === decision.contact_tick &&
+    event.event_type === decision.event_category &&
+    event.participant_ids.includes(decision.player_id),
+  );
+  return {
+    event_id: `analysis:${anchor?.event_id ?? decision.decision_id}`,
+    event: decision.event_category,
+    tick: decision.contact_tick,
+    round_num: decision.round_number,
+    attacker_id: decision.role === "attacker" ? decision.player_id : decision.opponent_id,
+    victim_id: decision.role === "victim" ? decision.player_id : decision.opponent_id,
+    player_id: null,
+    weapon: null,
+    headshot: false,
+    bomb_site: null,
+  };
+}
+
+export function analysisTimelineEvents(
+  events: ReplayEvent[],
+  playerId: string,
+  analysis?: ReplayAnalysisResult,
+): ReplayEvent[] {
+  const playerEvents = playerTimelineEvents(events, playerId);
+  if (!analysis) {
+    return playerEvents;
+  }
+
+  const analysisEvents = replayAnalysisEntries(analysis)
+    .filter((entry) => entry.selected_decision.player_id === playerId)
+    .map((entry) => {
+      const matchingEvent = events.find((event) => eventMatchesAnalysis(event, entry));
+      const matchingDeath = entry.selected_decision.role === "victim"
+        ? playerEvents.find((event) =>
+            replayEventIsDeath(event) &&
+            event.round_num === entry.selected_decision.round_number &&
+            event.tick === entry.selected_decision.contact_tick &&
+            event.victim_id === entry.selected_decision.player_id &&
+            event.attacker_id === entry.selected_decision.opponent_id
+          )
+        : undefined;
+      return matchingDeath ?? matchingEvent ?? syntheticAnalysisEvent(analysis, entry);
+    });
+  if (analysisEvents.length === 0) return playerEvents;
+
+  const withoutCompetingMoments = playerEvents.filter((event) => !analysisEvents.some((analysisEvent) =>
+    event.round_num === analysisEvent.round_num &&
+    event.tick === analysisEvent.tick &&
+    event.attacker_id === analysisEvent.attacker_id &&
+    event.victim_id === analysisEvent.victim_id
+  ));
+  const seenEventIds = new Set<string>();
+  return [...withoutCompetingMoments, ...analysisEvents].filter((event) => {
+    if (seenEventIds.has(event.event_id)) return false;
+    seenEventIds.add(event.event_id);
+    return true;
+  }).sort(
+    (left, right) => left.tick - right.tick || left.event_id.localeCompare(right.event_id),
   );
 }
 

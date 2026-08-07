@@ -1,10 +1,17 @@
-import { readFile } from "node:fs/promises";
+import { access, readdir, readFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const securityDir = dirname(fileURLToPath(import.meta.url));
 const repoRoot = dirname(securityDir);
 const projects = ["frontend", "agent-harness"];
+const unsupportedLockfiles = [
+  "package-lock.json",
+  "npm-shrinkwrap.json",
+  "yarn.lock",
+  "bun.lock",
+  "bun.lockb",
+];
 const requiredOverrides = {
   frontend: { postcss: "8.5.23", sharp: "0.35.0" },
   "agent-harness": { undici: "8.9.0" },
@@ -71,6 +78,17 @@ for (const project of projects) {
   const workspace = await readFile(join(projectDir, "pnpm-workspace.yaml"), "utf8");
   const lockfile = await readFile(join(projectDir, "pnpm-lock.yaml"), "utf8");
 
+  for (const filename of unsupportedLockfiles) {
+    try {
+      await access(join(projectDir, filename));
+      fail(`${project}: unsupported duplicate lockfile ${filename}; use pnpm-lock.yaml only`);
+    } catch (error) {
+      if (error?.code !== "ENOENT") {
+        fail(`${project}: unable to inspect for duplicate lockfile ${filename}`);
+      }
+    }
+  }
+
   if (packageJson.packageManager !== "pnpm@11.9.0") {
     fail(`${project}: packageManager must be pnpm@11.9.0`);
   }
@@ -80,6 +98,7 @@ for (const project of projects) {
     ["blockExoticSubdeps", "true"],
     ["trustPolicy", "no-downgrade"],
     ["verifyDepsBeforeRun", "error"],
+    ["enableGlobalVirtualStore", "false"],
   ]) {
     if (!hasPolicyValue(workspace, key, expected)) fail(`${project}: ${key} must be ${expected}`);
   }
@@ -117,11 +136,25 @@ for (const project of projects) {
   });
 }
 
-const workflow = await readFile(join(repoRoot, ".github", "workflows", "dependency-security.yml"), "utf8");
-const actionReferences = [...workflow.matchAll(/^\s*uses:\s*([^\s#]+)/gm)].map((match) => match[1]);
+const workflowsDir = join(repoRoot, ".github", "workflows");
+const workflowNames = (await readdir(workflowsDir)).filter((name) => /\.ya?ml$/i.test(name));
+if (workflowNames.length === 0) fail("CI: no workflow files found");
+const workflowEntries = await Promise.all(
+  workflowNames.map(async (name) => ({
+    name,
+    text: await readFile(join(workflowsDir, name), "utf8"),
+  })),
+);
+const workflow = workflowEntries.find(({ name }) => name === "dependency-security.yml")?.text ?? "";
+if (workflow === "") fail("CI: dependency-security.yml is missing");
+const actionReferences = workflowEntries.flatMap(({ name, text }) =>
+  [...text.matchAll(/^\s*uses:\s*([^\s#]+)/gm)].map((match) => ({ name, reference: match[1] })),
+);
 if (actionReferences.length === 0) fail("CI: no GitHub Actions references found");
-for (const reference of actionReferences) {
-  if (!/@[0-9a-f]{40}$/.test(reference)) fail(`CI: action is not pinned to a full commit SHA: ${reference}`);
+for (const { name, reference } of actionReferences) {
+  if (!/@[0-9a-f]{40}$/.test(reference)) {
+    fail(`CI: action is not pinned to a full commit SHA in ${name}: ${reference}`);
+  }
 }
 for (const required of [
   "persist-credentials: false",
