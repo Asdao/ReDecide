@@ -4,16 +4,29 @@ from __future__ import annotations
 
 import json
 import os
+import tempfile
+from collections.abc import Mapping
 from pathlib import Path
-from typing import Any, Mapping
+from typing import Any
 from urllib.parse import quote
 from uuid import uuid4
+
+from backend.storage.blob import (
+    BlobStorageNotFound,
+    analysis_blob_store,
+    blob_storage_enabled,
+)
 
 
 def analysis_store_root() -> Path:
     """Return the directory that holds persisted analysis artifacts."""
 
-    return Path(os.getenv("REDECIDE_ANALYSIS_STORE", "data/runtime/analysis"))
+    configured = os.getenv("REDECIDE_ANALYSIS_STORE")
+    if configured:
+        return Path(configured)
+    if os.getenv("VERCEL"):
+        return Path(tempfile.gettempdir()) / "redecide" / "analysis"
+    return Path("data/runtime/analysis")
 
 
 def analysis_state_path(analysis_id: str, *, root: str | Path | None = None) -> Path:
@@ -36,6 +49,12 @@ def save_analysis_state(
 ) -> Path:
     """Atomically persist the current analysis state."""
 
+    if blob_storage_enabled():
+        analysis_blob_store().put_json(
+            f"{_blob_analysis_id(analysis_id)}/state.json", payload
+        )
+        return analysis_state_path(analysis_id, root=root)
+
     path = analysis_state_path(analysis_id, root=root)
     _atomic_json_write(path, payload)
     return path
@@ -45,6 +64,14 @@ def load_analysis_state(
     analysis_id: str, *, root: str | Path | None = None
 ) -> dict[str, Any]:
     """Load the persisted analysis state for one analysis job."""
+
+    if blob_storage_enabled():
+        try:
+            return analysis_blob_store().get_json(
+                f"{_blob_analysis_id(analysis_id)}/state.json"
+            )
+        except BlobStorageNotFound as exc:
+            raise FileNotFoundError(f"analysis state not found: {analysis_id}") from exc
 
     return _atomic_json_read(
         analysis_state_path(analysis_id, root=root), artifact_name="analysis state"
@@ -59,6 +86,12 @@ def save_analysis_result(
 ) -> Path:
     """Atomically persist the final analysis result."""
 
+    if blob_storage_enabled():
+        analysis_blob_store().put_json(
+            f"{_blob_analysis_id(analysis_id)}/result.json", payload
+        )
+        return analysis_result_path(analysis_id, root=root)
+
     path = analysis_result_path(analysis_id, root=root)
     _atomic_json_write(path, payload)
     return path
@@ -68,6 +101,14 @@ def load_analysis_result(
     analysis_id: str, *, root: str | Path | None = None
 ) -> dict[str, Any]:
     """Load the persisted final analysis result for one analysis job."""
+
+    if blob_storage_enabled():
+        try:
+            return analysis_blob_store().get_json(
+                f"{_blob_analysis_id(analysis_id)}/result.json"
+            )
+        except BlobStorageNotFound as exc:
+            raise FileNotFoundError(f"analysis result not found: {analysis_id}") from exc
 
     return _atomic_json_read(
         analysis_result_path(analysis_id, root=root), artifact_name="analysis result"
@@ -80,6 +121,12 @@ def _analysis_artifact_path(
     safe_analysis_id = quote(analysis_id, safe="-_.")
     store_root = Path(root) if root is not None else analysis_store_root()
     return store_root / safe_analysis_id / filename
+
+
+def _blob_analysis_id(analysis_id: str) -> str:
+    """Use the same conservative identifier normalization as filesystem paths."""
+
+    return quote(analysis_id, safe="-_.")
 
 
 def _atomic_json_write(path: Path, payload: Mapping[str, Any]) -> None:
@@ -106,8 +153,8 @@ def _atomic_json_read(path: Path, *, artifact_name: str) -> dict[str, Any]:
 
 __all__ = [
     "analysis_result_path",
-    "analysis_store_root",
     "analysis_state_path",
+    "analysis_store_root",
     "load_analysis_result",
     "load_analysis_state",
     "save_analysis_result",

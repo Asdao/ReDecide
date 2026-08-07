@@ -108,16 +108,42 @@ export const replayManifestSchema = z
 export const analysisJobSchema = z
   .object({
     analysis_id: requiredString,
-    status: z.enum(["processing", "ready", "complete", "failed"]),
+    status: z.enum(["processing", "ready", "coaching", "complete", "failed"]),
     players_available: z.boolean(),
     result_available: z.boolean(),
+    selected_player_id: requiredString.nullable(),
+    player_runs: z.record(
+      requiredString,
+      z
+        .object({
+          status: z.enum(["unknown", "running", "complete", "failed"]),
+          result_available: z.boolean(),
+          run_id: requiredString.optional(),
+        })
+        .strict(),
+    ),
     logs_url: requiredString,
     events_url: requiredString,
     result_url: requiredString,
   })
   .strict();
 
-export const analysisPlayerSchema = z
+export const analysisProgressEventSchema = z
+  .object({
+    analysis_id: requiredString,
+    schema_version: z.literal("pipeline_progress_v1").optional(),
+    stage: requiredString,
+    progress: z.number().min(0).max(100),
+    message: requiredString,
+    done: z.boolean().optional(),
+    preparation_progress: z.number().min(0).max(100).optional(),
+    player_id: requiredString.optional(),
+    run_id: requiredString.optional(),
+    result_available: z.boolean().optional(),
+  })
+  .passthrough();
+
+const analysisResultPlayerSchema = z
   .object({
     player_id: requiredString,
     display_name: requiredString.nullable(),
@@ -129,10 +155,17 @@ export const analysisPlayerSchema = z
   })
   .strict();
 
+export const analysisPlayerSchema = analysisResultPlayerSchema
+  .extend({
+    analysis_available: z.boolean(),
+    analysis_status: z.enum(["unknown", "not_started", "running", "complete", "failed"]),
+  })
+  .strict();
+
 export const analysisPlayersSchema = z
   .object({
     analysis_id: requiredString,
-    status: z.enum(["processing", "ready", "complete", "failed"]),
+    status: z.enum(["processing", "ready", "coaching", "complete", "failed"]),
     players: z.array(analysisPlayerSchema),
   })
   .strict()
@@ -180,6 +213,24 @@ const analysisCandidateSchema = z
   })
   .strict();
 
+const coachingAnalysisSchema = z
+  .object({
+    decision_id: requiredString,
+    player_id: requiredString,
+    player_name: requiredString,
+    source: z.literal("pi"),
+    what_could_be_done_better: requiredString,
+  })
+  .passthrough();
+
+/** A single coached moment. Added alongside the legacy singular fields. */
+export const replayAnalysisEntrySchema = z
+  .object({
+    selected_decision: analysisCandidateSchema,
+    coach_analysis: coachingAnalysisSchema,
+  })
+  .strict();
+
 const winTimelinePointSchema = z
   .object({
     ct_probability: z.number().min(0).max(1),
@@ -197,7 +248,7 @@ export const replayAnalysisResultSchema = z
     source: requiredString,
     replay_id: requiredString,
     map_name: requiredString,
-    players: z.array(analysisPlayerSchema),
+    players: z.array(analysisResultPlayerSchema),
     events: z.array(analysisEventSchema),
     key_events: z.array(analysisEventSchema),
     filter_contract: z
@@ -209,15 +260,12 @@ export const replayAnalysisResultSchema = z
       .strict(),
     decision_candidates: z.array(analysisCandidateSchema),
     selected_decision: analysisCandidateSchema,
-    coach_analysis: z
-      .object({
-        decision_id: requiredString,
-        player_id: requiredString,
-        player_name: requiredString,
-        source: z.literal("pi"),
-        what_could_be_done_better: requiredString,
-      })
-      .passthrough(),
+    coach_analysis: coachingAnalysisSchema,
+    // Backend emits this top-level convenience count alongside summary.analysis_count.
+    analysis_count: nonnegativeInteger.optional(),
+    // New multi-moment payload. Keep this optional so previously persisted
+    // single-moment results remain valid while the backend rolls out aliases.
+    analyses: z.array(replayAnalysisEntrySchema).optional(),
     win_estimator: z
       .object({
         filtered_by_player: z.literal(false),
@@ -234,6 +282,7 @@ export const replayAnalysisResultSchema = z
         event_count: nonnegativeInteger,
         key_event_count: nonnegativeInteger,
         decision_candidate_count: nonnegativeInteger,
+        analysis_count: nonnegativeInteger.optional(),
         anchor: requiredString,
         anchor_fallback: z.boolean(),
         analysis_available: z.boolean(),
@@ -264,35 +313,48 @@ export const replayAnalysisResultSchema = z
       });
     }
 
-    const candidate = result.decision_candidates.find(
-      ({ decision_id }) => decision_id === result.selected_decision.decision_id,
-    );
-    if (!candidate || candidate.player_id !== result.selected_decision.player_id) {
-      context.addIssue({
-        code: "custom",
-        message: "selected decision must match a returned decision candidate",
-        path: ["selected_decision", "decision_id"],
-      });
-    }
-
-    if (
-      result.coach_analysis.decision_id !== result.selected_decision.decision_id ||
-      result.coach_analysis.player_id !== result.selected_decision.player_id
-    ) {
-      context.addIssue({
-        code: "custom",
-        message: "coaching analysis must match the selected decision and player",
-        path: ["coach_analysis"],
-      });
-    }
-
-    if (!playerIds.includes(result.selected_decision.player_id)) {
-      context.addIssue({
-        code: "custom",
-        message: "selected player must appear in the analysis player list",
-        path: ["selected_decision", "player_id"],
-      });
-    }
+    const entries = result.analyses?.length
+      ? result.analyses
+      : [{ selected_decision: result.selected_decision, coach_analysis: result.coach_analysis }];
+    const seenDecisionIds = new Set<string>();
+    entries.forEach((entry, index) => {
+      const candidate = result.decision_candidates.find(
+        ({ decision_id }) => decision_id === entry.selected_decision.decision_id,
+      );
+      const pathPrefix = result.analyses?.length ? ["analyses", index] : [];
+      if (!candidate || candidate.player_id !== entry.selected_decision.player_id) {
+        context.addIssue({
+          code: "custom",
+          message: "selected decision must match a returned decision candidate",
+          path: [...pathPrefix, "selected_decision", "decision_id"],
+        });
+      }
+      if (
+        entry.coach_analysis.decision_id !== entry.selected_decision.decision_id ||
+        entry.coach_analysis.player_id !== entry.selected_decision.player_id
+      ) {
+        context.addIssue({
+          code: "custom",
+          message: "coaching analysis must match the selected decision and player",
+          path: [...pathPrefix, "coach_analysis"],
+        });
+      }
+      if (seenDecisionIds.has(entry.selected_decision.decision_id)) {
+        context.addIssue({
+          code: "custom",
+          message: "analysed decision_id values must be unique",
+          path: [...pathPrefix, "selected_decision", "decision_id"],
+        });
+      }
+      seenDecisionIds.add(entry.selected_decision.decision_id);
+      if (!playerIds.includes(entry.selected_decision.player_id)) {
+        context.addIssue({
+          code: "custom",
+          message: "selected player must appear in the analysis player list",
+          path: [...pathPrefix, "selected_decision", "player_id"],
+        });
+      }
+    });
   });
 
 export const replayVisualizationSchema = z
@@ -320,7 +382,9 @@ export const replayVisualizationSchema = z
 
 export type ReplayManifest = z.infer<typeof replayManifestSchema>;
 export type AnalysisJob = z.infer<typeof analysisJobSchema>;
+export type AnalysisProgressEvent = z.infer<typeof analysisProgressEventSchema>;
 export type AnalysisPlayer = z.infer<typeof analysisPlayerSchema>;
 export type AnalysisPlayers = z.infer<typeof analysisPlayersSchema>;
 export type ReplayAnalysisResult = z.infer<typeof replayAnalysisResultSchema>;
+export type ReplayAnalysisEntry = z.infer<typeof replayAnalysisEntrySchema>;
 export type ReplayVisualization = z.infer<typeof replayVisualizationSchema>;

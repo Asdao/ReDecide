@@ -1,0 +1,35 @@
+{
+  "evaluation_mode": "sealed_unseen_demo",
+  "benchmark_manifest": "data\\public\\benchmark_manifest.json",
+  "model_manifest": "Noah\\model\\artifacts\\releases\\v2\\full_replay_value.manifest.json",
+  "demo_count": 1,
+  "macro_metrics": {
+    "accuracy": 0.6666666666666666,
+    "balanced_accuracy": 0.6071428571428572,
+    "log_loss": 0.6293055048183601,
+    "brier": 0.21921446225149266,
+    "expected_calibration_error": 0.21914377740200805
+  },
+  "note": "macro-average across unseen demos; this is separate from training and not a counterfactual action-quality score",
+  "demos": [
+    {
+      "repo_path": "demos/shard-europe-1574a6a2/2393084/3dmax-vs-falcons-m2-ancient.dem",
+      "map_name": "de_ancient",
+      "local_path": "C:\\Users\\n8469\\PycharmProjects\\GHackathon\\data\\private\\benchmark_cache\\demos\\shard-europe-1574a6a2\\2393084\\3dmax-vs-falcons-m2-ancient.dem",
+      "snapshot_rows": 36,
+      "action_rows": 500,
+      "replay_metrics": {
+        "log_loss": 0.6293055048183601,
+        "brier": 0.21921446225149266,
+        "accuracy": 0.6666666666666666,
+        "balanced_accuracy": 0.6071428571428572,
+        "expected_calibration_error": 0.21914377740200805,
+        "ct_win_rate": 0.2222222222222222
+      },
+      "action_counts": {
+        "hold": 188,
+        "move": 312
+      }
+    }
+  ]
+}

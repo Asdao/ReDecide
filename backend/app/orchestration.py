@@ -9,7 +9,10 @@ from __future__ import annotations
 
 from copy import deepcopy
 import json
+import logging
+import os
 from pathlib import Path
+import tempfile
 
 from backend.app.contracts import (
     APIErrorCode,
@@ -143,7 +146,6 @@ class FixtureOrchestrator:
             )
         return f"The player selected {readable_tag} without an additional note."
 from collections.abc import Callable, Iterator, Mapping
-from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 import threading
 from typing import Any
@@ -158,9 +160,24 @@ from backend.app.analysis_store import (
 )
 from backend.app.coach.pi_connector import PiCoachError
 from backend.app.replay.pipeline import merge_pi_output, stream_replay_pipeline
+from backend.storage.blob import blob_storage_enabled
+
+
+logger = logging.getLogger(__name__)
 
 
 CoachAdapter = Callable[[Mapping[str, Any]], Mapping[str, Any] | str]
+
+
+def _default_analysis_log_dir() -> Path:
+    """Choose a writable runtime directory without changing local defaults."""
+
+    configured = os.getenv("REDECIDE_ANALYSIS_LOG_DIR")
+    if configured:
+        return Path(configured)
+    if os.getenv("VERCEL"):
+        return Path(tempfile.gettempdir()) / "redecide" / "analysis-logs"
+    return Path("data/runtime/analysis-logs")
 
 
 class AnalysisNotReady(RuntimeError):
@@ -201,19 +218,21 @@ class AnalysisService:
 
     def __init__(
         self,
-        log_dir: str | Path = "data/runtime/analysis-logs",
+        log_dir: str | Path | None = None,
         *,
         coach_adapter: CoachAdapter | None = None,
         pipeline: Callable[..., Iterator[dict[str, Any]]] = stream_replay_pipeline,
-        executor: ThreadPoolExecutor | None = None,
+        executor: object | None = None,
     ) -> None:
-        self.log_dir = Path(log_dir)
+        self.log_dir = (
+            Path(log_dir) if log_dir is not None else _default_analysis_log_dir()
+        )
         self.log_dir.mkdir(parents=True, exist_ok=True)
         self.coach_adapter = coach_adapter
+        self.analyses_per_player = _analysis_count_from_env()
         self.pipeline = pipeline
         self._jobs: dict[str, AnalysisJob] = {}
         self._jobs_lock = threading.RLock()
-        self._executor = executor or ThreadPoolExecutor(max_workers=2, thread_name_prefix="replay-analysis")
         self.analysis_store_dir = self.log_dir / "analysis-state"
         self._restore_persisted_jobs()
 
@@ -231,7 +250,11 @@ class AnalysisService:
             self._jobs[analysis_id] = job
         self._write_log(job, {"stage": "received", "progress": 0, "message": "Replay accepted."})
         self._persist_job(job)
-        self._executor.submit(self._prepare_worker, job)
+        # Keep preparation inside the request.  A serverless function can be
+        # suspended immediately after returning, so executor-backed work is
+        # not reliable.  The existing worker method remains the single place
+        # that translates pipeline updates and persists the final state.
+        self._prepare_worker(job)
         return self.metadata(analysis_id)
 
     def source_replay_id(self, analysis_id: str) -> str | None:
@@ -304,9 +327,13 @@ class AnalysisService:
             previous_run = job.player_runs.get(selected_player_id)
             if previous_run and previous_run.get("status") == "running":
                 raise AnalysisNotReady("coaching is already running for this player")
-            candidate = dict(candidates[0])
+            selected_candidates = _select_diverse_candidates(
+                candidates, limit=self.analyses_per_player
+            )
+            candidate = dict(selected_candidates[0])
             filtered = self._filter_for_player(job.prepared_result, selected_player_id)
             filtered["selected_decision"] = candidate
+            filtered["selected_decisions"] = [dict(item) for item in selected_candidates]
             run_id = uuid4().hex
             job.selected_player_id = selected_player_id
             job.status = "coaching"
@@ -525,10 +552,67 @@ class AnalysisService:
 
     def get_job(self, analysis_id: str) -> AnalysisJob:
         with self._jobs_lock:
-            try:
-                return self._jobs[analysis_id]
-            except KeyError as exc:
-                raise AnalysisNotFound(analysis_id) from exc
+            job = self._jobs.get(analysis_id)
+        if job is not None:
+            return job
+        if blob_storage_enabled():
+            self._restore_blob_job(analysis_id)
+            with self._jobs_lock:
+                job = self._jobs.get(analysis_id)
+        if job is None:
+            raise AnalysisNotFound(analysis_id)
+        return job
+
+    def _restore_blob_job(self, analysis_id: str) -> None:
+        """Lazily restore a Blob-backed job when a new Function instance serves it."""
+
+        try:
+            state = load_analysis_state(analysis_id)
+        except (FileNotFoundError, ValueError, OSError):
+            return
+        replay = state.get("replay")
+        if not isinstance(replay, Mapping):
+            return
+        job = AnalysisJob(
+            analysis_id=analysis_id,
+            replay=dict(replay),
+            log_path=self.log_dir / f"{analysis_id}.jsonl",
+            source_replay_id=state.get("source_replay_id"),
+            status=str(state.get("status") or "ready"),
+            selector=state.get("selector") if isinstance(state.get("selector"), dict) else None,
+            prepared_result=state.get("prepared_result") if isinstance(state.get("prepared_result"), dict) else None,
+            selected_player_id=state.get("selected_player_id"),
+            error=state.get("error"),
+        )
+        persisted_runs = state.get("player_runs")
+        if isinstance(persisted_runs, Mapping):
+            for player_id, run in persisted_runs.items():
+                if isinstance(run, Mapping):
+                    job.player_runs[str(player_id)] = {
+                        "run_id": run.get("run_id"),
+                        "status": run.get("status"),
+                        "result": None,
+                        "error": run.get("error"),
+                    }
+        try:
+            results = load_analysis_result(analysis_id)
+        except (FileNotFoundError, ValueError, OSError):
+            results = {}
+        results_by_player = results.get("results_by_player")
+        if isinstance(results_by_player, Mapping):
+            for player_id, result in results_by_player.items():
+                if str(player_id) in job.player_runs:
+                    job.player_runs[str(player_id)]["result"] = result
+        if job.selected_player_id in job.player_runs:
+            job.result = job.player_runs[job.selected_player_id].get("result")
+        if job.status == "coaching":
+            for run in job.player_runs.values():
+                if run.get("status") == "running":
+                    run["status"] = "failed"
+                    run["error"] = "coaching run interrupted by restart"
+            job.status = "ready" if job.prepared_result is not None else "failed"
+        with self._jobs_lock:
+            self._jobs.setdefault(analysis_id, job)
 
     def _prepare_worker(self, job: AnalysisJob) -> None:
         try:
@@ -552,7 +636,14 @@ class AnalysisService:
                         }
                         job.status = "ready"
                         self._persist_job(job)
-        except Exception as exc:  # noqa: BLE001 - converted to stable job state
+        except Exception:
+            logger.exception(
+                "Replay preparation failed",
+                extra={
+                    "analysis_id": job.analysis_id,
+                    "source_replay_id": job.source_replay_id,
+                },
+            )
             with job.lock:
                 job.status = "failed"
                 job.error = "replay preparation failed"
@@ -629,10 +720,43 @@ def _normalize_side(value: Any) -> str | None:
     return None
 
 
+def _analysis_count_from_env() -> int:
+    """Read the bounded per-player coaching quota (default ten)."""
+
+    try:
+        value = int(os.getenv("REDECIDE_ANALYSES_PER_PLAYER", "10").strip())
+    except (TypeError, ValueError):
+        value = 10
+    return max(1, min(10, value))
+
+
+def _select_diverse_candidates(
+    candidates: list[Mapping[str, Any]], *, limit: int
+) -> list[dict[str, Any]]:
+    """Select chronologically ordered moments spread across the match."""
+
+    if limit <= 0:
+        return []
+    ordered = [dict(item) for item in candidates]
+    if len(ordered) <= limit:
+        return ordered
+    if limit == 1:
+        return [ordered[0]]
+
+    # Candidate order is chronological for a player. Choosing evenly spaced
+    # indices covers the opening, middle, and closing portions of the match.
+    last_index = len(ordered) - 1
+    return [
+        ordered[(position * last_index) // (limit - 1)]
+        for position in range(limit)
+    ]
+
+
 __all__ = [
     "AnalysisNotFound",
     "AnalysisNotReady",
     "AnalysisService",
+    "_select_diverse_candidates",
     "FixtureOrchestrator",
     "PlayerSelectionError",
 ]

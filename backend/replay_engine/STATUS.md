@@ -1,6 +1,6 @@
 # Replay Engine Component Status
 
-Last verified: 2026-08-04 (Asia/Singapore)
+Last verified: 2026-08-07 (Asia/Singapore)
 
 ## Current status
 
@@ -63,6 +63,12 @@ uv run pytest backend/replay_engine/training/tests -q -p no:cacheprovider -o "py
 Latest result: 110 passed. Focused release validation also passes through
 `backend/replay_engine/model/tests/test_model_bundle.py` and
 `backend/replay_engine/training/tests/test_contracts.py`.
+
+Repository-wide maintenance validation on 2026-08-07 passed 280 Python tests
+with 3 expected skips and no warnings, including the Replay Engine model,
+extractor, training, connector, and portable-regression coverage. Two skips
+need a private processed-replay fixture; one needs the optional legacy Vercel
+SDK.
 
 The v5 release manifest passed strict validation for 19 components. The focused
 release/candidate suite passed 23 tests; the harness/release suite passed 19

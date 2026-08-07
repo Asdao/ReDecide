@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  analysisJobSchema,
   analysisPlayersSchema,
   replayAnalysisResultSchema,
   replayManifestSchema,
@@ -28,6 +29,12 @@ const player = {
   event_ids: ["event-1"],
   key_event_ids: ["event-1"],
   decision_ids: ["decision-1"],
+};
+
+const selectablePlayer = {
+  ...player,
+  analysis_available: true,
+  analysis_status: "not_started",
 };
 
 const candidate = {
@@ -154,9 +161,43 @@ describe("uploaded replay contracts", () => {
       analysisPlayersSchema.parse({
         analysis_id: "analysis-1",
         status: "ready",
-        players: [player, player],
+        players: [selectablePlayer, selectablePlayer],
       }),
     ).toThrow("analysis player_id values must be unique");
+  });
+
+  it("accepts backend per-player run metadata and the coaching status", () => {
+    expect(
+      analysisJobSchema.parse({
+        analysis_id: "analysis-1",
+        status: "coaching",
+        players_available: true,
+        result_available: false,
+        selected_player_id: "p1",
+        player_runs: {
+          p1: {
+            status: "running",
+            result_available: false,
+            run_id: "run-1",
+          },
+        },
+        logs_url: "/api/analysis/analysis-1/logs",
+        events_url: "/api/analysis/analysis-1/events",
+        result_url: "/api/analysis/analysis-1/result",
+      }).player_runs.p1.status,
+    ).toBe("running");
+
+    expect(
+      analysisPlayersSchema.parse({
+        analysis_id: "analysis-1",
+        status: "ready",
+        players: [selectablePlayer],
+      }).players[0],
+    ).toMatchObject({
+      player_id: "p1",
+      analysis_available: true,
+      analysis_status: "not_started",
+    });
   });
 
   it("accepts a consistent result and rejects mismatched coaching ownership", () => {
@@ -176,5 +217,36 @@ describe("uploaded replay contracts", () => {
         decision_candidates: [],
       }),
     ).toThrow("selected decision must match a returned decision candidate");
+  });
+
+  it("accepts additive multi-moment coaching entries and keeps singular aliases", () => {
+    const secondCandidate = {
+      ...candidate,
+      decision_id: "decision-2",
+      contact_tick: 80,
+      decision_open_tick: 80,
+      action_close_tick: 90,
+      round_number: 2,
+    };
+    const multi = replayAnalysisResultSchema.parse({
+      ...result,
+      decision_candidates: [candidate, secondCandidate],
+      analyses: [
+        { selected_decision: candidate, coach_analysis: result.coach_analysis },
+        {
+          selected_decision: secondCandidate,
+          coach_analysis: {
+            ...result.coach_analysis,
+            decision_id: "decision-2",
+            what_could_be_done_better: "Clear the angle before re-peeking.",
+          },
+        },
+      ],
+      summary: { ...result.summary, analysis_count: 2 },
+    });
+
+    expect(multi.analyses).toHaveLength(2);
+    expect(multi.selected_decision.decision_id).toBe("decision-1");
+    expect(multi.coach_analysis.decision_id).toBe("decision-1");
   });
 });

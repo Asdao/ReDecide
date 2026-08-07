@@ -10,6 +10,7 @@ import {
   getReplayVisualization,
   prepareReplayWorkspace,
   runReplayCoaching,
+  subscribeToAnalysisProgress,
   uploadReplay,
 } from "@/adapters/replay-api";
 import { getSamples, selectSample } from "@/adapters/samples-api";
@@ -40,7 +41,8 @@ import { ProcessedReplayPlayerScreen } from "./ProcessedReplayPlayerScreen";
 import { PROCESSED_REPLAYS, processedReplayById } from "@/domain/processed-replays";
 import type { ProcessedReplay } from "@/domain/replay-viewer";
 import { normalizeBackendReplay } from "@/domain/replay-viewer";
-import type { ReplayAnalysisResult } from "@/domain/replay";
+import type { AnalysisProgressEvent, ReplayAnalysisResult } from "@/domain/replay";
+import { formatTabTitle, tabLocationForScreen } from "@/domain/tab-title";
 import { isAbortError } from "@/lib/http";
 import { ReplayAnalysisScreen } from "./ReplayAnalysisScreen";
 import { ReplayMapLoadingScreen } from "./ReplayMapLoadingScreen";
@@ -111,6 +113,16 @@ export function DecisionFlow() {
     | { status: "error"; replayId: string; attempt: number; message: string }
     | { status: "ready"; replayId: string; attempt: number; replay: ProcessedReplay }
   >({ status: "catalog" });
+  const [analysisProgress, setAnalysisProgress] = useState<AnalysisProgressEvent>();
+  const activeAnalysis = "analysis" in state ? state.analysis : undefined;
+  const activeAnalysisId = activeAnalysis?.analysis_id;
+  const activeEventsUrl = activeAnalysis?.events_url;
+  const progressSubscriptionKey = state.status === "running-coaching"
+    ? `${activeAnalysisId ?? ""}:${state.requestId}`
+    : activeAnalysisId;
+  const visibleAnalysisProgress = analysisProgress?.analysis_id === activeAnalysisId
+    ? analysisProgress
+    : undefined;
   const currentScreen = processedReplaysOpen
     ? processedReplay.status === "catalog"
       ? "processed-replays"
@@ -123,6 +135,24 @@ export function DecisionFlow() {
     requestSequence.current += 1;
     return `${operation}-${requestSequence.current}`;
   }, []);
+
+  useEffect(() => {
+    if (!activeAnalysisId || !activeEventsUrl || !progressSubscriptionKey) {
+      return;
+    }
+
+    try {
+      return subscribeToAnalysisProgress(activeEventsUrl, {
+        onProgress: (progress) => {
+          if (progress.analysis_id === activeAnalysisId) {
+            setAnalysisProgress(progress);
+          }
+        },
+      });
+    } catch {
+      return;
+    }
+  }, [activeAnalysisId, activeEventsUrl, progressSubscriptionKey]);
 
   const applyLandingView = useCallback(
     (view: LandingView) => {
@@ -246,7 +276,16 @@ export function DecisionFlow() {
     const controller = new AbortController();
     const sampleId = state.sampleId;
     selectSample(sampleId, controller.signal)
-      .then((preparation) => dispatch({ type: "SAMPLE_SELECTED", sampleId, preparation }))
+      .then((preparation) => {
+        const sample = state.samples.find((item) => item.sample_id === sampleId);
+        dispatch({
+          type: "SAMPLE_REPLAY_READY",
+          sampleId,
+          sourceName: sample?.display_name ?? preparation.manifest.source,
+          preparation,
+          playersRequestId: nextRequestId("players"),
+        });
+      })
       .catch((error: unknown) => {
         if (!isAbortError(error)) {
           dispatch({ type: "SAMPLE_SELECTION_FAILED", sampleId });
@@ -254,7 +293,7 @@ export function DecisionFlow() {
       });
 
     return () => controller.abort();
-  }, [state]);
+  }, [nextRequestId, state]);
 
   useEffect(() => {
     if (state.status !== "uploading") {
@@ -640,6 +679,10 @@ export function DecisionFlow() {
   }, [state]);
 
   useEffect(() => {
+    document.title = formatTabTitle(tabLocationForScreen(currentScreen));
+  }, [currentScreen]);
+
+  useEffect(() => {
     if (previousScreen.current === currentScreen) {
       return;
     }
@@ -700,6 +743,7 @@ export function DecisionFlow() {
     return (
       <ReplayAnalysisScreen
         initialPlayerId={state.selectedPlayer.player_id}
+        analysisId={state.analysis.analysis_id}
         initialReplay={state.replay}
         initialAnalysis={state.result}
         uploaded
@@ -724,6 +768,7 @@ export function DecisionFlow() {
               ? "recovery"
               : "visualization"
         }
+        progress={visibleAnalysisProgress}
         onReturnToPlayers={returnToPlayerSelection}
       />
     );
@@ -838,6 +883,7 @@ export function DecisionFlow() {
           })
         }
         onReturnToPlayers={returnToPlayerSelection}
+        progress={visibleAnalysisProgress}
       />
     );
   }

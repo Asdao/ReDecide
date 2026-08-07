@@ -2,6 +2,7 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import backendResult from "../../../backend/tests/fixtures/analysis_api_result.json";
+import NotFound from "@/app/not-found";
 import { LandingScreen } from "@/components/LandingScreen";
 import { ProductHeader } from "@/components/ProductHeader";
 import { ProcessedReplaySelectorScreen } from "@/components/ProcessedReplaySelectorScreen";
@@ -40,6 +41,8 @@ const analysis = analysisJobSchema.parse({
   status: "ready",
   players_available: true,
   result_available: false,
+  selected_player_id: null,
+  player_runs: {},
   logs_url: "/api/analysis/analysis-1/logs",
   events_url: "/api/analysis/analysis-1/events",
   result_url: "/api/analysis/analysis-1/result",
@@ -47,7 +50,11 @@ const analysis = analysisJobSchema.parse({
 const players = analysisPlayersSchema.parse({
   analysis_id: "analysis-1",
   status: "ready",
-  players: backendResult.players,
+  players: backendResult.players.map((player) => ({
+    ...player,
+    analysis_available: player.decision_ids.length > 0,
+    analysis_status: "not_started",
+  })),
 }).players;
 const result = replayAnalysisResultSchema.parse({
   ...backendResult,
@@ -115,7 +122,7 @@ describe("uploaded replay screens", () => {
     expect(html).toContain('accept=".dem"');
     expect(html).not.toContain('id="demo-upload" type="file" accept=".dem" disabled');
     expect(html).toContain('<label class="primary" for="demo-upload"');
-    expect(html).toContain("Upload once");
+    expect(html).toContain("Upload your match and view its analysis.");
   });
 
   it("uses the animated border without square markers on every loading screen", () => {
@@ -162,6 +169,24 @@ describe("uploaded replay screens", () => {
     expect(sampleHtml).toContain('aria-busy="true"');
   });
 
+  it("offers a fresh preparation retry for failed hosted samples", () => {
+    const html = renderReplayState({
+      status: "players-error",
+      sampleId: "sample-ancient-20mb",
+      sourceName: "3DMAX vs Falcons LITE",
+      manifest,
+      analysis,
+      error: {
+        code: "prepare-failed",
+        message: "The replay could not be prepared for player selection.",
+        retryable: true,
+      },
+    });
+
+    expect(html).toContain("Retry sample preparation");
+    expect(html).not.toContain("Check players again");
+  });
+
   it("renders display names and disables players without a coaching decision", () => {
     const unavailablePlayer = { ...players[0], decision_ids: [] };
     const nukeManifest = replayManifestSchema.parse({
@@ -191,10 +216,17 @@ describe("uploaded replay screens", () => {
       manifest,
       player: players[1],
       phase: "coaching",
+      progress: {
+        analysis_id: "analysis-1",
+        stage: "calling_pi",
+        progress: 85,
+        message: "Generating coaching analysis.",
+      },
       onReturnToPlayers: () => undefined,
     }));
 
-    expect(html).toContain("around 30 seconds");
+    expect(html).toContain("Generating coaching analysis.");
+    expect(html).not.toContain("85%");
     expect(html).toContain("T One");
     expect(html).toContain("%2Fradars%2Fde_mirage.png");
     expect(html).toContain("radar-frame loading-border replay-map-loading-frame");
@@ -218,6 +250,161 @@ describe("uploaded replay screens", () => {
     expect(html).not.toContain("Perspective");
     expect(html).not.toContain("eventual_winner");
     expect(html).not.toContain("round_score");
+  });
+
+  it("places health left of win rate and applies the strict health color thresholds", () => {
+    for (const [health, level] of [
+      [60, "healthy"],
+      [59, "low"],
+      [20, "low"],
+      [19, "critical"],
+    ] as const) {
+      const healthReplay: ProcessedReplay = {
+        ...uploadedReplay,
+        ticks: uploadedReplay.ticks.map((tick) => ({ ...tick, health })),
+      };
+      const html = renderToStaticMarkup(createElement(ReplayAnalysisScreen, {
+        initialPlayerId: "t1",
+        initialReplay: healthReplay,
+        uploaded: true,
+        onChoosePlayer: () => undefined,
+      }));
+      const headingEnd = html.indexOf('<div class="radar-indicators">');
+      const healthIndex = html.indexOf(`class="selected-player-health ${level}"`);
+      const winRateIndex = html.indexOf('class="radar-win-rate');
+
+      expect(headingEnd).toBeGreaterThan(-1);
+      expect(healthIndex).toBeGreaterThan(headingEnd);
+      expect(winRateIndex).toBeGreaterThan(healthIndex);
+      expect(html).toContain(`${health} HP`);
+      expect(html).toContain('role="progressbar"');
+      expect(html).toContain('aria-label="T One health"');
+      expect(html).toContain(`aria-valuenow="${health}"`);
+      expect(html).toContain(`style="width:${health}%"`);
+    }
+  });
+
+  it("renders an attacker analysis point ahead of same-tick damage or death", () => {
+    const attackerReplay: ProcessedReplay = {
+      ...uploadedReplay,
+      events: [
+        {
+          event_id: "analysis-damage",
+          event: "damage",
+          tick: result.selected_decision.contact_tick,
+          round_num: result.selected_decision.round_number,
+          attacker_id: result.selected_decision.player_id,
+          victim_id: result.selected_decision.opponent_id,
+          damage_health: 100,
+        },
+        {
+          event_id: "same-tick-kill",
+          event: "kill",
+          tick: result.selected_decision.contact_tick,
+          round_num: result.selected_decision.round_number,
+          attacker_id: result.selected_decision.player_id,
+          victim_id: result.selected_decision.opponent_id,
+        },
+      ],
+      ticks: [
+        uploadedReplay.ticks[0],
+        { ...uploadedReplay.ticks[0], tick: 300 },
+      ],
+    };
+    const html = renderToStaticMarkup(createElement(ReplayAnalysisScreen, {
+      initialPlayerId: result.selected_decision.player_id,
+      initialReplay: attackerReplay,
+      initialAnalysis: result,
+      uploaded: true,
+      onChoosePlayer: () => undefined,
+    }));
+
+    expect(html.match(/<button type="button" class="coaching"/g)).toHaveLength(1);
+    expect(html).toContain("Damage dealt · Saved analysis");
+    expect(html).toContain('<span><i class="coaching"></i>Analysis</span>');
+    expect(html).not.toContain('<button type="button" class="death"');
+  });
+
+  it("renders same-tick victim damage and elimination as one death marker for every replay source", () => {
+    const replayWithSameTickDeath: ProcessedReplay = {
+      ...uploadedReplay,
+      events: [
+        {
+          event_id: "damage",
+          event: "damage",
+          tick: 164,
+          round_num: 1,
+          attacker_id: "ct1",
+          victim_id: "t1",
+          damage_health: 24,
+          weapon: "ak47",
+        },
+        {
+          event_id: "death",
+          event: "kill",
+          tick: 164,
+          round_num: 1,
+          attacker_id: "ct1",
+          victim_id: "t1",
+          headshot: true,
+        },
+      ],
+      ticks: [
+        uploadedReplay.ticks[0],
+        { ...uploadedReplay.ticks[0], tick: 300 },
+      ],
+    };
+
+    for (const uploaded of [false, true]) {
+      const html = renderToStaticMarkup(createElement(ReplayAnalysisScreen, {
+        initialPlayerId: "t1",
+        initialReplay: replayWithSameTickDeath,
+        uploaded,
+        onChoosePlayer: () => undefined,
+      }));
+
+      expect(html.match(/<button type="button" class="death"/g)).toHaveLength(1);
+      expect(html).not.toContain('<button type="button" class="damage"');
+      expect(html).toContain("Headshot death");
+    }
+  });
+
+  it("labels multiple analysed moments as analysis without showing their count", () => {
+    const secondDecision = {
+      ...result.selected_decision,
+      decision_id: `${result.selected_decision.decision_id}:second`,
+      contact_tick: 200,
+      decision_open_tick: 200,
+      action_close_tick: 300,
+    };
+    const multiMomentResult = replayAnalysisResultSchema.parse({
+      ...result,
+      decision_candidates: [...result.decision_candidates, secondDecision],
+      analyses: [
+        {
+          selected_decision: result.selected_decision,
+          coach_analysis: result.coach_analysis,
+        },
+        {
+          selected_decision: secondDecision,
+          coach_analysis: {
+            ...result.coach_analysis,
+            decision_id: secondDecision.decision_id,
+          },
+        },
+      ],
+      summary: { ...result.summary, analysis_count: 2 },
+    });
+    const html = renderToStaticMarkup(createElement(ReplayAnalysisScreen, {
+      initialPlayerId: result.selected_decision.player_id,
+      initialReplay: uploadedReplay,
+      initialAnalysis: multiMomentResult,
+      uploaded: true,
+      onChoosePlayer: () => undefined,
+    }));
+
+    expect(html).toContain('<span><i class="coaching"></i>Analysis</span>');
+    expect(html).not.toContain("2 analyses");
   });
 
   it("labels time between rounds without repeating the round in the timeline legend", () => {
@@ -293,11 +480,23 @@ describe("uploaded replay screens", () => {
     expect(html.match(/role="alert"/g)).toHaveLength(1);
     expect(html).toContain("Choose a valid .dem replay file.");
     expect(html).not.toContain("Retry upload");
+    expect(html).toContain('class="secondary replay-reset-button"');
     expect(html).toContain('Choose another <span class="accent-word">replay</span>');
   });
 });
 
 describe("sample replay screens", () => {
+  it("renders the dedicated 404 page with the shared header and a home action", () => {
+    const html = renderToStaticMarkup(createElement(NotFound));
+
+    expect(html).toContain('class="shell not-found-shell"');
+    expect(html).toContain('class="topbar"');
+    expect(html).toContain('<h1 id="not-found-title">404</h1>');
+    expect(html).toContain("The page you&#x27;re looking for doesn&#x27;t exist.");
+    expect(html).toContain('class="primary not-found-home" href="/"');
+    expect(html).toContain("Return home");
+  });
+
   it("offers backend samples and the processed showcase as separate actions", () => {
     const html = renderToStaticMarkup(
       createElement(LandingScreen, {
@@ -312,7 +511,7 @@ describe("sample replay screens", () => {
     expect(html).toContain("currently available from the backend");
     expect(html).toContain("Open processed replays");
     expect(html).toContain("already-processed replay");
-    expect(html).toContain("2D viewer");
+    expect(html).toContain("go straight to its analysis");
     expect(html).toContain('class="action-note action-note-accent"');
     expect(html.match(/class="action-note action-note-steel"/g)).toHaveLength(2);
   });
@@ -415,6 +614,34 @@ describe("sample replay screens", () => {
     expect(html).toContain("Open analysis");
   });
 
+  it("animates the selected sample border while its preparation is running", () => {
+    const html = renderToStaticMarkup(
+      createElement(SampleSelectorScreen, {
+        status: "ready",
+        samples: [
+          {
+            sample_id: "nuke-sample",
+            display_name: "Nuke example",
+            description: "A sample coaching moment",
+            map: "de_nuke",
+            players: [],
+            recommended_player: null,
+            available: true,
+          },
+        ],
+        selectingSampleId: "nuke-sample",
+        onBack: () => undefined,
+        onRetry: () => undefined,
+        onSelect: () => undefined,
+      }),
+    );
+
+    expect(html).toContain('class="sample-bar loading-border"');
+    expect(html).toContain('disabled=""');
+    expect(html).toContain('aria-busy="true"');
+    expect(html).toContain("Preparing");
+  });
+
   it("uses an official map name instead of the backend map identifier", () => {
     const html = renderToStaticMarkup(
       createElement(SampleSelectorScreen, {
@@ -439,5 +666,7 @@ describe("sample replay screens", () => {
     expect(html).toContain('<span class="sample-map-name">Nuke</span>');
     expect(html).toContain('alt="Nuke map thumbnail"');
     expect(html).toContain('Choose a <span class="accent-word">match</span>.');
+    expect(html).not.toContain('class="sample-meta"');
+    expect(html).not.toContain("Recommended: Player One");
   });
 });
