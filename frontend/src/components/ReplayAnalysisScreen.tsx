@@ -8,9 +8,10 @@ import {
   momentIntentReducer,
   type MomentIntentSubmission,
 } from "@/domain/moment-intent";
-import type { ReplayAnalysisResult } from "@/domain/replay";
+import type { ReplayAnalysisEntry, ReplayAnalysisResult } from "@/domain/replay";
 import {
   analysisTimelineEvents,
+  analysisEntryForEvent,
   buildReplayFrames,
   eventMatchesAnalysis,
   firstEventCrossed,
@@ -19,6 +20,7 @@ import {
   playerDisplayName,
   radarOverviewForMap,
   replayEventIsDeath,
+  replayAnalysisEntries,
   roundAtTick,
   winProbabilityAtMoment,
   winRateForPerspective,
@@ -33,7 +35,7 @@ const PLAYBACK_RATES = [0.5, 1, 2, 4, 8];
 
 function eventLabel(
   event: ReplayEvent,
-  analysis?: ReplayAnalysisResult,
+  analysis?: ReplayAnalysisEntry,
 ): string {
   if (analysis && eventMatchesAnalysis(event, analysis)) {
     if (analysis.selected_decision.event_category === "damage") {
@@ -173,12 +175,25 @@ export function ReplayAnalysisScreen({
     [analysis, replay, selectedPlayerId],
   );
   const selectedEvent = timelineEvents.find(({ event_id }) => event_id === selectedEventId);
-  const analysisEventId = useMemo(
-    () => analysis ? timelineEvents.find((event) => eventMatchesAnalysis(event, analysis))?.event_id : undefined,
+  const analysisEntries = useMemo(
+    () => (analysis ? replayAnalysisEntries(analysis) : []),
+    [analysis],
+  );
+  const analysisByEventId = useMemo(
+    () => new Map(
+      timelineEvents.flatMap((event) => {
+        const entry = analysisEntryForEvent(event, analysis);
+        return entry ? [[event.event_id, entry] as const] : [];
+      }),
+    ),
     [analysis, timelineEvents],
   );
-  const selectedEventHasAnalysis = Boolean(
-    analysis && selectedEvent && eventMatchesAnalysis(selectedEvent, analysis),
+  const selectedEventAnalysis = selectedEvent ? analysisByEventId.get(selectedEvent.event_id) : undefined;
+  const selectedEventHasAnalysis = Boolean(selectedEventAnalysis);
+  const analysisEventIds = useMemo(() => new Set(analysisByEventId.keys()), [analysisByEventId]);
+  const analysedEvents = useMemo(
+    () => timelineEvents.filter((event) => analysisEventIds.has(event.event_id)),
+    [analysisEventIds, timelineEvents],
   );
   const selectedEventKind = selectedEventHasAnalysis
     ? "analysis"
@@ -294,6 +309,20 @@ export function ReplayAnalysisScreen({
     },
     [seek, timelineEvents],
   );
+
+  const moveAnalysedMoment = useCallback((direction: "next" | "previous") => {
+    if (analysedEvents.length === 0) return;
+    const currentIndex = selectedEventId
+      ? analysedEvents.findIndex((event) => event.event_id === selectedEventId)
+      : -1;
+    const delta = direction === "next" ? 1 : -1;
+    const targetIndex = currentIndex < 0
+      ? (direction === "next" ? 0 : analysedEvents.length - 1)
+      : clamp(currentIndex + delta, 0, analysedEvents.length - 1);
+    const targetEvent = analysedEvents[targetIndex];
+    seek(targetEvent.tick, targetEvent.event_id);
+    requestAnimationFrame(() => eventMarkerRefs.current.get(targetEvent.event_id)?.focus());
+  }, [analysedEvents, seek, selectedEventId]);
 
   const requestContextualAnalysis = useCallback((keyPointId: string, intent: string) => {
     if (!submitMomentIntent || !analysisId || !replay || !selectedPlayerId) return;
@@ -458,11 +487,18 @@ export function ReplayAnalysisScreen({
               <div className="inspector-heading">
                 <p className="eyebrow">Moment inspector</p>
                 <h2 id="inspector-title">
-                  {eventLabel(selectedEvent, selectedEventHasAnalysis ? analysis : undefined)}
+                  {eventLabel(selectedEvent, selectedEventAnalysis)}
                 </h2>
+                {selectedEventHasAnalysis && analysedEvents.length > 1 ? (
+                  <div className="analysis-moment-navigation" aria-label="Analysed moments">
+                    <span>{analysedEvents.findIndex((event) => event.event_id === selectedEvent?.event_id) + 1} of {analysedEvents.length}</span>
+                    <button type="button" onClick={() => moveAnalysedMoment("previous")} aria-label="Previous analysed moment">Previous</button>
+                    <button type="button" onClick={() => moveAnalysedMoment("next")} aria-label="Next analysed moment">Next</button>
+                  </div>
+                ) : null}
               </div>
               <p className="inspector-summary">
-                {selectedEventHasAnalysis && analysis?.selected_decision.role === "attacker"
+                {selectedEventHasAnalysis && selectedEventAnalysis?.selected_decision.role === "attacker"
                   ? `${namesById.get(selectedEvent.attacker_id ?? "") ?? "The selected player"} dealt ${selectedEvent.damage_health ?? "unknown"} damage to ${namesById.get(selectedEvent.victim_id ?? "") ?? "an opponent"}.`
                   : replayEventIsDeath(selectedEvent)
                   ? `${namesById.get(selectedEvent.victim_id ?? "") ?? "The selected player"} was eliminated by ${namesById.get(selectedEvent.attacker_id ?? "") ?? "an opponent"}.`
@@ -474,7 +510,7 @@ export function ReplayAnalysisScreen({
                 <div><dt>Tick</dt><dd>{selectedEvent.tick}</dd></div>
                 <div><dt>Weapon</dt><dd>{selectedEvent.weapon?.replaceAll("_", " ") ?? "—"}</dd></div>
               </dl>
-              {selectedEventHasAnalysis && analysis ? (
+              {selectedEventHasAnalysis && selectedEventAnalysis ? (
                 <section
                   className={`saved-coaching${selectedIntentState?.status === "generating" ? " loading-border" : ""}`}
                   aria-labelledby="saved-coaching-title"
@@ -485,7 +521,7 @@ export function ReplayAnalysisScreen({
                   <p>
                     {selectedIntentState?.status === "complete"
                       ? selectedIntentState.coaching
-                      : analysis.coach_analysis.what_could_be_done_better}
+                      : selectedEventAnalysis.coach_analysis.what_could_be_done_better}
                   </p>
                   {selectedIntentState?.status === "generating" ? (
                     <p className="coaching-generation-status" role="status">
@@ -494,7 +530,7 @@ export function ReplayAnalysisScreen({
                   ) : null}
                 </section>
               ) : null}
-              {selectedEventHasAnalysis && selectedEvent && analysis ? (
+              {selectedEventHasAnalysis && selectedEvent && selectedEventAnalysis ? (
                 <section className="moment-intent" aria-labelledby="moment-intent-title">
                   <p id="moment-intent-title">
                     Want to add more context for your analysis? Send us your intent at this moment.
@@ -720,7 +756,7 @@ export function ReplayAnalysisScreen({
               {timelineEvents.map((event, eventIndex) => (
                 <button
                   type="button"
-                  className={`${analysisEventId === event.event_id ? "coaching" : replayEventIsDeath(event) ? "death" : "damage"}${selectedEventId === event.event_id ? " selected" : ""}`}
+                  className={`${analysisEventIds.has(event.event_id) ? "coaching" : replayEventIsDeath(event) ? "death" : "damage"}${selectedEventId === event.event_id ? " selected" : ""}`}
                   style={{ left: `${((event.tick - firstTick) / duration) * 100}%` }}
                   key={event.event_id}
                   ref={(element) => {
@@ -736,8 +772,8 @@ export function ReplayAnalysisScreen({
                       ? 0
                       : -1
                   }
-                  title={`Round ${event.round_num}: ${eventLabel(event, analysisEventId === event.event_id ? analysis : undefined)}${analysisEventId === event.event_id ? " · Saved analysis" : ""}`}
-                  aria-label={`Round ${event.round_num}, ${eventLabel(event, analysisEventId === event.event_id ? analysis : undefined)}, ${formatReplayTime(event.tick, firstTick, replay.map.tick_rate)}${analysisEventId === event.event_id ? ", saved analysis" : ""}`}
+                  title={`Round ${event.round_num}: ${eventLabel(event, analysisByEventId.get(event.event_id))}${analysisEventIds.has(event.event_id) ? " · Saved analysis" : ""}`}
+                  aria-label={`Round ${event.round_num}, ${eventLabel(event, analysisByEventId.get(event.event_id))}, ${formatReplayTime(event.tick, firstTick, replay.map.tick_rate)}${analysisEventIds.has(event.event_id) ? ", saved analysis" : ""}`}
                   onClick={(clickEvent) => {
                     clickEvent.currentTarget.blur();
                     seek(event.tick, event.event_id);
@@ -765,7 +801,7 @@ export function ReplayAnalysisScreen({
           <div className="timeline-caption">
             <span><i className="damage" />Damage</span>
             <span><i className="death" />Death</span>
-            {analysisEventId ? <span><i className="coaching" />Analysis</span> : null}
+            {analysisEntries.length > 0 ? <span><i className="coaching" />{analysisEntries.length === 1 ? "Analysis" : `${analysisEntries.length} analyses`}</span> : null}
             <span>Tick {Math.round(currentTick)}</span>
           </div>
         </section>

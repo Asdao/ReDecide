@@ -1,4 +1,6 @@
-@import "tailwindcss";
+/* Restrict Tailwind's plain-text class scan to application source. Runtime
+   caches, terminal transcripts, and dependency backups must never become CSS. */
+@import "tailwindcss" source("../");
 
 :root {
   color-scheme: dark;

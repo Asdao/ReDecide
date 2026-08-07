@@ -212,6 +212,43 @@ def test_service_binding_transfers_json_directly_to_blob() -> None:
     assert put_requests == [("PUT", "https://blob.example/put", artifact)]
 
 
+def test_service_binding_retries_transient_blob_put() -> None:
+    pathname = "analysis/job/state.json"
+    attempts = 0
+    delays: list[float] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal attempts
+        if request.url.host == "frontend.internal":
+            return httpx.Response(200, json={"url": "https://blob.example/put"})
+        attempts += 1
+        if attempts == 1:
+            return httpx.Response(503, text="temporarily unavailable")
+        return httpx.Response(
+            200,
+            json={"url": "https://blob.example/object", "pathname": pathname},
+        )
+
+    http = httpx.Client(transport=httpx.MockTransport(handler))
+    client = _ServiceBindingBlobClient(
+        "https://frontend.internal",
+        http=http,
+        sleep=delays.append,
+    )
+
+    uploaded = client.put(
+        pathname,
+        b'{"phase":"ready"}',
+        access="public",
+        content_type="application/json",
+        overwrite=True,
+    )
+
+    assert uploaded["pathname"] == pathname
+    assert attempts == 2
+    assert delays == [0.1]
+
+
 def test_blob_store_passes_legacy_token_to_sdk(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

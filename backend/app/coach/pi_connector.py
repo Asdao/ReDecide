@@ -1,8 +1,9 @@
-"""Server-side Pi coaching adapter for an already-prepared decision.
+"""Server-side coaching adapters for an already-prepared decision.
 
 The replay pipeline remains authoritative. This adapter receives its selected,
-outcome-blind result, builds a small anonymized prompt, and asks Pi only for the
-explanation that ``merge_pi_output`` will attach to the API response.
+outcome-blind result, builds a small anonymized prompt, and asks the configured
+provider only for the explanation that ``merge_pi_output`` attaches to the API
+response.
 """
 
 from __future__ import annotations
@@ -31,6 +32,72 @@ class PiCoachError(RuntimeError):
 ProcessRunner = Callable[..., subprocess.CompletedProcess[str]]
 
 
+def build_coach_prompt(pipeline_result: Mapping[str, Any]) -> str:
+    """Build the bounded, outcome-blind prompt shared by every provider.
+
+    Keeping this outside either provider adapter is intentional: switching
+    between the local Pi process and an OpenAI-compatible HTTP endpoint must
+    not change the evidence sent to the model.
+    """
+
+    payload = _model_payload(pipeline_result)
+    multiple = isinstance(payload.get("decisions"), list) and len(payload["decisions"]) > 1
+    response_instruction = (
+        'Return ONLY one JSON object with an "analyses" array. Each item must contain exactly '
+        'the string fields "decision_id" and "what_could_be_done_better".'
+        if multiple
+        else 'Return ONLY one JSON object with exactly these string fields: '
+        '"decision_id" and "what_could_be_done_better".'
+    )
+    prompt = (
+        "You are the explanation layer for an outcome-blind CS2 decision coach. "
+        "Use only the supplied JSON evidence. Do not infer the round outcome, "
+        "hidden communication, enemy intent, or events after action_close_tick. "
+        f"{response_instruction} The coaching field must be one "
+        "complete, concrete sentence naming the best available alternative and "
+        "must not contain player aliases.\n\n"
+        f"DECISION_PAYLOAD={json.dumps(payload, ensure_ascii=True, separators=(',', ':'))}"
+    )
+    if len(prompt.encode("utf-8")) > MAX_PROMPT_BYTES:
+        raise PiCoachError("Pi coaching prompt exceeds the bounded payload size")
+    return prompt
+
+
+def validate_coach_response(payload: Mapping[str, Any], *, expected_decision_ids: set[str] | None = None) -> None:
+    """Validate the provider-neutral coaching response contract."""
+
+    if not isinstance(payload, Mapping):
+        raise PiCoachError("Pi response did not contain a JSON object")
+    if str(payload.get("decision_id") or "") not in (expected_decision_ids or {"decision_001"}):
+        raise PiCoachError("Pi response did not reference the selected decision")
+    coaching = payload.get("what_could_be_done_better")
+    if not isinstance(coaching, str) or not coaching.strip():
+        raise PiCoachError("Pi response did not contain coaching text")
+
+
+def normalize_coach_response(value: str, *, expected_decision_ids: set[str] | None = None) -> str:
+    """Parse and normalize a provider response to the API's strict JSON shape."""
+
+    payload = _response_payload(value.strip())
+    if isinstance(payload.get("analyses"), list):
+        analyses = [item for item in payload["analyses"] if isinstance(item, Mapping)]
+        if not analyses:
+            raise PiCoachError("Pi response did not contain analyses")
+        normalized = []
+        for item in analyses:
+            validate_coach_response(item, expected_decision_ids=expected_decision_ids)
+            normalized.append({"decision_id": item["decision_id"], "what_could_be_done_better": item["what_could_be_done_better"]})
+        return json.dumps({"analyses": normalized}, ensure_ascii=True)
+    validate_coach_response(payload, expected_decision_ids=expected_decision_ids)
+    return json.dumps(
+        {
+            "decision_id": payload["decision_id"],
+            "what_could_be_done_better": payload["what_could_be_done_better"],
+        },
+        ensure_ascii=True,
+    )
+
+
 class HttpCoachAdapter:
     """Call an OpenAI-compatible model endpoint without spawning Node.js.
 
@@ -50,7 +117,7 @@ class HttpCoachAdapter:
     ) -> None:
         self.base_url = (base_url or os.getenv("HARNESS_MODEL_BASE_URL", "")).strip()
         self.api_key = (api_key or os.getenv("HARNESS_MODEL_API_KEY") or os.getenv("DEEPSEEK_API_KEY", "")).strip()
-        self.model = (model or os.getenv("HARNESS_MODEL", "deepseek-v3-flash")).strip()
+        self.model = (model or os.getenv("HARNESS_MODEL", "deepseek-v4-flash")).strip()
         self.timeout_seconds = timeout_seconds
         self._client = client
 
@@ -61,7 +128,7 @@ class HttpCoachAdapter:
             raise PiCoachError(
                 "HARNESS_MODEL_API_KEY or DEEPSEEK_API_KEY is required for HTTP coaching"
             )
-        prompt = PiCoachAdapter().build_prompt(pipeline_result)
+        prompt = build_coach_prompt(pipeline_result)
         endpoint = self.base_url.rstrip("/")
         if not endpoint.endswith("/chat/completions"):
             endpoint = f"{endpoint}/chat/completions"
@@ -73,6 +140,7 @@ class HttpCoachAdapter:
             "model": self.model,
             "messages": [{"role": "user", "content": prompt}],
             "temperature": 0,
+            "response_format": {"type": "json_object"},
         }
         close_client = self._client is None
         client = self._client or httpx.Client(timeout=httpx.Timeout(float(self.timeout_seconds)))
@@ -91,15 +159,7 @@ class HttpCoachAdapter:
             raise PiCoachError("HTTP coaching provider returned an invalid response") from exc
         if not isinstance(content, str):
             raise PiCoachError("HTTP coaching provider returned non-text content")
-        payload = _response_payload(content.strip())
-        PiCoachAdapter._validate_response(payload)
-        return json.dumps(
-            {
-                "decision_id": payload["decision_id"],
-                "what_could_be_done_better": payload["what_could_be_done_better"],
-            },
-            ensure_ascii=True,
-        )
+        return normalize_coach_response(content, expected_decision_ids=_expected_decision_ids(pipeline_result))
 
 
 class PiCoachAdapter:
@@ -124,7 +184,7 @@ class PiCoachAdapter:
         self._runner = runner
 
     def __call__(self, pipeline_result: Mapping[str, Any]) -> str:
-        prompt = self.build_prompt(pipeline_result)
+        prompt = build_coach_prompt(pipeline_result)
         executable = self._resolve_node()
         command = [
             executable,
@@ -149,16 +209,7 @@ class PiCoachAdapter:
             raise PiCoachError("Pi coaching process could not be started") from exc
         if completed.returncode != 0:
             raise PiCoachError("Pi coaching process failed")
-        response = completed.stdout.strip()
-        payload = _response_payload(response)
-        self._validate_response(payload)
-        return json.dumps(
-            {
-                "decision_id": payload["decision_id"],
-                "what_could_be_done_better": payload["what_could_be_done_better"],
-            },
-            ensure_ascii=True,
-        )
+        return normalize_coach_response(completed.stdout, expected_decision_ids=_expected_decision_ids(pipeline_result))
 
     def _process_environment(self) -> dict[str, str]:
         """Inherit deployment values and point Pi at the repository dotenv.
@@ -176,21 +227,7 @@ class PiCoachAdapter:
         return environment
 
     def build_prompt(self, pipeline_result: Mapping[str, Any]) -> str:
-        payload = _model_payload(pipeline_result)
-        prompt = (
-            "You are the explanation layer for an outcome-blind CS2 decision coach. "
-            "Use only the supplied JSON evidence. Do not infer the round outcome, "
-            "hidden communication, enemy intent, or events after action_close_tick. "
-            "Return ONLY one JSON object with exactly these string fields: "
-            '"decision_id" and "what_could_be_done_better". '
-            'Set decision_id to "decision_001". The coaching field must be one '
-            "complete, concrete sentence naming the best available alternative and "
-            "must not contain player aliases.\n\n"
-            f"DECISION_PAYLOAD={json.dumps(payload, ensure_ascii=True, separators=(',', ':'))}"
-        )
-        if len(prompt.encode("utf-8")) > MAX_PROMPT_BYTES:
-            raise PiCoachError("Pi coaching prompt exceeds the bounded payload size")
-        return prompt
+        return build_coach_prompt(pipeline_result)
 
     def _resolve_node(self) -> str:
         if self.node_executable:
@@ -207,14 +244,37 @@ class PiCoachAdapter:
 
     @staticmethod
     def _validate_response(payload: Mapping[str, Any]) -> None:
-        if payload.get("decision_id") != "decision_001":
-            raise PiCoachError("Pi response did not reference the selected decision")
-        coaching = payload.get("what_could_be_done_better")
-        if not isinstance(coaching, str) or not coaching.strip():
-            raise PiCoachError("Pi response did not contain coaching text")
+        validate_coach_response(payload)
 
 
 def _model_payload(pipeline_result: Mapping[str, Any]) -> dict[str, Any]:
+    selected_many = pipeline_result.get("selected_decisions")
+    if isinstance(selected_many, list) and len(selected_many) > 1:
+        rendered = []
+        for item in selected_many:
+            if not isinstance(item, Mapping):
+                continue
+            single = dict(pipeline_result)
+            single.pop("selected_decisions", None)
+            single["selected_decision"] = item
+            rendered.append(_model_payload(single))
+        if not rendered:
+            raise PiCoachError("selected decision is missing from the pipeline result")
+        return {
+            "schema_version": "pi_coach_input_v1",
+            "decisions": [
+                {
+                    "decision": {**item["decision"], "decision_id": f"decision_{index:03d}"},
+                    "known_events": item["known_events"],
+                    "team_probability_at_decision": item["team_probability_at_decision"],
+                }
+                for index, item in enumerate(rendered, start=1)
+            ],
+            "limitations": [
+                "Voice communications and player intent are unavailable.",
+                "The recommendation is a model inference, not a replay fact.",
+            ],
+        }
     selected = pipeline_result.get("selected_decision")
     if not isinstance(selected, Mapping):
         raise PiCoachError("selected decision is missing from the pipeline result")
@@ -240,9 +300,12 @@ def _model_payload(pipeline_result: Mapping[str, Any]) -> dict[str, Any]:
         "contact_tick": selected.get("contact_tick"),
         "action_close_tick": action_close_tick,
         "opponent_id": aliases.get(opponent_id, "unknown"),
-        "observed_action": selected.get("observed_action"),
+        "observed_action": _anonymize_value(selected.get("observed_action"), aliases),
         "observed_action_confidence": selected.get("observed_action_confidence"),
-        "evidence": list(selected.get("evidence") or []),
+        "evidence": [
+            _anonymize_value(item, aliases)
+            for item in list(selected.get("evidence") or [])
+        ],
     }
 
     events = []
@@ -262,8 +325,8 @@ def _model_payload(pipeline_result: Mapping[str, Any]) -> dict[str, Any]:
         events.append(
             {
                 "event_id": f"event_{len(events) + 1:03d}",
-                "event_type": event.get("event_type"),
-                "key_event_type": event.get("key_event_type"),
+                "event_type": _anonymize_value(event.get("event_type"), aliases),
+                "key_event_type": _anonymize_value(event.get("key_event_type"), aliases),
                 "round_number": event.get("round_number"),
                 "tick": tick,
                 "participant_ids": participants,
@@ -304,6 +367,36 @@ def _probability_at_decision(
         "t_probability": row.get("t_probability"),
         "uncertainty": row.get("uncertainty"),
     }
+
+
+def _expected_decision_ids(pipeline_result: Mapping[str, Any]) -> set[str]:
+    selected = pipeline_result.get("selected_decisions")
+    if isinstance(selected, list) and selected:
+        return {f"decision_{index:03d}" for index, _ in enumerate(selected, start=1)}
+    return {"decision_001"}
+
+
+def _anonymize_value(value: Any, aliases: Mapping[str, str]) -> Any:
+    """Replace raw player identifiers in model-visible free-form values."""
+
+    if not aliases:
+        return value
+    if isinstance(value, str):
+        result = value
+        for raw, alias in aliases.items():
+            if raw:
+                result = result.replace(raw, alias)
+        return result
+    if isinstance(value, list):
+        return [_anonymize_value(item, aliases) for item in value]
+    if isinstance(value, tuple):
+        return tuple(_anonymize_value(item, aliases) for item in value)
+    if isinstance(value, Mapping):
+        return {
+            _anonymize_value(key, aliases): _anonymize_value(item, aliases)
+            for key, item in value.items()
+        }
+    return value
 
 
 def _first_json_object(value: str) -> dict[str, Any]:
@@ -363,4 +456,11 @@ def _integer(value: Any, default: int) -> int:
         return default
 
 
-__all__ = ["HttpCoachAdapter", "PiCoachAdapter", "PiCoachError"]
+__all__ = [
+    "HttpCoachAdapter",
+    "PiCoachAdapter",
+    "PiCoachError",
+    "build_coach_prompt",
+    "normalize_coach_response",
+    "validate_coach_response",
+]

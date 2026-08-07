@@ -1,6 +1,7 @@
-.next/
-node_modules/
+.next*/
+node_modules*/
 coverage/
+*.log
 *.tsbuildinfo
 .env*.local
 !.env.example

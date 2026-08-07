@@ -14,16 +14,14 @@ Maintenance documents:
 
 ## First-time setup
 
-You need Python 3.12+, `uv`, Node.js 24, and `pnpm` 11.
+You need Python 3.12+, `uv`, Node.js 24, and `pnpm` 11 for the frontend.
+Installing the separate `agent-harness` dependencies is optional unless you
+explicitly use the legacy Pi coach (`REDECIDE_COACH_MODE=pi`).
 
 Run these commands from the repository root:
 
 ```powershell
 uv sync --extra full
-
-cd agent-harness
-pnpm install --frozen-lockfile
-cd ..
 
 cd frontend
 pnpm install --frozen-lockfile
@@ -33,12 +31,16 @@ Copy-Item .env.example .env
 Set-Content frontend/.env.local 'NEXT_PUBLIC_API_BASE_URL=http://127.0.0.1:8000'
 ```
 
-From WSL, the same JavaScript setup can be run with the lockfile-preserving
-helper:
+For this Windows checkout, the lockfile-preserving setup helper is:
 
-```bash
-bash scripts/install-js-deps.sh
+```powershell
+.\scripts\install-js-deps.ps1
 ```
+
+Do not run `pnpm install` or `pnpm dev` from WSL against this same `/mnt/c/...`
+checkout. Windows and Linux native packages cannot safely share one
+`node_modules` tree. Use PowerShell here; use WSL for Python, or create a
+separate clone under the native WSL filesystem for Linux JavaScript work.
 
 Open `.env` and add your coaching API key:
 
@@ -57,7 +59,7 @@ Never put the API key in `frontend/.env.local`.
 Backend - run from the repository root:
 
 ```powershell
-uv run uvicorn backend.app.main:app --reload --port 8000
+uv run uvicorn backend.app.main:app --env-file .env --reload --port 8000
 ```
 
 Frontend - run in a second PowerShell window:
@@ -67,9 +69,26 @@ cd frontend
 pnpm dev
 ```
 
+The frontend runs an environment check before install and development. It
+requires Node 24, pnpm 11, the correct Windows native packages, and refuses the
+unsafe WSL-on-`/mnt/c` combination with a recovery message.
+
 Open:
 
 - Product: `http://localhost:3000`
 - Backend API: `http://127.0.0.1:8000/docs`
 
 Press `Ctrl+C` in both windows to stop.
+
+When the provider base URL and key are configured, the backend selects the
+Python HTTP coach automatically. To use the legacy Pi/Node path instead, set
+`REDECIDE_COACH_MODE=pi` in `.env` and install the optional `agent-harness`
+dependencies with `pnpm install --frozen-lockfile` from that directory.
+
+For backend tests from WSL, use the Linux virtual environment so native replay
+and HTTP dependencies match the runtime:
+
+```bash
+source .venv-wsl/bin/activate
+pytest backend/tests/test_coach_mode.py -q
+```

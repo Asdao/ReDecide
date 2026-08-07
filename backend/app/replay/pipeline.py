@@ -17,7 +17,9 @@ from typing import Any
 PIPELINE_SCHEMA_VERSION = "replay_pipeline_v1"
 SELECTOR_SCHEMA_VERSION = "player_selector_v1"
 PROGRESS_SCHEMA_VERSION = "pipeline_progress_v1"
-DEFAULT_MAX_DECISIONS = 100
+# Keep a broad candidate pool so multi-moment player runs are not biased toward
+# the first few rounds.  Consumers still apply their own per-player quota.
+DEFAULT_MAX_DECISIONS = 500
 DEFAULT_MAX_TIMELINE_POINTS = 120
 MAX_EXTRACTED_WINDOWS = 1_000
 
@@ -142,10 +144,14 @@ def merge_pi_output(
     """
 
     result = dict(pipeline_result)
-    coach = _decode_pi_output(pi_output)
-    decision_id = str(coach.get("decision_id") or "").strip()
-    if not decision_id:
-        raise ValueError("Pi output must include decision_id")
+    payload = _decode_pi_output(pi_output)
+    raw_analyses = payload.get("analyses")
+    if isinstance(raw_analyses, list):
+        coaches = [item for item in raw_analyses if isinstance(item, Mapping)]
+    else:
+        coaches = [payload]
+    if not coaches:
+        raise ValueError("Pi output must include analyses")
 
     candidates = [
         candidate
@@ -157,40 +163,35 @@ def merge_pi_output(
         for index, candidate in enumerate(candidates, start=1)
         if candidate.get("decision_id") not in (None, "")
     }
-    resolved_decision_id = decision_aliases.get(decision_id, decision_id)
-    candidate = next(
-        (
-            candidate
-            for candidate in candidates
-            if str(candidate.get("decision_id")) == resolved_decision_id
-        ),
-        None,
-    )
-    if candidate is None:
+    merged_analyses = []
+    seen = set()
+    for coach in coaches:
+        decision_id = str(coach.get("decision_id") or "").strip()
+        if not decision_id:
+            continue
+        resolved_decision_id = decision_aliases.get(decision_id, decision_id)
+        candidate = next((item for item in candidates if str(item.get("decision_id")) == resolved_decision_id), None)
+        if candidate is None or resolved_decision_id in seen:
+            continue
+        seen.add(resolved_decision_id)
+        player_id = str(candidate.get("player_id") or "")
+        player = next((item for item in result.get("players", []) if isinstance(item, Mapping) and str(item.get("player_id")) == player_id), {})
+        player_name = candidate.get("display_name") or player.get("display_name") or player_id
+        coaching = dict(coach)
+        coaching.update({"decision_id": resolved_decision_id, "player_id": player_id, "player_name": str(player_name), "source": "pi"})
+        selected = dict(candidate)
+        selected["player_name"] = str(player_name)
+        merged_analyses.append({"selected_decision": selected, "coach_analysis": coaching})
+    if not merged_analyses:
         raise ValueError("Pi output decision_id is not present in the pipeline result")
-
-    player_id = str(candidate.get("player_id") or "")
-    player = next(
-        (
-            item
-            for item in result.get("players", [])
-            if isinstance(item, Mapping) and str(item.get("player_id")) == player_id
-        ),
-        {},
-    )
-    player_name = candidate.get("display_name") or player.get("display_name") or player_id
-    coaching = dict(coach)
-    coaching.update(
-        {
-            "decision_id": resolved_decision_id,
-            "player_id": player_id,
-            "player_name": str(player_name),
-            "source": "pi",
-        }
-    )
-    result["coach_analysis"] = coaching
-    result["selected_decision"] = dict(candidate)
-    result["selected_decision"]["player_name"] = str(player_name)
+    result["analyses"] = merged_analyses
+    result["analysis_count"] = len(merged_analyses)
+    summary = dict(result.get("summary") or {})
+    summary["analysis_count"] = len(merged_analyses)
+    result["summary"] = summary
+    # Singular fields remain aliases for clients that predate multi-analysis.
+    result["selected_decision"] = dict(merged_analyses[0]["selected_decision"])
+    result["coach_analysis"] = dict(merged_analyses[0]["coach_analysis"])
     return result
 
 
@@ -463,7 +464,9 @@ def _first_contact_candidates(
             str(item.get("player_id") or ""),
         ),
     )
-    for window in ordered[:max_decisions]:
+    for window in ordered:
+        if len(candidates) >= max_decisions:
+            break
         round_number = _integer(window.get("round_num"), 0)
         player_id = str(window.get("player_id"))
         contact_tick = _integer(window.get("contact_tick"), 0)

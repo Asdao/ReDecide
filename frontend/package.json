@@ -7,6 +7,9 @@
     "node": ">=24 <25"
   },
   "scripts": {
+    "preinstall": "node scripts/check-dev-environment.mjs --install",
+    "doctor": "node scripts/check-dev-environment.mjs",
+    "predev": "node scripts/check-dev-environment.mjs",
     "dev": "next dev",
     "build": "next build",
     "start": "next start",

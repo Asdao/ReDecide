@@ -1,5 +1,5 @@
 import { z } from "zod";
-import type { ReplayAnalysisResult } from "./replay";
+import type { ReplayAnalysisEntry, ReplayAnalysisResult } from "./replay";
 
 const requiredString = z.string().trim().min(1);
 const nonnegativeInteger = z.number().int().nonnegative();
@@ -491,7 +491,7 @@ export function playerTimelineEvents(
 
 export function eventMatchesAnalysis(
   event: ReplayEvent,
-  analysis: ReplayAnalysisResult,
+  analysis: Pick<ReplayAnalysisResult, "selected_decision"> | ReplayAnalysisEntry,
 ): boolean {
   const decision = analysis.selected_decision;
   const playerMatches = decision.role === "victim"
@@ -511,6 +511,22 @@ export function eventMatchesAnalysis(
     playerMatches &&
     opponentMatches
   );
+}
+
+/** Normalize legacy singular coaching payloads to the multi-moment shape. */
+export function replayAnalysisEntries(
+  analysis: ReplayAnalysisResult,
+): ReplayAnalysisEntry[] {
+  return analysis.analyses?.length
+    ? analysis.analyses
+    : [{ selected_decision: analysis.selected_decision, coach_analysis: analysis.coach_analysis }];
+}
+
+export function analysisEntryForEvent(
+  event: ReplayEvent,
+  analysis?: ReplayAnalysisResult,
+): ReplayAnalysisEntry | undefined {
+  return analysis ? replayAnalysisEntries(analysis).find((entry) => eventMatchesAnalysis(event, entry)) : undefined;
 }
 
 export function cleanAnalysisEvents(
@@ -535,8 +551,11 @@ export function cleanAnalysisEvents(
   });
 }
 
-function syntheticAnalysisEvent(analysis: ReplayAnalysisResult): ReplayEvent {
-  const decision = analysis.selected_decision;
+function syntheticAnalysisEvent(
+  analysis: ReplayAnalysisResult,
+  entry: ReplayAnalysisEntry,
+): ReplayEvent {
+  const decision = entry.selected_decision;
   const cleanEvents = cleanAnalysisEvents([...analysis.events, ...analysis.key_events]);
   const anchor = cleanEvents.find((event) =>
     event.is_coaching_anchor &&
@@ -565,19 +584,28 @@ export function analysisTimelineEvents(
   analysis?: ReplayAnalysisResult,
 ): ReplayEvent[] {
   const playerEvents = playerTimelineEvents(events, playerId);
-  if (!analysis || analysis.selected_decision.player_id !== playerId) {
+  if (!analysis) {
     return playerEvents;
   }
 
-  const analysisEvent = events.find((event) => eventMatchesAnalysis(event, analysis))
-    ?? syntheticAnalysisEvent(analysis);
-  const withoutCompetingMoment = playerEvents.filter((event) => !(
+  const analysisEvents = replayAnalysisEntries(analysis)
+    .filter((entry) => entry.selected_decision.player_id === playerId)
+    .map((entry) => events.find((event) => eventMatchesAnalysis(event, entry))
+      ?? syntheticAnalysisEvent(analysis, entry));
+  if (analysisEvents.length === 0) return playerEvents;
+
+  const withoutCompetingMoments = playerEvents.filter((event) => !analysisEvents.some((analysisEvent) =>
     event.round_num === analysisEvent.round_num &&
     event.tick === analysisEvent.tick &&
     event.attacker_id === analysisEvent.attacker_id &&
     event.victim_id === analysisEvent.victim_id
   ));
-  return [...withoutCompetingMoment, analysisEvent].sort(
+  const seenEventIds = new Set<string>();
+  return [...withoutCompetingMoments, ...analysisEvents].filter((event) => {
+    if (seenEventIds.has(event.event_id)) return false;
+    seenEventIds.add(event.event_id);
+    return true;
+  }).sort(
     (left, right) => left.tick - right.tick || left.event_id.localeCompare(right.event_id),
   );
 }

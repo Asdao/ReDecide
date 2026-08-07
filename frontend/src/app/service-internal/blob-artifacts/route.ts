@@ -93,6 +93,12 @@ function errorResponse(message: string, status: number): Response {
   return Response.json({ error: message }, { status });
 }
 
+function cacheBustPublicRead(url: string): string {
+  const freshUrl = new URL(url);
+  freshUrl.searchParams.set("redecide_cache_bust", crypto.randomUUID());
+  return freshUrl.toString();
+}
+
 export async function POST(request: Request): Promise<Response> {
   let body: unknown;
   try {
@@ -144,7 +150,11 @@ export async function POST(request: Request): Promise<Response> {
               ...(ticket.access === "private" ? { useCache: false } : {}),
             });
 
-    return Response.json({ url: presignedUrl, expiresAt: validUntil });
+    const url =
+      ticket.operation === "get" && ticket.access === "public"
+        ? cacheBustPublicRead(presignedUrl)
+        : presignedUrl;
+    return Response.json({ url, expiresAt: validUntil });
   } catch (error: unknown) {
     console.error("[service-internal/blob-artifacts] signing failed", {
       name: error instanceof Error ? error.name : "UnknownError",

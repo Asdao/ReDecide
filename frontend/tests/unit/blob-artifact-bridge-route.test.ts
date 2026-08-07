@@ -88,6 +88,12 @@ describe("private Blob artifact bridge", () => {
     );
 
     expect(response.status).toBe(200);
+    const payload = await response.json();
+    const signedUrl = new URL(payload.url);
+    expect(`${signedUrl.origin}${signedUrl.pathname}`).toBe("https://blob.example/signed-get");
+    expect(signedUrl.searchParams.get("redecide_cache_bust")).toMatch(
+      /^[0-9a-f-]{36}$/,
+    );
     expect(issueSignedTokenMock).toHaveBeenCalledWith({
       pathname: "analysis/analysis%2Fone/result.json",
       operations: ["get"],

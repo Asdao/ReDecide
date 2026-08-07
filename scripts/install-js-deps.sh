@@ -2,10 +2,18 @@
 set -euo pipefail
 
 # Install the two JavaScript projects from their checked-in pnpm lockfiles.
-# This script intentionally does not run npm install: there are no
-# package-lock.json files, and npm would create a second dependency graph.
+# pnpm is the authoritative package manager even if legacy npm lockfiles are
+# present for external tooling.
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+
+case "$repo_root" in
+  /mnt/[a-zA-Z]/*)
+    echo "error: do not install JavaScript dependencies from WSL into a Windows-mounted checkout ($repo_root)" >&2
+    echo "use Windows PowerShell for this checkout, or clone the repository under the native WSL filesystem" >&2
+    exit 1
+    ;;
+esac
 
 if ! command -v node >/dev/null 2>&1; then
   echo "error: Node.js is required (frontend requires Node 24.x)" >&2

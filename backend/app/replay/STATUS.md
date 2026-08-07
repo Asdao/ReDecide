@@ -97,8 +97,10 @@ warnings, and typed invalid-demo errors.
 - `backend/app/main.py` now exposes the two-stage FastAPI job transport:
   `/api/analysis/prepare` creates a replay job and selector, `/run` accepts the
   selected player, `/events` streams progress, and `/logs` persists JSONL
-  records. The default service is constructed with `PiCoachAdapter`; injected
-  adapters remain available for deterministic tests. The frozen
+  records. The default service selects `HttpCoachAdapter` when provider
+  configuration is present and otherwise preserves the explicit/legacy
+  `PiCoachAdapter` path; injected adapters remain available for deterministic
+  tests. The frozen
   `DecisionPacket`/`DecisionCard` coach contract is still separate from this
   replay-job result.
 - The frozen `DecisionPacket`/`DecisionCard` API contracts remain a separate
@@ -106,7 +108,7 @@ warnings, and typed invalid-demo errors.
 
 ## Contract/API impact
 
-The existing pipeline result is unchanged. When a Pi response is merged, the
+The existing pipeline result is unchanged. When a coach response is merged, the
 returned UI mapping gains `selected_decision.player_name` and a
 `coach_analysis` object containing the original decision/player identity and
 the model's full-sentence coaching fields. The source replay is read-only.

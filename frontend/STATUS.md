@@ -15,6 +15,16 @@ obtain exact-operation, exact-path, five-minute Blob URLs for durable analysis
 and replay JSON; artifact bodies transfer directly between FastAPI and Blob.
 Local development remains filesystem-backed unless explicitly opted into Blob.
 
+Public Blob artifact reads now receive a unique cache-busting query parameter
+from the internal signer. This prevents an overwritten analysis `state.json`
+from returning its previous `failed` or `processing` value during the immediate
+player-selection poll. Private stores continue to use `useCache: false` instead.
+The Python service-binding client also retries authorization and direct Blob
+transfers up to three times for transport failures, rate limits, and transient
+5xx responses, covering the intermittent Blob `503` observed during analysis
+state persistence. Neither behavior is used by the default local filesystem
+store.
+
 The latest validation state for the merged frontend is recorded under
 Verification. TypeScript, ESLint, and the production Turbopack build pass; one
 SSE adapter test still carries the pre-merge absolute-URL expectation.
@@ -332,6 +342,19 @@ outcomes are not rendered in the coaching result.
 
 ## Configuration
 
+Local frontend development is hardened around one dependency/runtime owner per
+checkout. The Windows checkout uses PowerShell, Node 24, and pnpm 11; the
+preinstall and predev doctor rejects WSL execution through `/mnt/<drive>`, a
+non-pnpm installer, the wrong runtime versions, or missing platform-native Next
+and Tailwind packages. pnpm's project-local virtual store is explicitly enabled
+by disabling the global virtual store, so a user-level setting cannot silently
+change the installed workspace structure.
+
+Tailwind source detection is explicitly rooted at `src/`, preventing `.next`,
+dependency backups, terminal transcripts, or other project-root artifacts from
+being interpreted as arbitrary utility classes. Next development permits the
+documented `127.0.0.1` alias in addition to its `localhost` origin.
+
 Set `NEXT_PUBLIC_API_BASE_URL` in `frontend/.env.local`. Local development
 defaults to `http://127.0.0.1:8000` when the variable is absent. The backend
 must allow the frontend origin through `REDECIDE_API_ALLOWED_ORIGINS`.
@@ -353,6 +376,13 @@ The Next.js image allowlist permits only the referenced repository's thumbnail
 folder on `raw.githubusercontent.com` for non-bundled future maps.
 
 ## Verification
+
+The Blob player-selection consistency fix was checked with 9 passing frontend
+signer-route tests, 2 passing focused Python service-binding tests, and a
+passing TypeScript check. The broader Python Blob test file reported 11 passes
+and one environment-only failure because the optional `vercel` Python SDK is
+not installed by the repository's `test` extra; that failure does not exercise
+the service-binding path used by the OIDC deployment.
 
 From `frontend/`, the latest checks report:
 

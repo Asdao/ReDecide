@@ -3,7 +3,7 @@
 Run the public backend from the repository root:
 
 ```powershell
-uv run uvicorn backend.app.main:app --reload --port 8000
+uv run uvicorn backend.app.main:app --env-file .env --reload --port 8000
 ```
 
 Open the interactive API page at `http://127.0.0.1:8000/docs`.
@@ -144,7 +144,13 @@ The frontend can continue with `/api/analysis/{analysis_id}/players`,
 
 ## Current requirements and limits
 
-- Live coaching requires Node.js, installed `agent-harness` dependencies, and a valid provider API key.
+- With `HARNESS_MODEL_BASE_URL` and `DEEPSEEK_API_KEY` (or
+  `HARNESS_MODEL_API_KEY`) configured, live coaching uses the Python HTTP
+  adapter by default. Start Uvicorn with `--env-file .env`, because Uvicorn
+  does not load a repository `.env` implicitly.
+- The legacy Pi subprocess remains available by setting
+  `REDECIDE_COACH_MODE=pi`; that mode requires Node.js and installed
+  `agent-harness` dependencies.
 - Direct upload expects the `.dem` file; the separate Blob URL route is disabled by default.
 - No real `.dem` has completed the full flow yet.
 - With `REDECIDE_STORAGE_BACKEND=blob` on Vercel Services, analysis state and

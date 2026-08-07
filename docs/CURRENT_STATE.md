@@ -35,7 +35,9 @@ Upload .dem directly
 - Asking about the player's intent is not implemented.
 - Follow-up questions are not implemented.
 - The Blob URL endpoint stays disabled until the frontend is ready.
-- Live coaching needs Node dependencies and a valid provider API key.
+- Live coaching uses the Python HTTP adapter by default when a provider base
+  URL and API key are configured. The legacy Pi/Node path remains available
+  with `REDECIDE_COACH_MODE=pi`.
 - Analysis jobs disappear when the backend restarts.
 
 ## What each main folder does
@@ -43,7 +45,9 @@ Upload .dem directly
 - `backend/replay_api/` receives the `.dem` and saves replay data.
 - `backend/replay_engine/` parses the replay and calculates win chances.
 - `backend/app/` joins the replay, player selection, and coaching flow.
-- `agent-harness/` calls the language model for coaching advice.
+- `backend/app/coach/pi_connector.py` provides the Python HTTP coach by default
+  when provider settings are present; `agent-harness/` remains the optional
+  legacy Pi process for `REDECIDE_COACH_MODE=pi`.
 - `frontend/` contains the user interface.
 - `data/runtime/` stores temporary replay and analysis files while running.
 

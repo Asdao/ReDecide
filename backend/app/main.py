@@ -306,10 +306,39 @@ def create_analysis_app(*, service: AnalysisService | None = None) -> FastAPI:
 
 
 def _default_coach_adapter() -> Any:
-    """Choose a deployable adapter without changing local Pi behavior."""
+    """Choose the configured coach transport.
+
+    HTTP coaching is the zero-configuration default whenever an
+    OpenAI-compatible provider is configured.  Set ``REDECIDE_COACH_MODE=pi``
+    to retain the legacy local Pi subprocess explicitly.  ``http`` can be
+    selected explicitly when the provider values are injected by the hosting
+    environment (and therefore are not visible during app construction).
+
+    Uvicorn does not read a repository ``.env`` file implicitly.  For local
+    development, start it with ``--env-file .env`` (as documented) or export
+    the provider variables before importing this module.
+    """
 
     mode = os.getenv("REDECIDE_COACH_MODE", "").strip().lower()
-    if mode == "http" or os.getenv("VERCEL") == "1":
+    if mode == "pi":
+        return PiCoachAdapter()
+    if mode == "http":
+        return HttpCoachAdapter()
+
+    provider_base_url = os.getenv("HARNESS_MODEL_BASE_URL", "").strip()
+    provider_api_key = next(
+        (
+            value.strip()
+            for value in (
+                os.getenv("HARNESS_MODEL_API_KEY", ""),
+                os.getenv("DEEPSEEK_API_KEY", ""),
+            )
+            if value and value.strip()
+        ),
+        "",
+    )
+    provider_configured = bool(provider_base_url and provider_api_key)
+    if provider_configured or os.getenv("VERCEL") == "1":
         return HttpCoachAdapter()
     return PiCoachAdapter()
 

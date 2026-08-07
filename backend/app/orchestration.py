@@ -225,6 +225,7 @@ class AnalysisService:
         )
         self.log_dir.mkdir(parents=True, exist_ok=True)
         self.coach_adapter = coach_adapter
+        self.analyses_per_player = _analysis_count_from_env()
         self.pipeline = pipeline
         self._jobs: dict[str, AnalysisJob] = {}
         self._jobs_lock = threading.RLock()
@@ -322,9 +323,13 @@ class AnalysisService:
             previous_run = job.player_runs.get(selected_player_id)
             if previous_run and previous_run.get("status") == "running":
                 raise AnalysisNotReady("coaching is already running for this player")
-            candidate = dict(candidates[0])
+            selected_candidates = _select_diverse_candidates(
+                candidates, limit=self.analyses_per_player
+            )
+            candidate = dict(selected_candidates[0])
             filtered = self._filter_for_player(job.prepared_result, selected_player_id)
             filtered["selected_decision"] = candidate
+            filtered["selected_decisions"] = [dict(item) for item in selected_candidates]
             run_id = uuid4().hex
             job.selected_player_id = selected_player_id
             job.status = "coaching"
@@ -704,10 +709,52 @@ def _normalize_side(value: Any) -> str | None:
     return None
 
 
+def _analysis_count_from_env() -> int:
+    """Read the bounded per-player coaching quota (default five)."""
+
+    try:
+        value = int(os.getenv("REDECIDE_ANALYSES_PER_PLAYER", "5").strip())
+    except (TypeError, ValueError):
+        value = 5
+    return max(1, min(10, value))
+
+
+def _select_diverse_candidates(
+    candidates: list[Mapping[str, Any]], *, limit: int
+) -> list[dict[str, Any]]:
+    """Select moments across rounds before filling remaining slots chronologically."""
+
+    if limit <= 0:
+        return []
+    ordered = [dict(item) for item in candidates]
+    selected: list[dict[str, Any]] = []
+    used_rounds: set[int] = set()
+    for candidate in ordered:
+        try:
+            round_number = int(candidate.get("round_number"))
+        except (TypeError, ValueError):
+            round_number = -1
+        if round_number in used_rounds:
+            continue
+        selected.append(candidate)
+        used_rounds.add(round_number)
+        if len(selected) >= limit:
+            return selected
+    seen = {str(item.get("decision_id")) for item in selected}
+    for candidate in ordered:
+        if str(candidate.get("decision_id")) in seen:
+            continue
+        selected.append(candidate)
+        if len(selected) >= limit:
+            break
+    return selected
+
+
 __all__ = [
     "AnalysisNotFound",
     "AnalysisNotReady",
     "AnalysisService",
+    "_select_diverse_candidates",
     "FixtureOrchestrator",
     "PlayerSelectionError",
 ]

@@ -11,7 +11,8 @@ from __future__ import annotations
 
 import json
 import os
-from collections.abc import Mapping
+import time
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from typing import Any
 from urllib.parse import unquote, urlparse
@@ -83,8 +84,16 @@ class _ServiceBindingBlobClient:
     """Use a private Vercel service to authorize direct Blob transfers."""
 
     _CONTENT_TYPE = "application/json"
+    _MAX_ATTEMPTS = 3
+    _RETRYABLE_STATUS_CODES = frozenset({429, 500, 502, 503, 504})
 
-    def __init__(self, service_url: str, *, http: httpx.Client | None = None) -> None:
+    def __init__(
+        self,
+        service_url: str,
+        *,
+        http: httpx.Client | None = None,
+        sleep: Callable[[float], None] = time.sleep,
+    ) -> None:
         parsed = urlparse(service_url)
         if parsed.scheme not in {"http", "https"} or not parsed.netloc:
             raise BlobStorageConfigurationError(
@@ -92,6 +101,27 @@ class _ServiceBindingBlobClient:
             )
         self.endpoint = f"{service_url.rstrip('/')}/service-internal/blob-artifacts"
         self.http = http or httpx.Client(timeout=httpx.Timeout(120.0, connect=10.0))
+        self._sleep = sleep
+
+    def _request(self, method: str, url: str, **kwargs: Any) -> httpx.Response:
+        """Retry bounded, idempotent Blob bridge requests after transient failures."""
+
+        for attempt in range(self._MAX_ATTEMPTS):
+            try:
+                response = self.http.request(method, url, **kwargs)
+            except httpx.TransportError:
+                if attempt + 1 >= self._MAX_ATTEMPTS:
+                    raise
+            else:
+                if (
+                    response.status_code not in self._RETRYABLE_STATUS_CODES
+                    or attempt + 1 >= self._MAX_ATTEMPTS
+                ):
+                    return response
+                response.close()
+            self._sleep(0.1 * (2**attempt))
+
+        raise AssertionError("unreachable Blob retry state")
 
     @staticmethod
     def _pathname(locator: str) -> str:
@@ -118,7 +148,7 @@ class _ServiceBindingBlobClient:
         if size is not None:
             payload["size"] = size
         try:
-            response = self.http.post(self.endpoint, json=payload)
+            response = self._request("POST", self.endpoint, json=payload)
             response.raise_for_status()
             value = response.json().get("url")
         except (httpx.HTTPError, ValueError, AttributeError) as exc:
@@ -149,7 +179,8 @@ class _ServiceBindingBlobClient:
             size=len(body),
         )
         try:
-            response = self.http.put(
+            response = self._request(
+                "PUT",
                 signed_url,
                 content=body,
                 headers={"Content-Type": self._CONTENT_TYPE},
@@ -174,7 +205,7 @@ class _ServiceBindingBlobClient:
         pathname = self._pathname(locator)
         signed_url = self._ticket("get", pathname, access=access)
         try:
-            response = self.http.get(signed_url)
+            response = self._request("GET", signed_url)
         except httpx.HTTPError as exc:
             raise BlobStorageConfigurationError(
                 "The JSON artifact could not be read from Vercel Blob"

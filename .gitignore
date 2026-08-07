@@ -18,6 +18,8 @@ venv/
 # trees everywhere and accidental package-manager files created at repo root.
 node_modules/
 .pnpm-store/
+/_frontend_runtime_backups_*/
+/_frontend-dev.*.log
 /package.json
 /package-lock.json
 /pnpm-lock.yaml
