@@ -36,6 +36,9 @@ function eventLabel(
   event: ReplayEvent,
   analysis?: ReplayAnalysisEntry,
 ): string {
+  if (event.event === "kill") {
+    return event.headshot ? "Headshot death" : "Death";
+  }
   if (analysis && eventMatchesAnalysis(event, analysis)) {
     if (analysis.selected_decision.event_category === "damage") {
       return analysis.selected_decision.role === "attacker" ? "Damage dealt" : "Damage received";
@@ -169,6 +172,16 @@ export function ReplayAnalysisScreen({
   const selectedSnapshot = currentSnapshots.find(
     ({ player_id }) => player_id === selectedPlayerId,
   );
+  const selectedHealth = selectedSnapshot
+    ? clamp(selectedSnapshot.health, 0, 100)
+    : undefined;
+  const selectedHealthLevel = selectedHealth === undefined
+    ? "unavailable"
+    : selectedHealth < 20
+      ? "critical"
+      : selectedHealth < 60
+        ? "low"
+        : "healthy";
   const timelineEvents = useMemo(
     () => (replay ? analysisTimelineEvents(replay.events, selectedPlayerId, analysis) : []),
     [analysis, replay, selectedPlayerId],
@@ -190,11 +203,13 @@ export function ReplayAnalysisScreen({
     () => timelineEvents.filter((event) => analysisEventIds.has(event.event_id)),
     [analysisEventIds, timelineEvents],
   );
-  const selectedEventKind = selectedEventHasAnalysis
-    ? "analysis"
-    : selectedEvent && replayEventIsDeath(selectedEvent)
-      ? "death"
-      : "damage";
+  const selectedEventKind = selectedEvent?.event === "kill"
+    ? "death"
+    : selectedEventHasAnalysis
+      ? "analysis"
+      : selectedEvent && replayEventIsDeath(selectedEvent)
+        ? "death"
+        : "damage";
   const selectedIntentState = selectedEventId ? intentStates[selectedEventId] : undefined;
   const selectedIntentDraft = selectedEventId ? intentDrafts[selectedEventId] ?? "" : "";
   const currentWinProbability = useMemo(
@@ -304,20 +319,6 @@ export function ReplayAnalysisScreen({
     },
     [seek, timelineEvents],
   );
-
-  const moveAnalysedMoment = useCallback((direction: "next" | "previous") => {
-    if (analysedEvents.length === 0) return;
-    const currentIndex = selectedEventId
-      ? analysedEvents.findIndex((event) => event.event_id === selectedEventId)
-      : -1;
-    const delta = direction === "next" ? 1 : -1;
-    const targetIndex = currentIndex < 0
-      ? (direction === "next" ? 0 : analysedEvents.length - 1)
-      : clamp(currentIndex + delta, 0, analysedEvents.length - 1);
-    const targetEvent = analysedEvents[targetIndex];
-    seek(targetEvent.tick, targetEvent.event_id);
-    requestAnimationFrame(() => eventMarkerRefs.current.get(targetEvent.event_id)?.focus());
-  }, [analysedEvents, seek, selectedEventId]);
 
   const requestContextualAnalysis = useCallback((keyPointId: string, intent: string) => {
     if (!submitMomentIntent || !analysisId || !replay || !selectedPlayerId) return;
@@ -484,13 +485,6 @@ export function ReplayAnalysisScreen({
                 <h2 id="inspector-title">
                   {eventLabel(selectedEvent, selectedEventAnalysis)}
                 </h2>
-                {selectedEventHasAnalysis && analysedEvents.length > 1 ? (
-                  <div className="analysis-moment-navigation" aria-label="Analysed moments">
-                    <span>{analysedEvents.findIndex((event) => event.event_id === selectedEvent?.event_id) + 1} of {analysedEvents.length}</span>
-                    <button type="button" onClick={() => moveAnalysedMoment("previous")} aria-label="Previous analysed moment">Previous</button>
-                    <button type="button" onClick={() => moveAnalysedMoment("next")} aria-label="Next analysed moment">Next</button>
-                  </div>
-                ) : null}
               </div>
               <p className="inspector-summary">
                 {selectedEventHasAnalysis && selectedEventAnalysis?.selected_decision.role === "attacker"
@@ -611,36 +605,55 @@ export function ReplayAnalysisScreen({
                 <strong>{selectedSnapshot?.side.toUpperCase() ?? "—"}</strong>
               </div>
             </div>
-            <section
-              className={`radar-win-rate${winRate.isBaseline ? " baseline" : ""}`}
-              aria-label="Win rate"
-            >
-              <div className="radar-win-rate-values">
-                <strong className="friendly-team">
-                  <span>{winRate.friendlyTeam}</span>
-                  {formatProbability(winRate.friendlyProbability)}
-                </strong>
-                <p>Win rate</p>
-                <strong className="enemy-team">
-                  {formatProbability(winRate.enemyProbability)}
-                  <span>{winRate.enemyTeam}</span>
-                </strong>
-              </div>
-              <div
-                className="win-rate-track"
-                role="img"
-                aria-label={`${winRate.friendlyTeam} ${formatProbability(winRate.friendlyProbability)}, ${winRate.enemyTeam} ${formatProbability(winRate.enemyProbability)}${winRate.isBaseline ? ", baseline estimate" : ""}`}
+            <div className="radar-indicators">
+              <section className={`selected-player-health ${selectedHealthLevel}`} aria-label="Player health">
+                <div className="selected-player-health-label">
+                  <span>Health</span>
+                  <strong>{selectedHealth === undefined ? "—" : `${Math.round(selectedHealth)} HP`}</strong>
+                </div>
+                <div
+                  className="selected-player-health-track"
+                  role="progressbar"
+                  aria-label={`${selectedPlayer ? playerDisplayName(selectedPlayer) : "Selected player"} health`}
+                  aria-valuemin={0}
+                  aria-valuemax={100}
+                  aria-valuenow={selectedHealth === undefined ? undefined : Math.round(selectedHealth)}
+                  aria-valuetext={selectedHealth === undefined ? "Health unavailable" : `${Math.round(selectedHealth)} health`}
+                >
+                  <span style={{ width: selectedHealth === undefined ? "0%" : `${selectedHealth}%` }} />
+                </div>
+              </section>
+              <section
+                className={`radar-win-rate${winRate.isBaseline ? " baseline" : ""}`}
+                aria-label="Win rate"
               >
-                <span
-                  className="win-rate-friendly"
-                  style={{ width: formatProbability(winRate.friendlyProbability) }}
-                />
-                <span
-                  className="win-rate-enemy"
-                  style={{ width: formatProbability(winRate.enemyProbability) }}
-                />
-              </div>
-            </section>
+                <div className="radar-win-rate-values">
+                  <strong className="friendly-team">
+                    <span>{winRate.friendlyTeam}</span>
+                    {formatProbability(winRate.friendlyProbability)}
+                  </strong>
+                  <p>Win rate</p>
+                  <strong className="enemy-team">
+                    {formatProbability(winRate.enemyProbability)}
+                    <span>{winRate.enemyTeam}</span>
+                  </strong>
+                </div>
+                <div
+                  className="win-rate-track"
+                  role="img"
+                  aria-label={`${winRate.friendlyTeam} ${formatProbability(winRate.friendlyProbability)}, ${winRate.enemyTeam} ${formatProbability(winRate.enemyProbability)}${winRate.isBaseline ? ", baseline estimate" : ""}`}
+                >
+                  <span
+                    className="win-rate-friendly"
+                    style={{ width: formatProbability(winRate.friendlyProbability) }}
+                  />
+                  <span
+                    className="win-rate-enemy"
+                    style={{ width: formatProbability(winRate.enemyProbability) }}
+                  />
+                </div>
+              </section>
+            </div>
             <div className="radar-frame">
               <Image
                 src={radarOverview.image}
@@ -751,7 +764,7 @@ export function ReplayAnalysisScreen({
               {timelineEvents.map((event, eventIndex) => (
                 <button
                   type="button"
-                  className={`${analysisEventIds.has(event.event_id) ? "coaching" : replayEventIsDeath(event) ? "death" : "damage"}${selectedEventId === event.event_id ? " selected" : ""}`}
+                  className={`${event.event === "kill" ? "death" : analysisEventIds.has(event.event_id) ? "coaching" : replayEventIsDeath(event) ? "death" : "damage"}${selectedEventId === event.event_id ? " selected" : ""}`}
                   style={{ left: `${((event.tick - firstTick) / duration) * 100}%` }}
                   key={event.event_id}
                   ref={(element) => {
@@ -796,7 +809,7 @@ export function ReplayAnalysisScreen({
           <div className="timeline-caption">
             <span><i className="damage" />Damage</span>
             <span><i className="death" />Death</span>
-            {analysedEvents.length > 0 ? <span><i className="coaching" />{analysedEvents.length === 1 ? "Analysis" : `${analysedEvents.length} analyses`}</span> : null}
+            {analysedEvents.length > 0 ? <span><i className="coaching" />Analysis</span> : null}
             <span>Tick {Math.round(currentTick)}</span>
           </div>
         </section>

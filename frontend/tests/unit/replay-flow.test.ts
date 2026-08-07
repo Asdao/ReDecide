@@ -324,7 +324,7 @@ describe("uploaded replay state machine", () => {
     const samplePlayerError: AnalysisFlowState = {
       status: "players-error",
       sampleId: "sample-ancient-20mb",
-      sourceName: "3DMAX vs Falcons — Ancient (20 MB sample)",
+      sourceName: "3DMAX vs Falcons LITE",
       manifest,
       analysis,
       error: { ...retryableError, code: "prepare-failed" },

@@ -732,6 +732,10 @@ input[type="file"] {
   line-height: 1.5;
 }
 
+.sample-screen .sample-description {
+  font-family: var(--font-interface);
+}
+
 .sample-meta {
   color: var(--muted);
   font-family: var(--font-interface);
@@ -1355,6 +1359,7 @@ input[type="file"] {
 }
 
 .radar-panel {
+  --radar-indicator-thickness: 0.55rem;
   width: 100%;
   height: 100%;
   min-width: 0;
@@ -1394,6 +1399,61 @@ input[type="file"] {
   padding: 0.25rem 0.45rem;
   color: var(--steel-blue-text);
   text-align: center;
+}
+
+.selected-player-health {
+  --health-color: var(--verified);
+  width: min(8.25rem, 100%);
+  align-self: end;
+  justify-self: start;
+  text-align: left;
+}
+
+.selected-player-health-label {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-bottom: 0.2rem;
+  color: var(--muted);
+  font-family: var(--font-interface);
+  font-size: 0.72rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.selected-player-health-label span {
+  font-family: var(--font-display);
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.selected-player-health-label strong {
+  color: var(--health-color);
+}
+
+.selected-player-health-track {
+  height: var(--radar-indicator-thickness);
+  overflow: hidden;
+  background: var(--surface-raised);
+}
+
+.selected-player-health-track span {
+  display: block;
+  height: 100%;
+  background: var(--health-color);
+}
+
+.selected-player-health.unavailable {
+  --health-color: var(--muted);
+  opacity: 0.48;
+}
+
+.selected-player-health.low {
+  --health-color: var(--tactical-tan);
+}
+
+.selected-player-health.critical {
+  --health-color: #ee5f5f;
 }
 
 .radar-frame {
@@ -1644,10 +1704,18 @@ input[type="file"] {
   --inspector-border-color: #4f9cff;
 }
 
+.radar-indicators {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 2fr);
+  gap: 1rem;
+  align-items: end;
+  justify-content: space-between;
+  padding-bottom: 0.7rem;
+}
+
 .radar-win-rate {
   width: min(16.5rem, 100%);
   justify-self: end;
-  padding-bottom: 0.7rem;
 }
 
 .radar-win-rate-values {
@@ -1695,7 +1763,7 @@ input[type="file"] {
 }
 
 .win-rate-track {
-  height: 0.55rem;
+  height: var(--radar-indicator-thickness);
   display: flex;
   overflow: hidden;
   margin-top: 0.2rem;
@@ -1763,16 +1831,17 @@ input[type="file"] {
 }
 
 .moment-intent form {
+  --moment-intent-control-size: 4rem;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr) var(--moment-intent-control-size);
   gap: 0.55rem;
   align-items: stretch;
 }
 
 .moment-intent textarea {
-  height: 5.5rem;
-  min-height: 5.5rem;
-  max-height: 5.5rem;
+  height: var(--moment-intent-control-size);
+  min-height: var(--moment-intent-control-size);
+  max-height: var(--moment-intent-control-size);
   overflow-y: auto;
   resize: none;
   border: 1px solid var(--line);
@@ -1805,6 +1874,13 @@ input[type="file"] {
   font-weight: 800;
   text-transform: uppercase;
   cursor: pointer;
+}
+
+.moment-intent form button {
+  width: var(--moment-intent-control-size);
+  min-width: var(--moment-intent-control-size);
+  aspect-ratio: 1;
+  padding: 0.5rem;
 }
 
 .moment-intent form button:disabled {
@@ -2289,7 +2365,15 @@ input[type="file"] {
   }
 
   .radar-win-rate {
-    width: min(16.5rem, calc(100% - 1rem));
+    width: 100%;
+  }
+
+  .selected-player-health {
+    width: 100%;
+  }
+
+  .radar-indicators {
+    gap: 0.5rem;
   }
 
   .playback-controls {
