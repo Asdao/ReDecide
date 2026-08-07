@@ -19,6 +19,10 @@ permissions:
 jobs:
   dependency-review:
     name: Review dependency changes
+    # GitHub's dependency-review API requires Code Security or Advanced
+    # Security for private repositories. The dedicated dependency-security
+    # workflow still audits the Python and Node lockfiles in private repos.
+    if: ${{ github.event.repository.private == false }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:

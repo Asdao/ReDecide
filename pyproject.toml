@@ -14,7 +14,7 @@ dependencies = [
 [project.optional-dependencies]
 full = ["awpy>=2.0.2", "lightgbm>=4.0", "pyarrow>=15.0"]
 data = ["fastparquet>=2024.0", "pandas>=2.0"]
-test = ["httpx2>=2.7,<3", "pytest>=8,<9"]
+test = ["httpx2>=2.7,<3", "pytest>=9.0.3,<10"]
 
 [build-system]
 requires = ["setuptools>=68"]
