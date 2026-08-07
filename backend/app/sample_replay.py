@@ -10,6 +10,7 @@ parse it once, persist the replay artifacts, and hand the coaching branch to
 from __future__ import annotations
 
 import hashlib
+import json
 import os
 import tempfile
 from collections.abc import Awaitable, Callable, Mapping
@@ -38,7 +39,7 @@ DEFAULT_SAMPLE_URL = (
 )
 DEFAULT_SAMPLE_FILENAME = "3dmax-vs-falcons-m2-ancient.dem"
 DEFAULT_SAMPLE_BYTES = 321_584_788
-DEFAULT_SAMPLE_REPLAY_ID = "59a7b7145da41a0c86f60bb59cb6c033"
+DEFAULT_SAMPLE_CACHE_VERSION = "ancient-full-v2"
 
 # A smaller copy of the same Ancient match is useful for local development and
 # quick demos.  It is deliberately a separate sample id so the selector can
@@ -53,6 +54,50 @@ QUICK_SAMPLE_FILENAME = "3dmax-vs-falcons-m2-ancient-20mb.dem"
 QUICK_SAMPLE_DISPLAY_NAME = "3DMAX vs Falcons — Ancient (20 MB sample)"
 QUICK_SAMPLE_DESCRIPTION = "Smaller Ancient match sample for quicker analysis."
 QUICK_SAMPLE_MAX_BYTES = 64 * 1024 * 1024
+QUICK_SAMPLE_CACHE_VERSION = "ancient-20mb-v2"
+QUICK_SAMPLE_SHA256 = "be789b6fc4c3c3ecc716c7eb83c5796cfd4d409914a3f8bb41b4121e410f4e66"
+SAMPLE_CACHE_SCHEMA_VERSION = "sample_cache_v1"
+
+
+def _sample_cache_fingerprint(
+    *,
+    sample_id: str,
+    cache_version: str,
+    url: str,
+    filename: str,
+    expected_bytes: int | None,
+    expected_sha256: str | None,
+) -> str:
+    identity = {
+        "schema_version": SAMPLE_CACHE_SCHEMA_VERSION,
+        "sample_id": sample_id,
+        "cache_version": cache_version,
+        "url": url,
+        "filename": filename,
+        "expected_bytes": expected_bytes,
+        "expected_sha256": expected_sha256,
+    }
+    encoded = json.dumps(identity, sort_keys=True, separators=(",", ":")).encode()
+    return hashlib.sha256(encoded).hexdigest()
+
+
+DEFAULT_SAMPLE_REPLAY_ID = _sample_cache_fingerprint(
+    sample_id=DEFAULT_SAMPLE_ID,
+    cache_version=DEFAULT_SAMPLE_CACHE_VERSION,
+    url=DEFAULT_SAMPLE_URL,
+    filename=DEFAULT_SAMPLE_FILENAME,
+    expected_bytes=DEFAULT_SAMPLE_BYTES,
+    expected_sha256=None,
+)[:32]
+
+QUICK_SAMPLE_REPLAY_ID = _sample_cache_fingerprint(
+    sample_id=QUICK_SAMPLE_ID,
+    cache_version=QUICK_SAMPLE_CACHE_VERSION,
+    url=QUICK_SAMPLE_URL,
+    filename=QUICK_SAMPLE_FILENAME,
+    expected_bytes=None,
+    expected_sha256=QUICK_SAMPLE_SHA256,
+)[:32]
 
 
 class SampleReplayError(RuntimeError):
@@ -82,6 +127,9 @@ class BlobSampleReplay:
         loader: ReplayLoader | None = None,
         max_bytes: int | None = None,
         expected_bytes: int | None = DEFAULT_SAMPLE_BYTES,
+        expected_sha256: str | None = None,
+        cache_version: str | None = None,
+        pinned: bool = True,
         replay_id: str | None = None,
         display_name: str | None = None,
         description: str | None = None,
@@ -90,7 +138,9 @@ class BlobSampleReplay:
         self.sample_id = (
             sample_id or os.getenv("REDECIDE_SAMPLE_ID", DEFAULT_SAMPLE_ID)
         ).strip()
-        self.url = (url or os.getenv("REDECIDE_SAMPLE_BLOB_URL", DEFAULT_SAMPLE_URL)).strip()
+        self.url = (
+            url or os.getenv("REDECIDE_SAMPLE_BLOB_URL", DEFAULT_SAMPLE_URL)
+        ).strip()
         self.filename = (
             filename
             or os.getenv("REDECIDE_SAMPLE_FILENAME", DEFAULT_SAMPLE_FILENAME)
@@ -112,14 +162,51 @@ class BlobSampleReplay:
         if expected_bytes is not None and expected_bytes > self.max_bytes:
             raise ValueError("expected sample size exceeds sample max_bytes")
         self.expected_bytes = expected_bytes
+        configured_sha256 = expected_sha256
+        if configured_sha256 is None and self.sample_id == DEFAULT_SAMPLE_ID:
+            configured_sha256 = os.getenv("REDECIDE_SAMPLE_SHA256")
+        self.expected_sha256 = (
+            configured_sha256.strip().lower() if configured_sha256 else None
+        )
+        if self.expected_sha256 is not None and (
+            len(self.expected_sha256) != 64
+            or any(
+                character not in "0123456789abcdef"
+                for character in self.expected_sha256
+            )
+        ):
+            raise ValueError(
+                "expected sample sha256 must be 64 lowercase hex characters"
+            )
+        default_cache_version = (
+            os.getenv("REDECIDE_SAMPLE_CACHE_VERSION", DEFAULT_SAMPLE_CACHE_VERSION)
+            if self.sample_id == DEFAULT_SAMPLE_ID
+            else "1"
+        )
+        self.cache_version = (cache_version or default_cache_version).strip()
+        if not self.cache_version:
+            raise ValueError("sample cache version cannot be empty")
+        self.cache_fingerprint = _sample_cache_fingerprint(
+            sample_id=self.sample_id,
+            cache_version=self.cache_version,
+            url=self.url,
+            filename=self.filename,
+            expected_bytes=self.expected_bytes,
+            expected_sha256=self.expected_sha256,
+        )
+        self.cache_metadata = {
+            "schema_version": SAMPLE_CACHE_SCHEMA_VERSION,
+            "fingerprint": self.cache_fingerprint,
+            "sample_id": self.sample_id,
+            "cache_version": self.cache_version,
+            "source_sha256": self.expected_sha256,
+            "source_bytes": self.expected_bytes,
+            "pinned": bool(pinned),
+        }
         self.display_name = display_name or "3DMAX vs Falcons — Ancient"
         self.description = description or "Ancient match sample prepared from the hosted replay."
         self.map_name = map_name
-        self.replay_id = replay_id or (
-            DEFAULT_SAMPLE_REPLAY_ID
-            if self.sample_id == DEFAULT_SAMPLE_ID
-            else hashlib.sha256(f"sample:{self.sample_id}".encode()).hexdigest()[:32]
-        )
+        self.replay_id = replay_id or self.cache_fingerprint[:32]
 
     def summary(self) -> dict[str, Any]:
         """Return the stable GET /api/samples shape.
@@ -160,9 +247,21 @@ class BlobSampleReplay:
                 )
 
             await self.downloader(self.url, temporary_path, self.max_bytes)
-            if self.expected_bytes is not None and temporary_path.stat().st_size != self.expected_bytes:
+            if (
+                self.expected_bytes is not None
+                and temporary_path.stat().st_size != self.expected_bytes
+            ):
                 raise SampleReplayError("hosted sample size did not match the expected seed")
-            return await run_in_threadpool(self._prepare_from_path, temporary_path, analysis)
+            if self.expected_sha256 is not None:
+                with temporary_path.open("rb") as source:
+                    actual_sha256 = hashlib.file_digest(source, "sha256").hexdigest()
+                if actual_sha256 != self.expected_sha256:
+                    raise SampleReplayError(
+                        "hosted sample digest did not match the expected seed"
+                    )
+            return await run_in_threadpool(
+                self._prepare_from_path, temporary_path, analysis
+            )
         finally:
             temporary_path.unlink(missing_ok=True)
 
@@ -181,8 +280,12 @@ class BlobSampleReplay:
             record = self.loader(path)
             if not isinstance(record, Mapping):
                 raise TypeError("native demo loader returned a non-object record")
-            manifest = start_replay(record, self.filename, replay_id=self.replay_id)
-            return self._prepare_analysis(record, manifest, analysis)
+            cacheable_record = dict(record)
+            cacheable_record["_sample_cache"] = dict(self.cache_metadata)
+            manifest = start_replay(
+                cacheable_record, self.filename, replay_id=self.replay_id
+            )
+            return self._prepare_analysis(cacheable_record, manifest, analysis)
         except (BlobFetchError, BlobTooLargeError):
             raise
         except SampleReplayError:
@@ -199,6 +302,12 @@ class BlobSampleReplay:
         except (FileNotFoundError, ValueError):
             return None
         if manifest.get("visualization_status") != "ready":
+            return None
+        if manifest.get("replay_id") != self.replay_id:
+            return None
+        if coaching.get("replay_id") != self.replay_id:
+            return None
+        if coaching.get("_sample_cache") != self.cache_metadata:
             return None
         return coaching, manifest
 
@@ -246,6 +355,8 @@ def create_default_sample_replays() -> tuple[BlobSampleReplay, ...]:
             display_name=QUICK_SAMPLE_DISPLAY_NAME,
             description=QUICK_SAMPLE_DESCRIPTION,
             expected_bytes=None,
+            expected_sha256=QUICK_SAMPLE_SHA256,
+            cache_version=QUICK_SAMPLE_CACHE_VERSION,
             max_bytes=min(configured_max, QUICK_SAMPLE_MAX_BYTES),
         ),
     )
@@ -253,16 +364,21 @@ def create_default_sample_replays() -> tuple[BlobSampleReplay, ...]:
 
 __all__ = [
     "DEFAULT_SAMPLE_BYTES",
+    "DEFAULT_SAMPLE_CACHE_VERSION",
     "DEFAULT_SAMPLE_FILENAME",
     "DEFAULT_SAMPLE_ID",
     "DEFAULT_SAMPLE_REPLAY_ID",
     "DEFAULT_SAMPLE_URL",
+    "QUICK_SAMPLE_CACHE_VERSION",
     "QUICK_SAMPLE_DESCRIPTION",
     "QUICK_SAMPLE_DISPLAY_NAME",
     "QUICK_SAMPLE_FILENAME",
     "QUICK_SAMPLE_ID",
     "QUICK_SAMPLE_MAX_BYTES",
+    "QUICK_SAMPLE_REPLAY_ID",
+    "QUICK_SAMPLE_SHA256",
     "QUICK_SAMPLE_URL",
+    "SAMPLE_CACHE_SCHEMA_VERSION",
     "BlobSampleReplay",
     "SampleReplayError",
     "SampleReplayPreparation",

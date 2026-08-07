@@ -697,3 +697,26 @@ def test_player_without_decision_candidates_returns_clear_422(tmp_path: Any) -> 
 
     assert run.status_code == 422, run.text
     assert run.json()["detail"] == "selected player has no first-contact decision candidate"
+
+
+def test_preparation_failure_logs_the_internal_exception_but_keeps_public_state_safe(
+    tmp_path: Any, caplog: Any
+) -> None:
+    def failing_pipeline(_replay: dict[str, Any]) -> Any:
+        raise ValueError("specific parser invariant failed")
+        yield  # pragma: no cover - makes this callable an iterator pipeline
+
+    orchestration = importlib.import_module("backend.app.orchestration")
+    service = orchestration.AnalysisService(
+        log_dir=tmp_path, pipeline=failing_pipeline
+    )
+
+    with caplog.at_level("ERROR", logger="backend.app.orchestration"):
+        metadata = service.prepare({"replay_id": "cached-sample"})
+
+    analysis_id = metadata["analysis_id"]
+    assert metadata["status"] == "failed"
+    assert service.get_job(analysis_id).error == "replay preparation failed"
+    assert "specific parser invariant failed" in caplog.text
+    assert "specific parser invariant failed" not in service.logs(analysis_id)
+    assert '"message":"replay preparation failed"' in service.logs(analysis_id)

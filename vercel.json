@@ -33,6 +33,12 @@
       }
     },
     {
+      "source": "/api/cron/blob-retention",
+      "destination": {
+        "service": "frontend"
+      }
+    },
+    {
       "source": "/api/(.*)",
       "destination": {
         "service": "backend"
@@ -49,6 +55,12 @@
       "destination": {
         "service": "frontend"
       }
+    }
+  ],
+  "crons": [
+    {
+      "path": "/api/cron/blob-retention",
+      "schedule": "0 3 * * *"
     }
   ]
 }

@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from copy import deepcopy
 import json
+import logging
 import os
 from pathlib import Path
 import tempfile
@@ -160,6 +161,9 @@ from backend.app.analysis_store import (
 from backend.app.coach.pi_connector import PiCoachError
 from backend.app.replay.pipeline import merge_pi_output, stream_replay_pipeline
 from backend.storage.blob import blob_storage_enabled
+
+
+logger = logging.getLogger(__name__)
 
 
 CoachAdapter = Callable[[Mapping[str, Any]], Mapping[str, Any] | str]
@@ -632,7 +636,14 @@ class AnalysisService:
                         }
                         job.status = "ready"
                         self._persist_job(job)
-        except Exception as exc:  # noqa: BLE001 - converted to stable job state
+        except Exception:
+            logger.exception(
+                "Replay preparation failed",
+                extra={
+                    "analysis_id": job.analysis_id,
+                    "source_replay_id": job.source_replay_id,
+                },
+            )
             with job.lock:
                 job.status = "failed"
                 job.error = "replay preparation failed"

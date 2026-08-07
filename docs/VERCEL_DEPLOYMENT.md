@@ -52,11 +52,19 @@ use same-origin `/api` rewrites. Set:
 NEXT_PUBLIC_REPLAY_UPLOAD_MODE=blob
 ```
 
-The Blob upload and cleanup routes are server-side Next.js routes. Their Blob
+The Blob upload, cleanup, and retention routes are server-side Next.js routes. Their Blob
 credentials must remain server-only; never put a Blob token or provider key in
 a `NEXT_PUBLIC_*` variable. The Blob upload path accepts `.dem` files up to
 1 GB, stores temporary objects under a randomized `uploads/` prefix, and
 deletes the raw object after a validated successful import.
+
+Set a long random `CRON_SECRET` for the server-side retention job. Vercel Cron
+sends it as `Authorization: Bearer <secret>`; the route fails closed if the
+secret is missing. The default daily policy is 1 day for failed analysis jobs,
+14 days for other analysis jobs, and 30 days for non-sample replay artifacts.
+Pinned hosted samples are retained. To inspect the job safely on its first
+deployment, temporarily set `REDECIDE_RETENTION_DRY_RUN=true`, invoke the route
+with the secret, inspect the returned counts, then restore it to `false`.
 
 ### Backend service
 
@@ -67,6 +75,7 @@ REDECIDE_BLOB_ACCESS=private
 REDECIDE_API_ALLOWED_ORIGINS=https://<production-domain>,https://<preview-domain>
 REDECIDE_BLOB_IMPORT_ENABLED=true
 REDECIDE_BLOB_MAX_BYTES=1073741824
+REDECIDE_SAMPLE_CACHE_VERSION=ancient-full-v2
 HARNESS_MODEL_BASE_URL=https://api.deepseek.com
 HARNESS_MODEL_API_KEY=<server-side-secret>
 ```
@@ -88,10 +97,11 @@ URLs; private durable artifacts use the internal service binding instead.
 The root rewrites are ordered as follows:
 
 ```text
-/api/blob/upload, /api/blob/cleanup -> Next.js frontend service
-/api/*                              -> FastAPI backend service
-/service-internal/*                 -> FastAPI backend service
-/*                                  -> Next.js frontend service
+/api/blob/upload, /api/blob/cleanup,
+/api/cron/blob-retention             -> Next.js frontend service
+/api/*                               -> FastAPI backend service
+/service-internal/*                  -> FastAPI backend service
+/*                                   -> Next.js frontend service
 ```
 
 The `/service-internal/blob-artifacts` route is not a browser API. FastAPI uses
@@ -106,6 +116,8 @@ it to request narrowly scoped, short-lived Blob URLs for durable artifacts.
       intentionally enabled.
 - [ ] Set backend storage to Blob and verify the service binding is present.
 - [ ] Configure provider credentials only in backend/server-side variables.
+- [ ] Set `CRON_SECRET`, run retention once in dry-run mode, and confirm the
+      daily Cron appears in the Vercel deployment.
 - [ ] Set `REDECIDE_API_ALLOWED_ORIGINS` to the exact deployed browser origins.
 - [ ] Verify `GET /api/health` returns `{"status":"ok"}`.
 - [ ] Exercise the sample flow, player selection, coaching, and replay viewer.

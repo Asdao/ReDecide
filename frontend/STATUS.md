@@ -7,7 +7,8 @@ Last verified: 2026-08-07 (Asia/Singapore)
 The frontend now targets same-origin `/api` routes, while
 `NEXT_PUBLIC_API_BASE_URL` remains available for standalone local development.
 The root `vercel.json` uses the current `services` schema and ordered rewrites:
-`/api/blob/upload` and `/api/blob/cleanup` stay in Next.js, other `/api/*`
+`/api/blob/upload`, `/api/blob/cleanup`, and `/api/cron/blob-retention` stay in
+Next.js, while other `/api/*`
 requests reach FastAPI, public `/service-internal/*` requests are routed away from the
 frontend signer, and the frontend handles the catch-all route. The backend has
 a deployment-aware private binding to the frontend. It uses that binding to
@@ -24,6 +25,21 @@ transfers up to three times for transport failures, rate limits, and transient
 5xx responses, covering the intermittent Blob `503` observed during analysis
 state persistence. Neither behavior is used by the default local filesystem
 store.
+
+Hosted sample replay IDs are now derived from an explicit cache schema, source
+identity, digest/size constraints, and a configurable pipeline cache version.
+The backend reuses a sample artifact only when its internal metadata exactly
+matches that identity; stale artifacts are reparsed instead of entering player
+selection. The 20 MB hosted sample also verifies a pinned SHA-256 digest.
+Preparation failures keep a safe generic API error while Vercel runtime logs
+receive the exception traceback and analysis/replay IDs.
+
+Durable JSON has a separate server-only retention path. The daily Vercel Cron
+deletes failed analysis groups after 1 day, other analysis groups after 14 days,
+and non-sample replay groups after 30 days by default. It recognizes only the
+known JSON artifact shapes, caps each run, retains pinned sample caches, and
+keeps data when metadata inspection fails. `CRON_SECRET` authentication and an
+optional dry-run mode prevent browser-driven or accidental broad deletion.
 
 The latest validation state for the merged frontend is recorded under
 Verification. TypeScript, ESLint, and the production Turbopack build pass; one
@@ -306,6 +322,8 @@ outcomes are not rendered in the coaching result.
   route restricted to `.dem`, public object storage, and a 1 GB maximum
 - `src/app/api/blob/cleanup/route.ts` - same-origin deletion route restricted
   to temporary public `uploads/*.dem` objects
+- `src/app/api/cron/blob-retention/route.ts` - `CRON_SECRET`-protected,
+  allowlisted retention for expired analysis and replay JSON groups
 - `src/app/service-internal/blob-artifacts/route.ts` - private service-binding signer
   restricted to known replay/analysis JSON keys, configured access, 128 MB,
   and five-minute single-operation URLs
@@ -327,6 +345,8 @@ outcomes are not rendered in the coaching result.
   replay-envelope transition, error/retry/reset, and map-name coverage
 - `tests/unit/samples-api.test.ts` - catalog loading and replay-envelope
   selection requests
+- `tests/unit/blob-retention-route.test.ts` - Cron authentication, expiration,
+  pinned-sample preservation, dry-run reporting, and safe Blob failures
 - `tests/unit/replay-api.test.ts` - multipart upload, endpoint payloads,
   processing states, coaching recovery, visualization gating, validation,
   safe failures, and cancellation
@@ -365,6 +385,12 @@ a public Blob store so the Next.js upload and cleanup routes receive the
 server-only connected-store credentials. Never expose Blob credentials through
 a `NEXT_PUBLIC_*` variable.
 
+Set `CRON_SECRET` only in Vercel's server environment. Retention defaults and
+their bounded scan/delete limits are documented in `.env.example`; use
+`REDECIDE_RETENTION_DRY_RUN=true` for the first hosted inspection. Increment
+`REDECIDE_SAMPLE_CACHE_VERSION` whenever replay preparation semantics become
+incompatible with previously cached sample JSON.
+
 Keep `REDECIDE_STORAGE_BACKEND=filesystem` locally. Set it to `blob` for the
 Vercel backend. The `REDECIDE_BLOB_SERVICE_URL` service binding is declared in
 the root `vercel.json` and injected by Vercel; it is not a dashboard secret and
@@ -394,15 +420,19 @@ and one environment-only failure because the optional `vercel` Python SDK is
 not installed by the repository's `test` extra; that failure does not exercise
 the service-binding path used by the OIDC deployment.
 
+The cache/retention change also passed 21 focused Python regression tests,
+covering sample-cache reuse and invalidation, source digest rejection, analysis
+preparation behavior, and safe/internal exception logging.
+
 From `frontend/`, the latest checks report:
 
-- Vitest: 12 files and 128 tests collected; all 128 passed, including the
-  same-origin SSE URL assertion in `tests/unit/replay-api.test.ts`.
+- Vitest: 13 files and 133 tests collected; all 133 passed, including the
+  authenticated retention, expiration, pinning, dry-run, and safe-failure cases.
 - TypeScript: passed
 - ESLint: passed with no warnings
 - Next.js 16.2.12 production build: passed with Turbopack in the default direct
   mode; `/` and `/_not-found` prerendered, with `/analysis`,
-  `/api/blob/upload`, `/api/blob/cleanup`, and the private
+  `/api/blob/upload`, `/api/blob/cleanup`, `/api/cron/blob-retention`, and the private
   `/service-internal/blob-artifacts` signer rendered on demand
 
 Browser verification against the documented sample responses confirmed:
@@ -441,19 +471,19 @@ viewer and event inspector remain free of horizontal overflow.
   used.
 - The hosted sample replay is fixed by the backend and requires its configured
   Blob/model environment; the browser keeps only transient lifecycle state.
-- A real native `.dem` has not yet completed the full backend flow, matching the
-  backend's documented current limitation. Browser QA used validated replay
-  fixtures for post-upload states and did not send user replay data.
-- A real public Vercel Blob has not yet completed the hosted end-to-end flow.
+- The exact bundled 20 MB native `.dem` completes the local parse and
+  preparation pipeline. The versioned-cache fix still needs a hosted
+  player-selection smoke test with the deployed Blob/model environment.
+- A public Vercel Blob sample has exercised the hosted artifact path, but the
+  post-fix end-to-end flow still needs deployment verification.
   Temporary Blob objects are deleted on validated successful import, but a
   failed or interrupted import intentionally retains its object, and cleanup is
   best-effort if Vercel deletion is unavailable. The routes check same-origin
   browser requests and upload constraints, but a public production deployment
   still needs authentication or platform-level protection to prevent upload
   abuse.
-- Durable replay and analysis JSON now use the private OIDC Blob bridge on
-  Vercel, but the freshly deployed bridge still needs one hosted end-to-end
-  sample run to confirm that a second FastAPI invocation restores the job.
+- Durable replay and analysis JSON use the private OIDC Blob bridge on Vercel.
+  The new retention route still needs one observed scheduled dry run.
 - Only Inferno currently has a paired saved coaching result for the processed
   save catalog. Uploaded replays use their live completed analysis. The player
   intent UI and typed request lifecycle are implemented, but submission remains
@@ -461,7 +491,7 @@ viewer and event inspector remain free of horizontal overflow.
 
 ## Contract/API impact
 
-No backend contract changes and no intent endpoint were introduced. The sample
+No public response-shape changes and no intent endpoint were introduced. The sample
 adapter consumes the backend replay envelope from `POST /api/analyze`
 (`sample_id`, `replay_id`, `manifest`, and `analysis`), while the local
 processed-replay adapter and uploaded flow consume the documented
@@ -473,6 +503,9 @@ visualization unlock, and replay playback.
 
 The internal Next.js `/api/blob/cleanup` route removes only temporary raw
 uploads after successful import and does not change the FastAPI contract. The
+`/api/cron/blob-retention` route is authenticated server-only maintenance and
+does not expose durable replay deletion to browsers. Sample preparation uses
+internal cache metadata and content-aware replay IDs without adding those
+fields to the public manifest. The
 `/service-internal/blob-artifacts` route is not a browser API; the FastAPI
-service binding uses it only to obtain narrowly scoped signed Blob URLs. No
-backend files or contracts were changed by the merged frontend work.
+service binding uses it only to obtain narrowly scoped signed Blob URLs.
