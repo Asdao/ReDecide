@@ -122,12 +122,20 @@ them unless specifically required.
 - **Output:** `{sample_id, replay_id, manifest, analysis}`. `manifest` is the
   `replay_manifest_v1` payload and `analysis` is the normal analysis-job metadata.
 - **Summary:** Downloads and parses the hosted sample only when its deterministic
-  replay artifacts are absent, then runs the real replay preparation pipeline.
-  Subsequent requests reuse the cached manifest/coaching/visualization artifacts.
+  replay artifacts are absent or invalid, then runs the real replay preparation
+  pipeline. Subsequent requests reuse the cached manifest/coaching/visualization
+  artifacts only when their internal cache metadata exactly matches the current
+  sample source and pipeline cache version.
 
-The hosted sample's deterministic `replay_id` is
-`59a7b7145da41a0c86f60bb59cb6c033`. The raw source is validated as an
-allowlisted public Vercel Blob URL with the expected 321,584,788-byte seed.
+The primary hosted sample's current deterministic `replay_id` is
+`a9b8732ecaadca5ec78218ac6c647258`; the 20 MB sample uses
+`5b575a75255d339223c5df6e52c33ec7`. These IDs are content/configuration
+fingerprints, not permanent public constants. Increment
+`REDECIDE_SAMPLE_CACHE_VERSION` when sample preparation semantics change so a
+deployment cannot reuse artifacts produced by incompatible code. The raw source
+is validated as an allowlisted public Vercel Blob URL and by expected size for
+the full sample; `REDECIDE_SAMPLE_SHA256` can additionally pin its exact digest.
+The quick sample has a built-in SHA-256 digest check.
 The frontend can continue with `/api/analysis/{analysis_id}/players`,
 `/api/analysis/{analysis_id}/run`, `/api/analysis/{analysis_id}/result`, and
 `/api/replay/{replay_id}/json` using the returned IDs.
@@ -161,6 +169,8 @@ The frontend can continue with `/api/analysis/{analysis_id}/players`,
   frontend Blob binding and survive function restarts. Set
   `REDECIDE_STORAGE_BACKEND=filesystem` only to opt out explicitly.
   The default local filesystem mode persists under `data/runtime/analysis`.
+- Preparation exceptions retain a generic public job error while their full
+  traceback and analysis ID are written to server runtime logs.
 - Player intent and follow-up questions are not implemented.
 - Each selected player run coaches up to ten distinct moments by default. Set
   `REDECIDE_ANALYSES_PER_PLAYER` to an integer from 1 to 10 to change the quota.
