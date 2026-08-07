@@ -216,10 +216,17 @@ describe("uploaded replay screens", () => {
       manifest,
       player: players[1],
       phase: "coaching",
+      progress: {
+        analysis_id: "analysis-1",
+        stage: "calling_pi",
+        progress: 85,
+        message: "Generating coaching analysis.",
+      },
       onReturnToPlayers: () => undefined,
     }));
 
-    expect(html).toContain("around 30 seconds");
+    expect(html).toContain("Generating coaching analysis.");
+    expect(html).not.toContain("85%");
     expect(html).toContain("T One");
     expect(html).toContain("%2Fradars%2Fde_mirage.png");
     expect(html).toContain("radar-frame loading-border replay-map-loading-frame");
@@ -243,6 +250,38 @@ describe("uploaded replay screens", () => {
     expect(html).not.toContain("Perspective");
     expect(html).not.toContain("eventual_winner");
     expect(html).not.toContain("round_score");
+  });
+
+  it("places health left of win rate and applies the strict health color thresholds", () => {
+    for (const [health, level] of [
+      [60, "healthy"],
+      [59, "low"],
+      [10, "low"],
+      [9, "critical"],
+    ] as const) {
+      const healthReplay: ProcessedReplay = {
+        ...uploadedReplay,
+        ticks: uploadedReplay.ticks.map((tick) => ({ ...tick, health })),
+      };
+      const html = renderToStaticMarkup(createElement(ReplayAnalysisScreen, {
+        initialPlayerId: "t1",
+        initialReplay: healthReplay,
+        uploaded: true,
+        onChoosePlayer: () => undefined,
+      }));
+      const headingEnd = html.indexOf('<div class="radar-indicators">');
+      const healthIndex = html.indexOf(`class="selected-player-health ${level}"`);
+      const winRateIndex = html.indexOf('class="radar-win-rate');
+
+      expect(headingEnd).toBeGreaterThan(-1);
+      expect(healthIndex).toBeGreaterThan(headingEnd);
+      expect(winRateIndex).toBeGreaterThan(healthIndex);
+      expect(html).toContain(`${health} HP`);
+      expect(html).toContain('role="progressbar"');
+      expect(html).toContain('aria-label="T One health"');
+      expect(html).toContain(`aria-valuenow="${health}"`);
+      expect(html).toContain(`style="width:${health}%"`);
+    }
   });
 
   it("renders an attacker analysis point ahead of same-tick damage or death", () => {

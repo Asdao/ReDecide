@@ -82,10 +82,6 @@ export function ReplayMapLoadingScreen({
                 <p className="eyebrow">Replay workspace</p>
                 <h2>{copy.title}</h2>
               </div>
-              <div className="radar-status">
-                <span>{progress ? `${Math.round(progress.progress)}%` : "Loading"}</span>
-                <strong>···</strong>
-              </div>
             </div>
             <div className="radar-frame loading-border replay-map-loading-frame">
               {overview ? (

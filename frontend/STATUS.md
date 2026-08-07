@@ -78,7 +78,8 @@ a solid, hard-edged orange segment without a translucent gradient ramp, and the
 global reduced-motion treatment still collapses it to a static border state.
 Uploaded analysis preparation and coaching now subscribe to the backend-provided
 `events_url`. Validated SSE messages replace static loading copy with the latest
-backend stage and percentage; malformed stream records are ignored, request
+backend stage; the coaching map wait screen omits the backend's fixed numeric
+milestone because it is not measured completion. Malformed stream records are ignored, request
 identity remains scoped to the active analysis, and polling continues to own
 completion and failure recovery when streaming is unavailable.
 
@@ -161,6 +162,11 @@ latest backend estimate at or before the current tick in the same round. Before
 a fresh round receives its first estimate,
 or when analysis data is unavailable, the strip shows a muted 50/50 baseline
 instead of borrowing from another round or a future tick.
+The selected player's current health appears in the indicator row to the left
+of the win-rate strip. Its track remains half the win-rate strip's width and
+uses the same thickness. Health is green from 60 HP, tan below 60 HP, and red
+below 10 HP; the HP text follows the same color. Unavailable health renders as
+an empty muted track.
 
 The processed replay adapter accepts the documented backend
 `replay_visualization_v1` output without requiring the sanitized Mirage shape.

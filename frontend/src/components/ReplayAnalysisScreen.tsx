@@ -172,6 +172,16 @@ export function ReplayAnalysisScreen({
   const selectedSnapshot = currentSnapshots.find(
     ({ player_id }) => player_id === selectedPlayerId,
   );
+  const selectedHealth = selectedSnapshot
+    ? clamp(selectedSnapshot.health, 0, 100)
+    : undefined;
+  const selectedHealthLevel = selectedHealth === undefined
+    ? "unavailable"
+    : selectedHealth < 10
+      ? "critical"
+      : selectedHealth < 60
+        ? "low"
+        : "healthy";
   const timelineEvents = useMemo(
     () => (replay ? analysisTimelineEvents(replay.events, selectedPlayerId, analysis) : []),
     [analysis, replay, selectedPlayerId],
@@ -595,36 +605,55 @@ export function ReplayAnalysisScreen({
                 <strong>{selectedSnapshot?.side.toUpperCase() ?? "—"}</strong>
               </div>
             </div>
-            <section
-              className={`radar-win-rate${winRate.isBaseline ? " baseline" : ""}`}
-              aria-label="Win rate"
-            >
-              <div className="radar-win-rate-values">
-                <strong className="friendly-team">
-                  <span>{winRate.friendlyTeam}</span>
-                  {formatProbability(winRate.friendlyProbability)}
-                </strong>
-                <p>Win rate</p>
-                <strong className="enemy-team">
-                  {formatProbability(winRate.enemyProbability)}
-                  <span>{winRate.enemyTeam}</span>
-                </strong>
-              </div>
-              <div
-                className="win-rate-track"
-                role="img"
-                aria-label={`${winRate.friendlyTeam} ${formatProbability(winRate.friendlyProbability)}, ${winRate.enemyTeam} ${formatProbability(winRate.enemyProbability)}${winRate.isBaseline ? ", baseline estimate" : ""}`}
+            <div className="radar-indicators">
+              <section className={`selected-player-health ${selectedHealthLevel}`} aria-label="Player health">
+                <div className="selected-player-health-label">
+                  <span>Health</span>
+                  <strong>{selectedHealth === undefined ? "—" : `${Math.round(selectedHealth)} HP`}</strong>
+                </div>
+                <div
+                  className="selected-player-health-track"
+                  role="progressbar"
+                  aria-label={`${selectedPlayer ? playerDisplayName(selectedPlayer) : "Selected player"} health`}
+                  aria-valuemin={0}
+                  aria-valuemax={100}
+                  aria-valuenow={selectedHealth === undefined ? undefined : Math.round(selectedHealth)}
+                  aria-valuetext={selectedHealth === undefined ? "Health unavailable" : `${Math.round(selectedHealth)} health`}
+                >
+                  <span style={{ width: selectedHealth === undefined ? "0%" : `${selectedHealth}%` }} />
+                </div>
+              </section>
+              <section
+                className={`radar-win-rate${winRate.isBaseline ? " baseline" : ""}`}
+                aria-label="Win rate"
               >
-                <span
-                  className="win-rate-friendly"
-                  style={{ width: formatProbability(winRate.friendlyProbability) }}
-                />
-                <span
-                  className="win-rate-enemy"
-                  style={{ width: formatProbability(winRate.enemyProbability) }}
-                />
-              </div>
-            </section>
+                <div className="radar-win-rate-values">
+                  <strong className="friendly-team">
+                    <span>{winRate.friendlyTeam}</span>
+                    {formatProbability(winRate.friendlyProbability)}
+                  </strong>
+                  <p>Win rate</p>
+                  <strong className="enemy-team">
+                    {formatProbability(winRate.enemyProbability)}
+                    <span>{winRate.enemyTeam}</span>
+                  </strong>
+                </div>
+                <div
+                  className="win-rate-track"
+                  role="img"
+                  aria-label={`${winRate.friendlyTeam} ${formatProbability(winRate.friendlyProbability)}, ${winRate.enemyTeam} ${formatProbability(winRate.enemyProbability)}${winRate.isBaseline ? ", baseline estimate" : ""}`}
+                >
+                  <span
+                    className="win-rate-friendly"
+                    style={{ width: formatProbability(winRate.friendlyProbability) }}
+                  />
+                  <span
+                    className="win-rate-enemy"
+                    style={{ width: formatProbability(winRate.enemyProbability) }}
+                  />
+                </div>
+              </section>
+            </div>
             <div className="radar-frame">
               <Image
                 src={radarOverview.image}
