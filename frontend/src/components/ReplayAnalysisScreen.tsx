@@ -36,6 +36,9 @@ function eventLabel(
   event: ReplayEvent,
   analysis?: ReplayAnalysisEntry,
 ): string {
+  if (event.event === "kill") {
+    return event.headshot ? "Headshot death" : "Death";
+  }
   if (analysis && eventMatchesAnalysis(event, analysis)) {
     if (analysis.selected_decision.event_category === "damage") {
       return analysis.selected_decision.role === "attacker" ? "Damage dealt" : "Damage received";
@@ -190,11 +193,13 @@ export function ReplayAnalysisScreen({
     () => timelineEvents.filter((event) => analysisEventIds.has(event.event_id)),
     [analysisEventIds, timelineEvents],
   );
-  const selectedEventKind = selectedEventHasAnalysis
-    ? "analysis"
-    : selectedEvent && replayEventIsDeath(selectedEvent)
-      ? "death"
-      : "damage";
+  const selectedEventKind = selectedEvent?.event === "kill"
+    ? "death"
+    : selectedEventHasAnalysis
+      ? "analysis"
+      : selectedEvent && replayEventIsDeath(selectedEvent)
+        ? "death"
+        : "damage";
   const selectedIntentState = selectedEventId ? intentStates[selectedEventId] : undefined;
   const selectedIntentDraft = selectedEventId ? intentDrafts[selectedEventId] ?? "" : "";
   const currentWinProbability = useMemo(
@@ -730,7 +735,7 @@ export function ReplayAnalysisScreen({
               {timelineEvents.map((event, eventIndex) => (
                 <button
                   type="button"
-                  className={`${analysisEventIds.has(event.event_id) ? "coaching" : replayEventIsDeath(event) ? "death" : "damage"}${selectedEventId === event.event_id ? " selected" : ""}`}
+                  className={`${event.event === "kill" ? "death" : analysisEventIds.has(event.event_id) ? "coaching" : replayEventIsDeath(event) ? "death" : "damage"}${selectedEventId === event.event_id ? " selected" : ""}`}
                   style={{ left: `${((event.tick - firstTick) / duration) * 100}%` }}
                   key={event.event_id}
                   ref={(element) => {

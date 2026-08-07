@@ -119,9 +119,10 @@ pausing. The marker track now uses a roving keyboard tab stop, so it contributes
 one stop instead of every replay event to the page tab order; Left/Right and
 Home/End move between markers and keyboard focus remains visibly outlined. The
 wider right-side inspector matches its border to the selected marker: tan for
-damage, red for death, and blue for an analysis-backed moment. A 100-damage
-event is classified as death, and a same-tick duplicate kill marker is folded
-into that stable damage event. The analysis legend swatch has the same visual
+damage, red for death, and blue for an analysis-backed moment. Damage and kill
+records for the selected victim at the same round and tick collapse into one
+death marker regardless of damage amount or source ordering, while retaining
+the merged event details and any attached coaching. The analysis legend swatch has the same visual
 thickness as the damage and death swatches.
 Saved coaching uses a borderless blue background. The inspector has no separate
 saved-analysis note or clear button. Player

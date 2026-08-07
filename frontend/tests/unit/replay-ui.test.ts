@@ -286,6 +286,50 @@ describe("uploaded replay screens", () => {
     expect(html).not.toContain('<button type="button" class="death"');
   });
 
+  it("renders same-tick victim damage and elimination as one death marker for every replay source", () => {
+    const replayWithSameTickDeath: ProcessedReplay = {
+      ...uploadedReplay,
+      events: [
+        {
+          event_id: "damage",
+          event: "damage",
+          tick: 164,
+          round_num: 1,
+          attacker_id: "ct1",
+          victim_id: "t1",
+          damage_health: 24,
+          weapon: "ak47",
+        },
+        {
+          event_id: "death",
+          event: "kill",
+          tick: 164,
+          round_num: 1,
+          attacker_id: "ct1",
+          victim_id: "t1",
+          headshot: true,
+        },
+      ],
+      ticks: [
+        uploadedReplay.ticks[0],
+        { ...uploadedReplay.ticks[0], tick: 300 },
+      ],
+    };
+
+    for (const uploaded of [false, true]) {
+      const html = renderToStaticMarkup(createElement(ReplayAnalysisScreen, {
+        initialPlayerId: "t1",
+        initialReplay: replayWithSameTickDeath,
+        uploaded,
+        onChoosePlayer: () => undefined,
+      }));
+
+      expect(html.match(/<button type="button" class="death"/g)).toHaveLength(1);
+      expect(html).not.toContain('<button type="button" class="damage"');
+      expect(html).toContain("Headshot death");
+    }
+  });
+
   it("labels multiple analysed moments as analysis without showing their count", () => {
     const secondDecision = {
       ...result.selected_decision,
