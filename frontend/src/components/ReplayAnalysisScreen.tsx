@@ -177,7 +177,7 @@ export function ReplayAnalysisScreen({
     : undefined;
   const selectedHealthLevel = selectedHealth === undefined
     ? "unavailable"
-    : selectedHealth < 10
+    : selectedHealth < 20
       ? "critical"
       : selectedHealth < 60
         ? "low"

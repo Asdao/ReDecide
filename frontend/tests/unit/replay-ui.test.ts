@@ -256,8 +256,8 @@ describe("uploaded replay screens", () => {
     for (const [health, level] of [
       [60, "healthy"],
       [59, "low"],
-      [10, "low"],
-      [9, "critical"],
+      [20, "low"],
+      [19, "critical"],
     ] as const) {
       const healthReplay: ProcessedReplay = {
         ...uploadedReplay,
@@ -638,5 +638,7 @@ describe("sample replay screens", () => {
     expect(html).toContain('<span class="sample-map-name">Nuke</span>');
     expect(html).toContain('alt="Nuke map thumbnail"');
     expect(html).toContain('Choose a <span class="accent-word">match</span>.');
+    expect(html).not.toContain('class="sample-meta"');
+    expect(html).not.toContain("Recommended: Player One");
   });
 });

@@ -165,7 +165,7 @@ instead of borrowing from another round or a future tick.
 The selected player's current health appears in the indicator row to the left
 of the win-rate strip. Its track remains half the win-rate strip's width and
 uses the same thickness. Health is green from 60 HP, tan below 60 HP, and red
-below 10 HP; the HP text follows the same color. Unavailable health renders as
+below 20 HP; the HP text follows the same color. Unavailable health renders as
 an empty muted track.
 
 The processed replay adapter accepts the documented backend

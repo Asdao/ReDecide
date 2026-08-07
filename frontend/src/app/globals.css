@@ -732,6 +732,10 @@ input[type="file"] {
   line-height: 1.5;
 }
 
+.sample-screen .sample-description {
+  font-family: var(--font-interface);
+}
+
 .sample-meta {
   color: var(--muted);
   font-family: var(--font-interface);

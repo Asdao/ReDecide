@@ -91,12 +91,6 @@ function SampleBar({
             <span className="sample-map-name">{displayMapName}</span>
           </span>
           <span className="sample-description">{sample.description}</span>
-          <span className="sample-meta">
-            {sample.players.length > 0
-              ? `${sample.players.length} ${sample.players.length === 1 ? "player" : "players"}`
-              : "Players discovered during preparation"}
-            {sample.recommended_player ? ` · Recommended: ${sample.recommended_player}` : ""}
-          </span>
         </span>
         <span className="sample-select-label">{statusLabel}</span>
       </button>
