@@ -2,7 +2,7 @@ minimumReleaseAge: 4320
 minimumReleaseAgeStrict: true
 blockExoticSubdeps: true
 trustPolicy: no-downgrade
-verifyDepsBeforeRun: warn
+verifyDepsBeforeRun: error
 enableGlobalVirtualStore: false
 
 minimumReleaseAgeExclude:

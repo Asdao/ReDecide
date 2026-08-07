@@ -9,11 +9,11 @@ parse it once, persist the replay artifacts, and hand the coaching branch to
 
 from __future__ import annotations
 
-from collections.abc import Awaitable, Callable, Mapping
 import hashlib
 import os
-from pathlib import Path
 import tempfile
+from collections.abc import Awaitable, Callable, Mapping
+from pathlib import Path
 from typing import Any, Protocol
 from urllib.parse import urlsplit
 from uuid import uuid4
@@ -31,7 +31,6 @@ from backend.app.orchestration import AnalysisService
 from backend.replay_api.ingestion import load_native_demo, start_replay
 from backend.replay_api.store import load_coaching_replay, load_replay_manifest
 
-
 DEFAULT_SAMPLE_ID = "3dmax-vs-falcons-m2-ancient"
 DEFAULT_SAMPLE_URL = (
     "https://nfs2gaifpckeptib.public.blob.vercel-storage.com/"
@@ -40,6 +39,20 @@ DEFAULT_SAMPLE_URL = (
 DEFAULT_SAMPLE_FILENAME = "3dmax-vs-falcons-m2-ancient.dem"
 DEFAULT_SAMPLE_BYTES = 321_584_788
 DEFAULT_SAMPLE_REPLAY_ID = "59a7b7145da41a0c86f60bb59cb6c033"
+
+# A smaller copy of the same Ancient match is useful for local development and
+# quick demos.  It is deliberately a separate sample id so the selector can
+# expose both artifacts without changing the deterministic cache for the
+# original hosted sample.
+QUICK_SAMPLE_ID = "3dmax-vs-falcons-m2-ancient-20mb"
+QUICK_SAMPLE_URL = (
+    "https://nfs2gaifpckeptib.public.blob.vercel-storage.com/"
+    "3dmax-vs-falcons-m2-ancient-20mb.dem"
+)
+QUICK_SAMPLE_FILENAME = "3dmax-vs-falcons-m2-ancient-20mb.dem"
+QUICK_SAMPLE_DISPLAY_NAME = "3DMAX vs Falcons — Ancient (20 MB sample)"
+QUICK_SAMPLE_DESCRIPTION = "Smaller Ancient match sample for quicker analysis."
+QUICK_SAMPLE_MAX_BYTES = 64 * 1024 * 1024
 
 
 class SampleReplayError(RuntimeError):
@@ -70,6 +83,9 @@ class BlobSampleReplay:
         max_bytes: int | None = None,
         expected_bytes: int | None = DEFAULT_SAMPLE_BYTES,
         replay_id: str | None = None,
+        display_name: str | None = None,
+        description: str | None = None,
+        map_name: str = "de_ancient",
     ) -> None:
         self.sample_id = (
             sample_id or os.getenv("REDECIDE_SAMPLE_ID", DEFAULT_SAMPLE_ID)
@@ -96,10 +112,13 @@ class BlobSampleReplay:
         if expected_bytes is not None and expected_bytes > self.max_bytes:
             raise ValueError("expected sample size exceeds sample max_bytes")
         self.expected_bytes = expected_bytes
+        self.display_name = display_name or "3DMAX vs Falcons — Ancient"
+        self.description = description or "Ancient match sample prepared from the hosted replay."
+        self.map_name = map_name
         self.replay_id = replay_id or (
             DEFAULT_SAMPLE_REPLAY_ID
             if self.sample_id == DEFAULT_SAMPLE_ID
-            else hashlib.sha256(f"sample:{self.sample_id}".encode("utf-8")).hexdigest()[:32]
+            else hashlib.sha256(f"sample:{self.sample_id}".encode()).hexdigest()[:32]
         )
 
     def summary(self) -> dict[str, Any]:
@@ -112,9 +131,9 @@ class BlobSampleReplay:
 
         return {
             "sample_id": self.sample_id,
-            "display_name": "3DMAX vs Falcons — Ancient",
-            "description": "Ancient match sample prepared from the hosted replay.",
-            "map": "de_ancient",
+            "display_name": self.display_name,
+            "description": self.description,
+            "map": self.map_name,
             "players": [],
             "recommended_player": None,
             "available": True,
@@ -168,7 +187,7 @@ class BlobSampleReplay:
             raise
         except SampleReplayError:
             raise
-        except Exception as exc:  # noqa: BLE001 - sanitize parser/provider detail
+        except Exception as exc:
             raise SampleReplayError("could not prepare the hosted sample replay") from exc
 
     def _load_cached(self) -> tuple[dict[str, Any], dict[str, Any]] | None:
@@ -204,13 +223,48 @@ class BlobSampleReplay:
         }
 
 
+def create_default_sample_replays() -> tuple[BlobSampleReplay, ...]:
+    """Build the public hosted samples without downloading either demo.
+
+    The primary sample keeps its historical environment-variable overrides.
+    The quick sample is exposed only by a Vercel deployment. It is fixed to
+    the separately hosted 20 MB object and does not claim an exact byte count,
+    since Blob can report a slightly different size than the marketing name.
+    """
+
+    primary = BlobSampleReplay()
+    if os.getenv("VERCEL") != "1":
+        return (primary,)
+
+    configured_max = _max_blob_bytes()
+    return (
+        primary,
+        BlobSampleReplay(
+            url=QUICK_SAMPLE_URL,
+            sample_id=QUICK_SAMPLE_ID,
+            filename=QUICK_SAMPLE_FILENAME,
+            display_name=QUICK_SAMPLE_DISPLAY_NAME,
+            description=QUICK_SAMPLE_DESCRIPTION,
+            expected_bytes=None,
+            max_bytes=min(configured_max, QUICK_SAMPLE_MAX_BYTES),
+        ),
+    )
+
+
 __all__ = [
-    "BlobSampleReplay",
+    "DEFAULT_SAMPLE_BYTES",
     "DEFAULT_SAMPLE_FILENAME",
     "DEFAULT_SAMPLE_ID",
-    "DEFAULT_SAMPLE_URL",
-    "DEFAULT_SAMPLE_BYTES",
     "DEFAULT_SAMPLE_REPLAY_ID",
+    "DEFAULT_SAMPLE_URL",
+    "QUICK_SAMPLE_DESCRIPTION",
+    "QUICK_SAMPLE_DISPLAY_NAME",
+    "QUICK_SAMPLE_FILENAME",
+    "QUICK_SAMPLE_ID",
+    "QUICK_SAMPLE_MAX_BYTES",
+    "QUICK_SAMPLE_URL",
+    "BlobSampleReplay",
     "SampleReplayError",
     "SampleReplayPreparation",
+    "create_default_sample_replays",
 ]

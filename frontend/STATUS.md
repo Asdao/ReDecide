@@ -396,13 +396,8 @@ the service-binding path used by the OIDC deployment.
 
 From `frontend/`, the latest checks report:
 
-- Vitest: 12 files and 126 tests collected; 125 passed and 1 failed. The only
-  failure is `validates and forwards SSE analysis progress` in
-  `tests/unit/replay-api.test.ts`: the merged same-origin implementation opens
-  `/api/analysis/analysis-1/events`, while the test still expects the old
-  `http://127.0.0.1:8000/api/analysis/analysis-1/events` URL. Because the test
-  stage fails, the combined `pnpm run verify` command exits before its later
-  stages.
+- Vitest: 12 files and 128 tests collected; all 128 passed, including the
+  same-origin SSE URL assertion in `tests/unit/replay-api.test.ts`.
 - TypeScript: passed
 - ESLint: passed with no warnings
 - Next.js 16.2.12 production build: passed with Turbopack in the default direct

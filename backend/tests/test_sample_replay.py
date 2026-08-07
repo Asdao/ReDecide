@@ -8,7 +8,7 @@ from typing import Any
 from fastapi.testclient import TestClient
 
 from backend.app.main import create_app
-from backend.app.sample_replay import BlobSampleReplay
+from backend.app.sample_replay import QUICK_SAMPLE_ID, BlobSampleReplay
 
 
 def _record() -> dict[str, Any]:
@@ -105,3 +105,57 @@ def test_public_sample_reuses_cached_artifacts_without_downloading(
     assert second.status_code == 200, second.text
     assert second.json()["replay_id"] == first.json()["replay_id"]
     assert calls == ["download"]
+
+
+def test_public_sample_catalog_supports_selecting_the_quick_hosted_demo(
+    tmp_path: Path, monkeypatch: Any
+) -> None:
+    monkeypatch.setenv("REDECIDE_REPLAY_STORE", str(tmp_path / "replays"))
+    calls: list[str] = []
+    service = FakeAnalysisService()
+    primary = _sample(tmp_path, calls)
+
+    async def download_quick(_url: str, destination: Path, _limit: int) -> None:
+        calls.append("download-quick")
+        destination.write_bytes(b"quick seed")
+
+    quick = BlobSampleReplay(
+        url="https://store123.public.blob.vercel-storage.com/quick.dem",
+        sample_id="sample-ancient-20mb",
+        filename="quick.dem",
+        display_name="3DMAX vs Falcons — Ancient (20 MB sample)",
+        downloader=download_quick,
+        loader=lambda _path: _record(),
+        max_bytes=100,
+        expected_bytes=None,
+    )
+    client = TestClient(create_app(service=service, sample_replay=(primary, quick)))
+
+    samples = client.get("/api/samples")
+    assert samples.status_code == 200
+    assert [sample["sample_id"] for sample in samples.json()["samples"]] == [
+        "sample-ancient",
+        "sample-ancient-20mb",
+    ]
+
+    response = client.post("/api/analyze", json={"sample_id": "sample-ancient-20mb"})
+    assert response.status_code == 200, response.text
+    assert response.json()["sample_id"] == "sample-ancient-20mb"
+    assert calls == ["download-quick"]
+
+
+def test_quick_hosted_demo_is_only_listed_on_vercel(monkeypatch: Any) -> None:
+    service = FakeAnalysisService()
+
+    monkeypatch.delenv("VERCEL", raising=False)
+    local_samples = TestClient(create_app(service=service)).get("/api/samples")
+    assert [sample["sample_id"] for sample in local_samples.json()["samples"]] == [
+        "3dmax-vs-falcons-m2-ancient"
+    ]
+
+    monkeypatch.setenv("VERCEL", "1")
+    vercel_samples = TestClient(create_app(service=service)).get("/api/samples")
+    assert [sample["sample_id"] for sample in vercel_samples.json()["samples"]] == [
+        "3dmax-vs-falcons-m2-ancient",
+        QUICK_SAMPLE_ID,
+    ]

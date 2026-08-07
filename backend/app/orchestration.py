@@ -710,12 +710,12 @@ def _normalize_side(value: Any) -> str | None:
 
 
 def _analysis_count_from_env() -> int:
-    """Read the bounded per-player coaching quota (default five)."""
+    """Read the bounded per-player coaching quota (default ten)."""
 
     try:
-        value = int(os.getenv("REDECIDE_ANALYSES_PER_PLAYER", "5").strip())
+        value = int(os.getenv("REDECIDE_ANALYSES_PER_PLAYER", "10").strip())
     except (TypeError, ValueError):
-        value = 5
+        value = 10
     return max(1, min(10, value))
 
 

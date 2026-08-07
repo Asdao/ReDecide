@@ -5,6 +5,11 @@ The `frontend` and `agent-harness` projects each have a committed
 `pnpm-lock.yaml`, explicit build-script approvals, and a shared dependency
 policy enforced by `check-lockfiles.mjs`.
 
+Each project must contain exactly one Node dependency lockfile: its
+`pnpm-lock.yaml`. The checker rejects legacy `package-lock.json`,
+`npm-shrinkwrap.json`, Yarn, and Bun lockfiles so a second package-manager
+graph cannot drift from the reviewed pnpm graph.
+
 ## Local checks
 
 Run the static policy and lockfile checks without installing anything:
@@ -19,6 +24,11 @@ Run the registry vulnerability audits separately for each project:
 pnpm -C frontend audit --audit-level=high
 pnpm -C agent-harness audit --audit-level=high
 ```
+
+Python lockfiles are checked with `uv lock --check`; CI exports the frozen root
+and backend graphs (including root extras) to hashed requirements and audits
+them with a pinned `pip-audit` release. The scheduled workflow repeats this
+check independently of code changes.
 
 Install only from the committed resolution and prefer the local pnpm store
 when it is already warmed:

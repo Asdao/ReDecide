@@ -109,12 +109,16 @@ them unless specifically required.
 ### `GET /api/samples`
 
 - **Input:** None.
-- **Output:** The stable `SamplesResponse` shape with the hosted Ancient sample.
-- **Summary:** Lists the public sample without downloading or parsing its 321,584,788-byte demo.
+- **Output:** The stable `SamplesResponse` shape with the hosted Ancient samples.
+- **Summary:** Lists the public samples without downloading or parsing either demo. The
+  catalog includes the original full-size sample. On Vercel (`VERCEL=1`), it
+  also includes a separately selectable `3dmax-vs-falcons-m2-ancient-20mb`
+  quick sample.
 
 ### `POST /api/analyze`
 
-- **Input:** JSON: `{"sample_id":"3dmax-vs-falcons-m2-ancient"}`.
+- **Input:** JSON containing one of the sample ids returned by `GET /api/samples`,
+  such as `{"sample_id":"3dmax-vs-falcons-m2-ancient-20mb"}`.
 - **Output:** `{sample_id, replay_id, manifest, analysis}`. `manifest` is the
   `replay_manifest_v1` payload and `analysis` is the normal analysis-job metadata.
 - **Summary:** Downloads and parses the hosted sample only when its deterministic
@@ -157,7 +161,7 @@ The frontend can continue with `/api/analysis/{analysis_id}/players`,
   results survive function restarts through the private frontend Blob binding.
   The default local filesystem mode persists under `data/runtime/analysis`.
 - Player intent and follow-up questions are not implemented.
-- Each selected player run coaches up to five distinct moments by default. Set
+- Each selected player run coaches up to ten distinct moments by default. Set
   `REDECIDE_ANALYSES_PER_PLAYER` to an integer from 1 to 10 to change the quota.
   Results expose an additive `analyses` array; `selected_decision` and
   `coach_analysis` remain aliases for the first entry.

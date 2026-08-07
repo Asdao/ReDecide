@@ -45,6 +45,15 @@ def test_default_analysis_log_dir_uses_vercel_tmp(
     assert service.log_dir.is_dir()
 
 
+def test_default_analysis_quota_is_ten(monkeypatch: Any) -> None:
+    orchestration = importlib.import_module("backend.app.orchestration")
+    monkeypatch.delenv("REDECIDE_ANALYSES_PER_PLAYER", raising=False)
+
+    service = orchestration.AnalysisService()
+
+    assert service.analyses_per_player == 10
+
+
 def _load_client(tmp_path: Any) -> Any:
     """Return a TestClient for the application when the walking skeleton exists."""
 

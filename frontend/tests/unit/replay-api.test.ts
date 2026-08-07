@@ -173,7 +173,7 @@ describe("replay API adapter", () => {
     const unsubscribe = subscribeToAnalysisProgress(job.events_url, { onProgress });
     const source = FakeEventSource.instance;
 
-    expect(source?.url).toBe("http://127.0.0.1:8000/api/analysis/analysis-1/events");
+    expect(source?.url).toBe("/api/analysis/analysis-1/events");
     source?.emit("log", {
       analysis_id: "analysis-1",
       schema_version: "pipeline_progress_v1",
