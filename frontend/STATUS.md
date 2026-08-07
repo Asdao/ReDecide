@@ -26,9 +26,13 @@ or keyboard-focused action, with tan help text for upload and steel-blue help
 text for the secondary actions. The secondary hover fill now uses a single
 diagonal wipe without the earlier arrow-like edge. The product logo is a normal
 link to `/`, so activating it performs a fresh page navigation and clears all
-in-memory sample, upload, or processed-replay state. The document title is
-always `RE:DECIDE`; nested screens do not replace the browser-tab title with
-route-specific text.
+in-memory sample, upload, or processed-replay state. The browser-tab title uses
+the current one-word location followed by ` - RE:DECIDE`: Home, Samples,
+Replays, Replay, or Analysis.
+
+Unknown routes render a dedicated `404 - RE:DECIDE` page. It preserves the
+shared diagonal background and product top bar, centers an oversized orange
+404 with explanatory text, and provides a primary action back to the homepage.
 
 Backend samples and the processed replay catalog use query-backed browser history
 entries (`?view=samples` and `?view=showcase`). Browser Back returns to the

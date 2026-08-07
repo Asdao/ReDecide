@@ -219,6 +219,38 @@ a:focus-visible {
   line-height: 1.7;
 }
 
+.not-found-content {
+  width: min(100% - 2rem, 80rem);
+  min-height: calc(100svh - 5.5rem);
+  display: grid;
+  place-items: center;
+  margin: 0 auto;
+  padding: 3rem 0 5rem;
+  text-align: center;
+}
+
+.not-found-copy h1 {
+  margin: 0;
+  color: var(--accent);
+  font-family: var(--font-display);
+  font-size: clamp(10rem, 29vw, 24rem);
+  font-weight: 700;
+  letter-spacing: -0.055em;
+  line-height: 0.72;
+}
+
+.not-found-copy p {
+  margin: clamp(2.5rem, 6vw, 4rem) 0 1.75rem;
+  color: #d2d6db;
+  font-family: var(--font-interface);
+  font-size: clamp(1rem, 2vw, 1.25rem);
+  line-height: 1.6;
+}
+
+.not-found-home {
+  text-decoration: none;
+}
+
 .actions {
   display: flex;
   flex-wrap: wrap;
@@ -2067,9 +2099,12 @@ input[type="file"] {
   z-index: 2;
 }
 
+.event-track button.damage::before,
+.event-track button.death::before,
 .event-track button.coaching::before {
-  width: 8px;
-  box-shadow: 0 0 0 2px rgb(220 236 255 / 70%);
+  width: 6px;
+  height: 0.9rem;
+  box-shadow: none;
 }
 
 .timeline-caption i.damage {
