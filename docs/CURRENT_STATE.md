@@ -31,7 +31,7 @@ new upload; Inferno includes a saved coaching result.
   lifecycle as an uploaded replay.
 - The replay engine produces win-chance timelines and outcome-blind coaching
   evidence. A selected player may be analyzed repeatedly; the default quota is
-  five moments per player.
+  ten moments per player.
 - The viewer supports map-aware player positions, round selection, playback,
   scrubbing, speed controls, event markers, keyboard navigation, and a moment
   inspector.
@@ -96,3 +96,14 @@ new upload; Inferno includes a saved coaching result.
 - See [the API reference](../backend/app/API.md), [frontend status](../frontend/STATUS.md),
   and [deployment guide](VERCEL_DEPLOYMENT.md) for the current contracts and
   verification notes.
+
+## Latest maintenance verification
+
+On 2026-08-07, the frontend passed 138 Vitest tests, TypeScript, ESLint, and a
+production Next.js build. The optional agent harness passed 26 Vitest tests,
+TypeScript, and its production build. The repository dependency-policy check,
+both pnpm high-severity audits, and both uv lockfile checks passed. The Python
+suite passed 280 tests with 3 expected skips and no warnings when installed
+with the `test` extra. One skip covers the absent optional legacy Vercel SDK;
+two require a private processed-replay fixture that is not in this checkout.
+The OIDC service-binding deployment path remains covered.

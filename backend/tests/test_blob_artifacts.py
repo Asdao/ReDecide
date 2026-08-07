@@ -275,7 +275,10 @@ def test_service_binding_retries_transient_blob_put() -> None:
 def test_blob_store_passes_legacy_token_to_sdk(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import vercel.blob
+    vercel_blob = pytest.importorskip(
+        "vercel.blob",
+        reason="legacy-token coverage requires the optional Vercel Python SDK",
+    )
 
     captured: dict[str, str | None] = {}
 
@@ -285,7 +288,7 @@ def test_blob_store_passes_legacy_token_to_sdk(
 
     monkeypatch.setenv("BLOB_STORE_ID", "store_123")
     monkeypatch.setenv("BLOB_READ_WRITE_TOKEN", "legacy-token")
-    monkeypatch.setattr(vercel.blob, "BlobClient", FakeClient)
+    monkeypatch.setattr(vercel_blob, "BlobClient", FakeClient)
 
     BlobArtifactStore(prefix="replays")
 

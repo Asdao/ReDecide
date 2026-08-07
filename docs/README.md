@@ -23,7 +23,7 @@ explicitly use the legacy Pi coach (`REDECIDE_COACH_MODE=pi`).
 Run these commands from the repository root:
 
 ```powershell
-uv sync --extra full
+uv sync --extra full --extra test
 
 cd frontend
 pnpm install --frozen-lockfile
@@ -77,6 +77,13 @@ Backend - run from the repository root:
 
 ```powershell
 uv run uvicorn backend.app.main:app --env-file .env --reload --port 8000
+```
+
+Run the complete Python suite with the test extra so Starlette's current
+`httpx2` test-client transport is installed:
+
+```powershell
+uv run --extra full --extra test pytest -q
 ```
 
 Frontend - run in a second PowerShell window:

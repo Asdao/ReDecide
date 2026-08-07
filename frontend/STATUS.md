@@ -15,6 +15,9 @@ a deployment-aware private binding to the frontend. It uses that binding to
 obtain exact-operation, exact-path, five-minute Blob URLs for durable analysis
 and replay JSON; artifact bodies transfer directly between FastAPI and Blob.
 Local development remains filesystem-backed unless explicitly opted into Blob.
+The backend service now applies a 300-second maximum duration to Python
+functions so replay parsing and coaching are not constrained by shorter legacy
+defaults; the effective ceiling remains plan-dependent.
 
 Public Blob artifact reads now receive a unique cache-busting query parameter
 from the internal signer. This prevents an overwritten analysis `state.json`
@@ -423,10 +426,9 @@ synced.
 
 The Blob player-selection consistency fix was checked with 9 passing frontend
 signer-route tests, 2 passing focused Python service-binding tests, and a
-passing TypeScript check. The broader Python Blob test file reported 11 passes
-and one environment-only failure because the optional `vercel` Python SDK is
-not installed by the repository's `test` extra; that failure does not exercise
-the service-binding path used by the OIDC deployment.
+passing TypeScript check. The legacy-token Blob test is explicitly skipped
+when the optional `vercel` Python SDK is absent. The service-binding path used
+by the OIDC deployment remains covered without that optional package.
 
 The cache/retention change also passed 21 focused Python regression tests,
 covering sample-cache reuse and invalidation, source digest rejection, analysis
@@ -434,7 +436,7 @@ preparation behavior, and safe/internal exception logging.
 
 From `frontend/`, the latest checks report:
 
-- Vitest: 13 files and 133 tests collected; all 133 passed, including the
+- Vitest: 13 files and 138 tests collected; all 138 passed, including the
   authenticated retention, expiration, pinning, dry-run, and safe-failure cases.
 - TypeScript: passed
 - ESLint: passed with no warnings
@@ -442,6 +444,11 @@ From `frontend/`, the latest checks report:
   mode; `/` and `/_not-found` prerendered, with `/analysis`,
   `/api/blob/upload`, `/api/blob/cleanup`, `/api/cron/blob-retention`, and the private
   `/service-internal/blob-artifacts` signer rendered on demand
+
+The repository-wide Python suite also passed 280 tests with 3 expected skips
+and no warnings after installing the root `test` extra, which now includes
+Starlette's preferred `httpx2` test transport. One skip needs the optional
+legacy Vercel SDK; two need a private processed-replay fixture.
 
 Browser verification against the documented sample responses confirmed:
 

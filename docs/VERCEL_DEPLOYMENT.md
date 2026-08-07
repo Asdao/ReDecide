@@ -4,6 +4,8 @@ The repository is configured as a Vercel Services project. The root
 `vercel.json` defines a Next.js `frontend` service, a FastAPI `backend` service,
 ordered `/api` rewrites, and a private service binding used for durable Blob
 artifacts. Deploy from the repository root so Vercel reads that configuration.
+The Vercel project itself must also have its framework setting set to
+**Services**.
 
 ## Current readiness
 
@@ -26,6 +28,12 @@ The frontend service uses Node 24 and pnpm 11:
 | Node.js version | `24.x` |
 | Package manager | pnpm 11 |
 
+The backend service applies `maxDuration: 300` to `**/*.py`. This gives replay
+import/parsing and the documented coaching wait a bounded five-minute window
+when the selected Vercel plan supports it. Vercel still enforces the plan's
+maximum, so confirm the effective value in the deployed Function settings and
+runtime logs.
+
 Before deployment, run from `frontend/`:
 
 ```bash
@@ -35,11 +43,8 @@ pnpm run lint
 pnpm run build
 ```
 
-The current frontend status records one known Vitest mismatch: the SSE adapter
-test still expects the old absolute backend URL, while the implementation now
-uses same-origin `/api` in a Vercel Services deployment. TypeScript, ESLint,
-and the production build pass; update that test expectation before requiring a
-fully green `pnpm run verify` gate.
+The latest local `pnpm run verify` gate passes: 138 Vitest tests, TypeScript,
+ESLint, and the Next.js 16.2.12 production build.
 
 ## Environment variables
 
@@ -57,6 +62,12 @@ credentials must remain server-only; never put a Blob token or provider key in
 a `NEXT_PUBLIC_*` variable. The Blob upload path accepts `.dem` files up to
 1 GB, stores temporary objects under a randomized `uploads/` prefix, and
 deletes the raw object after a validated successful import.
+
+Do not use direct multipart upload for a typical replay on Vercel. Vercel
+Functions currently limit request and response bodies to 4.5 MB, so production
+replays must upload directly to Blob and then use the disabled-by-default
+import route. The 1 GB application limit does not override platform, plan,
+execution-duration, storage, or bandwidth limits.
 
 Set a long random `CRON_SECRET` for the server-side retention job. Vercel Cron
 sends it as `Authorization: Bearer <secret>`; the route fails closed if the
@@ -110,7 +121,9 @@ it to request narrowly scoped, short-lived Blob URLs for durable artifacts.
 ## Deployment checklist
 
 - [ ] Deploy from the repository root with the root `vercel.json`.
+- [ ] Set the Vercel project framework to **Services**.
 - [ ] Confirm Node 24 and pnpm 11 are selected for the frontend service.
+- [ ] Confirm the backend Python functions show a 300-second maximum duration.
 - [ ] Run the frontend typecheck, lint, and production build locally.
 - [ ] Set `NEXT_PUBLIC_REPLAY_UPLOAD_MODE=blob` only when public Blob upload is
       intentionally enabled.
@@ -126,11 +139,19 @@ it to request narrowly scoped, short-lived Blob URLs for durable artifacts.
 - [ ] Add authentication or platform-level protection before exposing public
       upload routes to untrusted users.
 
+The configuration was checked against Vercel's live `vercel.json` schema and
+current Services documentation on 2026-08-07. This verifies the configuration
+shape, not a deployment: environment bindings, Blob access, provider calls,
+function duration, and the hosted end-to-end flow still require dashboard and
+runtime smoke tests.
+
 ## References
 
 - [Current product state](CURRENT_STATE.md)
 - [Backend API](../backend/app/API.md)
 - [Frontend status](../frontend/STATUS.md)
 - [Vercel Services configuration](../vercel.json)
+- [Vercel Services documentation](https://vercel.com/docs/services)
+- [Vercel Functions limits](https://vercel.com/docs/functions/limitations)
 - [Next.js deployment](https://nextjs.org/docs/app/getting-started/deploying)
 - [Next.js environment variables](https://nextjs.org/docs/pages/guides/environment-variables)

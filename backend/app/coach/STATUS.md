@@ -1,6 +1,6 @@
 # AI Coach and Reliability Status
 
-Last verified: 2026-08-04 (Asia/Singapore)
+Last verified: 2026-08-07 (Asia/Singapore)
 
 Owner: Person 3 - AI Coach, Rubric, and Reliability
 
@@ -392,6 +392,11 @@ uv run pytest backend/tests/test_pi_connector.py backend/tests/test_analysis_api
 Result: 18 passed on 2026-08-04. A separate synthetic, replay-free provider
 request also confirmed that the configured DeepSeek endpoint and key can
 respond; no secret value was printed or recorded.
+
+Repository-wide maintenance validation on 2026-08-07 passed 280 Python tests
+with 3 expected skips and no warnings (one optional legacy Vercel-SDK check and
+two private processed-replay-fixture checks). No live provider call was made
+during this maintenance run.
 
 The user-facing Replay Engine smoke runner is:
 

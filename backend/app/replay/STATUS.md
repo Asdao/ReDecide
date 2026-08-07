@@ -1,6 +1,6 @@
 # Replay Pipeline Status
 
-Last verified: 2026-08-04 (Asia/Singapore)
+Last verified: 2026-08-07 (Asia/Singapore)
 
 Owner: Person 2 - CS2 Replay Data and Decision Detection
 
@@ -86,6 +86,12 @@ Result: 13 tests passed on 2026-08-04. This covers one-time `.dem` parsing,
 the shared `visualization.json`/`coaching.json` artifacts, player-first
 preparation, and unlocking full visualization JSON only after coaching.
 
+Repository-wide maintenance validation on 2026-08-07 passed 280 Python tests
+with 3 expected skips and no warnings. One skip needs the optional legacy
+Vercel SDK; two need the absent private processed-replay fixture. The run
+includes the replay pipeline, ingestion, API, Blob storage, and Vercel
+entrypoint suites.
+
 Required coverage includes deterministic output, unique evidence IDs, cutoff
 ticks, forbidden outcome keys, stable player/round selection, missing-field
 warnings, and typed invalid-demo errors.
@@ -109,7 +115,7 @@ warnings, and typed invalid-demo errors.
 ## Contract/API impact
 
 The pipeline result remains authoritative and outcome-blind. Each selected-player
-run now sends up to five diverse decision candidates to the coach in one bounded
+run now sends up to ten diverse decision candidates to the coach in one bounded
 request (configurable with `REDECIDE_ANALYSES_PER_PLAYER`, clamped to 1-10).
 The merged UI mapping exposes an additive `analyses` array of selected-decision /
 coaching pairs plus `summary.analysis_count`; `selected_decision` and
