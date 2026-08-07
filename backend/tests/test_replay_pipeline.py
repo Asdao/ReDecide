@@ -8,6 +8,7 @@ from backend.app.replay.pipeline import (
     merge_pi_output,
     stream_replay_pipeline,
 )
+from backend.app.orchestration import _select_diverse_candidates
 from backend.replay_engine.harness import load_replay_record
 
 
@@ -164,6 +165,7 @@ class ReplayPipelineTests(unittest.TestCase):
         replay = load_replay_record(_processed_replay(self))
         result = list(stream_replay_pipeline(replay, max_timeline_points=4))[-1]["result"]
         candidate = result["decision_candidates"][0]
+        result["selected_decisions"] = [candidate]
 
         merged = merge_pi_output(
             result,
@@ -180,7 +182,21 @@ class ReplayPipelineTests(unittest.TestCase):
         self.assertEqual(merged["coach_analysis"]["source"], "pi")
         self.assertEqual(merged["selected_decision"]["decision_id"], candidate["decision_id"])
         self.assertEqual(merged["selected_decision"]["player_name"], candidate["display_name"])
+        self.assertNotIn("selected_decisions", merged)
         self.assertNotIn("coach_analysis", result)
+
+    def test_multi_analysis_selection_spans_the_candidate_range(self) -> None:
+        candidates = [
+            {"decision_id": f"r{round_number}", "round_number": round_number}
+            for round_number in range(1, 25)
+        ]
+
+        selected = _select_diverse_candidates(candidates, limit=5)
+
+        self.assertEqual(
+            [item["round_number"] for item in selected],
+            [1, 6, 12, 18, 24],
+        )
 
 
 if __name__ == "__main__":

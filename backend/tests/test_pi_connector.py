@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from copy import deepcopy
 from pathlib import Path
 import subprocess
 import tempfile
@@ -175,6 +176,57 @@ class PiCoachAdapterTests(unittest.TestCase):
         )
         with self.assertRaises(PiCoachError):
             adapter(_pipeline_result())
+
+    def test_batches_multiple_selected_decisions_and_normalizes_analyses(self) -> None:
+        pipeline = _pipeline_result()
+        second = deepcopy(pipeline["selected_decision"])
+        second.update(
+            {
+                "decision_id": "r2:psteam-secret:t364",
+                "round_number": 2,
+                "decision_open_tick": 364,
+                "contact_tick": 364,
+                "action_close_tick": 524,
+            }
+        )
+        pipeline["selected_decisions"] = [pipeline["selected_decision"], second]
+        captured: dict = {}
+
+        def runner(command, **kwargs):
+            captured.update(kwargs)
+            return subprocess.CompletedProcess(
+                command,
+                0,
+                stdout=json.dumps(
+                    {
+                        "analyses": [
+                            {
+                                "decision_id": "decision_001",
+                                "what_could_be_done_better": "Reset behind cover.",
+                            },
+                            {
+                                "decision_id": "decision_002",
+                                "what_could_be_done_better": "Clear the angle first.",
+                            },
+                        ]
+                    }
+                ),
+                stderr="",
+            )
+
+        adapter = PiCoachAdapter(
+            repository_root=Path(__file__).parents[2],
+            node_executable="node",
+            runner=runner,
+        )
+        response = json.loads(adapter(pipeline))
+
+        self.assertEqual([item["decision_id"] for item in response["analyses"]], [
+            "decision_001",
+            "decision_002",
+        ])
+        self.assertIn('"decisions":[', captured["input"])
+        self.assertIn('"decision_id":"decision_002"', captured["input"])
 
 
 class HttpCoachAdapterTests(unittest.TestCase):

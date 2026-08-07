@@ -218,4 +218,35 @@ describe("uploaded replay contracts", () => {
       }),
     ).toThrow("selected decision must match a returned decision candidate");
   });
+
+  it("accepts additive multi-moment coaching entries and keeps singular aliases", () => {
+    const secondCandidate = {
+      ...candidate,
+      decision_id: "decision-2",
+      contact_tick: 80,
+      decision_open_tick: 80,
+      action_close_tick: 90,
+      round_number: 2,
+    };
+    const multi = replayAnalysisResultSchema.parse({
+      ...result,
+      decision_candidates: [candidate, secondCandidate],
+      analyses: [
+        { selected_decision: candidate, coach_analysis: result.coach_analysis },
+        {
+          selected_decision: secondCandidate,
+          coach_analysis: {
+            ...result.coach_analysis,
+            decision_id: "decision-2",
+            what_could_be_done_better: "Clear the angle before re-peeking.",
+          },
+        },
+      ],
+      summary: { ...result.summary, analysis_count: 2 },
+    });
+
+    expect(multi.analyses).toHaveLength(2);
+    expect(multi.selected_decision.decision_id).toBe("decision-1");
+    expect(multi.coach_analysis.decision_id).toBe("decision-1");
+  });
 });

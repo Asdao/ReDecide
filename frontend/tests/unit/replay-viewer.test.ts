@@ -262,6 +262,35 @@ describe("processed replay viewer", () => {
     ]);
   });
 
+  it("renders every analysed decision as its own timeline marker", () => {
+    const analysis = replayAnalysisResultSchema.parse(JSON.parse(readFileSync(
+      resolve(process.cwd(), "public/replays/inferno-processed.analysis.json"),
+      "utf8",
+    )));
+    const first = {
+      selected_decision: analysis.selected_decision,
+      coach_analysis: analysis.coach_analysis,
+    };
+    const second = {
+      selected_decision: {
+        ...analysis.selected_decision,
+        decision_id: "decision-second",
+        round_number: analysis.selected_decision.round_number + 1,
+        contact_tick: analysis.selected_decision.contact_tick + 100,
+      },
+      coach_analysis: {
+        ...analysis.coach_analysis,
+        decision_id: "decision-second",
+        what_could_be_done_better: "Take a safer follow-up angle.",
+      },
+    };
+    const multi = { ...analysis, analyses: [first, second] };
+
+    expect(analysisTimelineEvents([], analysis.selected_decision.player_id, multi)).toHaveLength(2);
+    expect(analysisTimelineEvents([], analysis.selected_decision.player_id, multi).map(({ tick }) => tick))
+      .toEqual([first.selected_decision.contact_tick, second.selected_decision.contact_tick]);
+  });
+
   it("labels 100 damage as death and removes its duplicate kill marker", () => {
     const events = [
       {

@@ -722,32 +722,23 @@ def _analysis_count_from_env() -> int:
 def _select_diverse_candidates(
     candidates: list[Mapping[str, Any]], *, limit: int
 ) -> list[dict[str, Any]]:
-    """Select moments across rounds before filling remaining slots chronologically."""
+    """Select chronologically ordered moments spread across the match."""
 
     if limit <= 0:
         return []
     ordered = [dict(item) for item in candidates]
-    selected: list[dict[str, Any]] = []
-    used_rounds: set[int] = set()
-    for candidate in ordered:
-        try:
-            round_number = int(candidate.get("round_number"))
-        except (TypeError, ValueError):
-            round_number = -1
-        if round_number in used_rounds:
-            continue
-        selected.append(candidate)
-        used_rounds.add(round_number)
-        if len(selected) >= limit:
-            return selected
-    seen = {str(item.get("decision_id")) for item in selected}
-    for candidate in ordered:
-        if str(candidate.get("decision_id")) in seen:
-            continue
-        selected.append(candidate)
-        if len(selected) >= limit:
-            break
-    return selected
+    if len(ordered) <= limit:
+        return ordered
+    if limit == 1:
+        return [ordered[0]]
+
+    # Candidate order is chronological for a player. Choosing evenly spaced
+    # indices covers the opening, middle, and closing portions of the match.
+    last_index = len(ordered) - 1
+    return [
+        ordered[(position * last_index) // (limit - 1)]
+        for position in range(limit)
+    ]
 
 
 __all__ = [

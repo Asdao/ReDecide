@@ -261,6 +261,8 @@ export const replayAnalysisResultSchema = z
     decision_candidates: z.array(analysisCandidateSchema),
     selected_decision: analysisCandidateSchema,
     coach_analysis: coachingAnalysisSchema,
+    // Backend emits this top-level convenience count alongside summary.analysis_count.
+    analysis_count: nonnegativeInteger.optional(),
     // New multi-moment payload. Keep this optional so previously persisted
     // single-moment results remain valid while the backend rolls out aliases.
     analyses: z.array(replayAnalysisEntrySchema).optional(),

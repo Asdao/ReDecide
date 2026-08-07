@@ -20,7 +20,6 @@ import {
   playerDisplayName,
   radarOverviewForMap,
   replayEventIsDeath,
-  replayAnalysisEntries,
   roundAtTick,
   winProbabilityAtMoment,
   winRateForPerspective,
@@ -175,10 +174,6 @@ export function ReplayAnalysisScreen({
     [analysis, replay, selectedPlayerId],
   );
   const selectedEvent = timelineEvents.find(({ event_id }) => event_id === selectedEventId);
-  const analysisEntries = useMemo(
-    () => (analysis ? replayAnalysisEntries(analysis) : []),
-    [analysis],
-  );
   const analysisByEventId = useMemo(
     () => new Map(
       timelineEvents.flatMap((event) => {
@@ -801,7 +796,7 @@ export function ReplayAnalysisScreen({
           <div className="timeline-caption">
             <span><i className="damage" />Damage</span>
             <span><i className="death" />Death</span>
-            {analysisEntries.length > 0 ? <span><i className="coaching" />{analysisEntries.length === 1 ? "Analysis" : `${analysisEntries.length} analyses`}</span> : null}
+            {analysedEvents.length > 0 ? <span><i className="coaching" />{analysedEvents.length === 1 ? "Analysis" : `${analysedEvents.length} analyses`}</span> : null}
             <span>Tick {Math.round(currentTick)}</span>
           </div>
         </section>

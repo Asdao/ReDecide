@@ -108,10 +108,13 @@ warnings, and typed invalid-demo errors.
 
 ## Contract/API impact
 
-The existing pipeline result is unchanged. When a coach response is merged, the
-returned UI mapping gains `selected_decision.player_name` and a
-`coach_analysis` object containing the original decision/player identity and
-the model's full-sentence coaching fields. The source replay is read-only.
+The pipeline result remains authoritative and outcome-blind. Each selected-player
+run now sends up to five diverse decision candidates to the coach in one bounded
+request (configurable with `REDECIDE_ANALYSES_PER_PLAYER`, clamped to 1-10).
+The merged UI mapping exposes an additive `analyses` array of selected-decision /
+coaching pairs plus `summary.analysis_count`; `selected_decision` and
+`coach_analysis` remain aliases for the first pair so existing clients continue
+to work. The source replay is read-only.
 
 ## Next work
 

@@ -144,6 +144,9 @@ def merge_pi_output(
     """
 
     result = dict(pipeline_result)
+    # This is an internal provider-input field. The public contract exposes
+    # the enriched `analyses` array instead.
+    result.pop("selected_decisions", None)
     payload = _decode_pi_output(pi_output)
     raw_analyses = payload.get("analyses")
     if isinstance(raw_analyses, list):

@@ -377,6 +377,16 @@ folder on `raw.githubusercontent.com` for non-bundled future maps.
 
 ## Verification
 
+The local-development hardening was verified on Windows with Node 24.19.0 and
+pnpm 11.9.0. The environment doctor, focused ESLint check, TypeScript check,
+frozen-lockfile dry run, real frozen install, and Next.js 16.2.12 Turbopack
+production build all passed. A clean development run through
+`http://127.0.0.1:3000` rendered without an error overlay or browser console
+errors; activating `Use a sample match` navigated to `?view=samples` and
+rendered the live backend catalog. The earlier dev-origin warning and pnpm
+workspace-structure warning did not recur after the project settings were
+synced.
+
 The Blob player-selection consistency fix was checked with 9 passing frontend
 signer-route tests, 2 passing focused Python service-binding tests, and a
 passing TypeScript check. The broader Python Blob test file reported 11 passes
