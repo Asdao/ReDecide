@@ -15,6 +15,7 @@ from backend.app.coach.pi_connector import (
     HttpCoachAdapter,
     PiCoachAdapter,
     PiCoachError,
+    PiCoachTimeoutError,
     build_coach_prompt,
 )
 
@@ -338,13 +339,19 @@ class HttpCoachAdapterTests(unittest.TestCase):
         )
 
     def test_timeout_and_network_errors_are_safe_pi_errors(self):
-        for error in (httpx.ReadTimeout("timed out"), httpx.ConnectError("offline")):
-            with self.subTest(type=type(error).__name__):
-                def handler(request: httpx.Request, error=error) -> httpx.Response:
-                    raise error
+        def timeout_handler(_request: httpx.Request) -> httpx.Response:
+            raise httpx.ReadTimeout("timed out")
 
-                with self.assertRaisesRegex(PiCoachError, "HTTP coaching provider failed"):
-                    self._adapter(handler, timeout_seconds=1)(_pipeline_result())
+        with self.assertRaisesRegex(
+            PiCoachTimeoutError, "HTTP coaching provider failed"
+        ):
+            self._adapter(timeout_handler, timeout_seconds=1)(_pipeline_result())
+
+        def network_handler(_request: httpx.Request) -> httpx.Response:
+            raise httpx.ConnectError("offline")
+
+        with self.assertRaisesRegex(PiCoachError, "HTTP coaching provider failed"):
+            self._adapter(network_handler, timeout_seconds=1)(_pipeline_result())
 
     def test_provider_http_error_is_not_leaked(self):
         def handler(request: httpx.Request) -> httpx.Response:

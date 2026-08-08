@@ -1,35 +1,96 @@
-"""Intent coaching engine for evaluating player decisions against subjective intent.
+"""Outcome-blind coaching for a player's stated intent.
 
-This engine operates independently from baseline decision coaching. It enforces:
-1. Temporal bounding: Evidence is strictly restricted to facts known on or before
-   decision_open_tick, discarding post-decision facts or round outcomes.
-2. Subjective intent: Player intent is treated as a post-hoc explanation rather
-   than confirmed factual replay telemetry.
-3. Transport reuse: Delegates LLM execution to PiCoachAdapter.
-4. Transparency / Anti-hallucination: Validates facts_referenced against actual
-   pre-decision evidence IDs and filters out unsupported references.
+The engine is deliberately a domain boundary rather than a second replay
+parser.  Its caller supplies an already parsed, player-scoped analysis result;
+the engine selects the exact requested decision, projects only evidence known
+at that decision's opening tick, and validates the model response against that
+evidence.
 """
 
 from __future__ import annotations
 
 from collections.abc import Mapping
 import json
-import logging
-from typing import Any
+from typing import Any, Protocol
 
-from backend.app.coach.pi_connector import PiCoachAdapter, PiCoachError, _integer
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
+
+from backend.app.coach.pi_connector import PiCoachError
 from backend.app.replay.pipeline import _decode_pi_output
-
-logger = logging.getLogger(__name__)
 
 MAX_PROMPT_BYTES = 64 * 1024
 
 
-class IntentCoachingEngine:
-    """Engine for analyzing player intent against pre-decision evidence."""
+class IntentCoachingError(RuntimeError):
+    """Base class for failures at the intent-coaching domain boundary."""
 
-    def __init__(self, coach_adapter: PiCoachAdapter | None = None) -> None:
-        self.coach_adapter = coach_adapter or PiCoachAdapter()
+
+class IntentDecisionNotFoundError(IntentCoachingError):
+    """The requested decision does not belong to the requested player."""
+
+
+class IntentInsufficientEvidenceError(IntentCoachingError):
+    """The replay does not contain enough bounded evidence to coach safely."""
+
+
+class IntentProviderUnavailableError(IntentCoachingError):
+    """The configured language-model provider could not produce a response."""
+
+
+class IntentProviderTimeoutError(IntentProviderUnavailableError):
+    """The configured language-model provider exceeded its time limit."""
+
+
+class IntentMalformedOutputError(IntentCoachingError):
+    """The provider output did not satisfy the grounded response contract."""
+
+
+class PromptProvider(Protocol):
+    """Small provider seam shared by the Pi and HTTP adapters."""
+
+    def run_prompt(self, prompt: str) -> str | Mapping[str, Any]: ...
+
+
+class _IntentModelOutput(BaseModel):
+    """Strict shape required from the language model."""
+
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+    intent_feasibility: str = Field(min_length=1)
+    coordination_gap: str = Field(min_length=1)
+    recommended_cs2_adjustment: str = Field(min_length=1)
+    in_depth_coaching: str = Field(min_length=1)
+    facts_referenced: list[str] = Field(min_length=1)
+
+    @field_validator(
+        "intent_feasibility",
+        "coordination_gap",
+        "recommended_cs2_adjustment",
+        "in_depth_coaching",
+    )
+    @classmethod
+    def text_must_not_be_blank(cls, value: str) -> str:
+        cleaned = value.strip()
+        if not cleaned:
+            raise ValueError("text fields cannot be blank")
+        return cleaned
+
+    @field_validator("facts_referenced")
+    @classmethod
+    def facts_must_be_unique_and_nonblank(cls, value: list[str]) -> list[str]:
+        cleaned = [item.strip() for item in value]
+        if any(not item for item in cleaned):
+            raise ValueError("facts_referenced cannot contain blank IDs")
+        if len(cleaned) != len(set(cleaned)):
+            raise ValueError("facts_referenced IDs must be unique")
+        return cleaned
+
+
+class IntentCoachingEngine:
+    """Evaluate one stated intent using evidence known at one exact decision."""
+
+    def __init__(self, coach_adapter: PromptProvider | None = None) -> None:
+        self.coach_adapter = coach_adapter
 
     def evaluate_intent(
         self,
@@ -38,85 +99,43 @@ class IntentCoachingEngine:
         player_id: str | None = None,
         decision_id: str | None = None,
     ) -> dict[str, Any]:
-        """Evaluate player intent using strictly pre-decision evidence."""
+        """Return grounded coaching or raise a typed, fail-closed exception."""
 
-        clean_intent = user_intent.strip()
+        clean_intent = str(user_intent).strip()
+        if not clean_intent:
+            raise IntentInsufficientEvidenceError("player intent cannot be blank")
+
         selected, valid_evidence_ids, open_tick = self._extract_decision_context(
-            pipeline_result, decision_id=decision_id, player_id=player_id
+            pipeline_result,
+            decision_id=decision_id,
+            player_id=player_id,
         )
-
-        score = self.calculate_feasibility_score(selected, clean_intent, valid_evidence_ids)
-
         prompt = self.build_intent_prompt(selected, clean_intent, open_tick)
 
-        # Attempt execution via PiCoachAdapter
+        if self.coach_adapter is None:
+            raise IntentProviderUnavailableError("intent coaching provider is not configured")
+
         try:
             raw_response = self.coach_adapter.run_prompt(prompt)
-            payload = _decode_pi_output(raw_response)
-            if "in_depth_coaching" in payload:
-                facts_raw = payload.get("facts_referenced", [])
-                if not isinstance(facts_raw, list):
-                    facts_raw = []
-                validated_facts = self._validate_and_filter_facts(facts_raw, valid_evidence_ids)
-                raw_feasibility = str(
-                    payload.get("intent_feasibility", "Moderate risk given pre-engagement positions")
-                )
-                formatted_feasibility = f"Score {int(score * 100)}/100 — {raw_feasibility}"
+        except Exception as exc:
+            if _is_timeout(exc):
+                raise IntentProviderTimeoutError("intent coaching provider timed out") from exc
+            raise IntentProviderUnavailableError(
+                "intent coaching provider is unavailable"
+            ) from exc
 
-                return {
-                    "user_intent": clean_intent,
-                    "intent_feasibility": formatted_feasibility,
-                    "coordination_gap": str(
-                        payload.get("coordination_gap", "Unconfirmed assumption about teammate position")
-                    ),
-                    "recommended_cs2_adjustment": str(
-                        payload.get(
-                            "recommended_cs2_adjustment", "Wait for utility setup or explicit callout"
-                        )
-                    ),
-                    "in_depth_coaching": str(payload["in_depth_coaching"]),
-                    "knowledge_cutoff_tick": open_tick,
-                    "facts_referenced": validated_facts,
-                }
-        except (PiCoachError, OSError, ValueError) as exc:
-            logger.warning("Pi intent coaching fallback invoked: %s", exc)
-
-        # Grounded offline fallback logic
-        return self._offline_fallback(clean_intent, open_tick, valid_evidence_ids, score=score)
-
-    def calculate_feasibility_score(
-        self,
-        selected: Mapping[str, Any],
-        user_intent: str,
-        valid_evidence_ids: set[str],
-    ) -> float:
-        """Calculate a quantitative feasibility score (0.0 to 1.0) based on pre-decision telemetry."""
-        base_score = 0.50
-
-        raw_evidence = selected.get("known_before_decision", [])
-        if isinstance(raw_evidence, list):
-            for item in raw_evidence:
-                if not isinstance(item, Mapping):
-                    continue
-                category = str(item.get("category", "")).lower()
-                statement = str(item.get("statement", "")).lower()
-                ev_id = str(item.get("evidence_id", "")).lower()
-
-                if "utility" in category or "flash" in statement or "smoke" in statement:
-                    base_score += 0.15
-                if "support" in statement or "trade" in statement or "teammate" in category:
-                    base_score += 0.15
-                if "isolated" in statement or "no_support" in ev_id or "exposed" in statement:
-                    base_score -= 0.15
-                if "opponent_angle_hold" in ev_id or "enemy_advantage" in statement:
-                    base_score -= 0.10
-
-        clean_intent_lower = user_intent.lower()
-        if any(w in clean_intent_lower for w in ["swing", "entry", "push", "rush"]):
-            if "displacement_below_threshold" in valid_evidence_ids:
-                base_score -= 0.10
-
-        return max(0.05, min(0.95, round(base_score, 2)))
+        output = self._validate_model_output(raw_response, valid_evidence_ids)
+        return {
+            "decision_id": str(selected["decision_id"]),
+            "player_id": str(selected["player_id"]),
+            "user_intent": clean_intent,
+            "intent_feasibility": output.intent_feasibility,
+            "coordination_gap": output.coordination_gap,
+            "recommended_cs2_adjustment": output.recommended_cs2_adjustment,
+            "in_depth_coaching": output.in_depth_coaching,
+            "knowledge_cutoff_tick": open_tick,
+            "facts_referenced": output.facts_referenced,
+        }
 
     def build_intent_prompt(
         self,
@@ -124,38 +143,66 @@ class IntentCoachingEngine:
         user_intent: str,
         open_tick: int,
     ) -> str:
-        """Construct the prompt enforcing outcome-blindness and intent subjectivity."""
+        """Build a compact prompt containing only the bounded evidence projection."""
 
-        observed_action = selected.get("observed_action", "UNCLASSIFIED")
-        if isinstance(observed_action, Mapping):
-            observed_action = observed_action.get("label") or observed_action.get("description", "UNCLASSIFIED")
+        evidence = selected.get("known_before_decision")
+        known_events = selected.get("_intent_known_events")
+        if not isinstance(evidence, list) or not isinstance(known_events, list):
+            raise IntentInsufficientEvidenceError(
+                "intent context has not been bounded and validated"
+            )
+
+        player_id = str(selected.get("player_id") or "")
+        opponent_id = str(selected.get("opponent_id") or "")
+        aliases = {player_id: "player_01"}
+        if opponent_id and opponent_id != player_id:
+            aliases[opponent_id] = "player_02"
 
         bounded_payload = {
-            "decision_id": selected.get("decision_id", "decision_001"),
-            "decision_open_tick": open_tick,
-            "observed_action": str(observed_action),
-            "known_before_decision": selected.get("known_before_decision", []),
+            "schema_version": "intent_coach_input_v1",
+            "decision": {
+                # The provider never needs the raw Steam ID embedded in the
+                # product decision ID; the API response restores it outside
+                # this model-visible payload.
+                "decision_id": "decision_001",
+                "round_number": selected.get("round_number"),
+                "player_id": "player_01",
+                "side": selected.get("side"),
+                "role": selected.get("role"),
+                "event_category": selected.get("event_category"),
+                "decision_open_tick": open_tick,
+                "contact_tick": selected.get("contact_tick"),
+                "opponent_id": aliases.get(opponent_id, "unknown"),
+            },
+            "known_before_decision": _anonymize(evidence, aliases),
+            "known_events": _anonymize(known_events, aliases),
+            "knowledge_cutoff_tick": open_tick,
+            "limitations": [
+                "The intent is a subjective player statement, not replay telemetry.",
+                "Voice communications and unobserved information are unavailable.",
+                "No event after knowledge_cutoff_tick is available.",
+            ],
         }
 
         prompt = (
-            "You are an expert outcome-blind Counter-Strike 2 (CS2) tactical coach.\n"
-            "CRITICAL INSTRUCTIONS:\n"
-            "1. Evaluate the player's decision using ONLY evidence known BEFORE or AT decision_open_tick.\n"
-            "2. Treat PLAYER_INTENT as the player's subjective post-hoc explanation, NOT as confirmed factual telemetry.\n"
-            "3. Do not infer future events, round outcome, or unobserved player communications.\n"
-            "4. Referenced facts in facts_referenced MUST correspond to evidence_ids provided in known_before_decision.\n\n"
-            f'PLAYER_INTENT: "{user_intent}"\n'
-            f"DECISION_CONTEXT={json.dumps(bounded_payload, ensure_ascii=True, separators=(',', ':'))}\n\n"
-            "Return ONLY a JSON object with exactly these fields:\n"
-            '{"intent_feasibility": string, "coordination_gap": string, '
-            '"recommended_cs2_adjustment": string, "in_depth_coaching": string, '
-            '"facts_referenced": array_of_strings}\n'
-            "Ensure in_depth_coaching provides a thorough tactical evaluation."
+            "You are an outcome-blind Counter-Strike 2 tactical coach.\n"
+            "Use only the JSON evidence supplied below. Do not infer later kills, "
+            "deaths, the round winner, the match result, voice communication, or "
+            "any fact not represented by an evidence_id. Treat PLAYER_INTENT as a "
+            "subjective post-hoc explanation, not confirmed telemetry. Every entry "
+            "in facts_referenced must be one of the supplied evidence_id values.\n"
+            f"PLAYER_INTENT={json.dumps(user_intent, ensure_ascii=True)}\n"
+            "DECISION_CONTEXT="
+            f"{json.dumps(bounded_payload, ensure_ascii=True, separators=(',', ':'))}\n"
+            "Return ONLY one JSON object with exactly these fields: "
+            '{"intent_feasibility":string,"coordination_gap":string,'
+            '"recommended_cs2_adjustment":string,"in_depth_coaching":string,'
+            '"facts_referenced":array_of_evidence_id_strings}'
         )
-
         if len(prompt.encode("utf-8")) > MAX_PROMPT_BYTES:
-            raise PiCoachError("Intent coaching prompt exceeds bounded size limit")
-
+            raise IntentInsufficientEvidenceError(
+                "bounded intent context exceeds the provider size limit"
+            )
         return prompt
 
     def _extract_decision_context(
@@ -165,182 +212,186 @@ class IntentCoachingEngine:
         decision_id: str | None = None,
         player_id: str | None = None,
     ) -> tuple[dict[str, Any], set[str], int]:
-        """Filter evidence strictly to ticks <= decision_open_tick and collect valid evidence IDs."""
+        """Select the exact decision and retain only facts at/before its cutoff."""
 
-        raw_selected = pipeline_result.get("selected_decision")
-        selected = dict(raw_selected) if isinstance(raw_selected, Mapping) else {}
-        if not selected and "decision_candidates" in pipeline_result:
-            candidates = pipeline_result["decision_candidates"]
-            if isinstance(candidates, list) and candidates:
-                for candidate in candidates:
-                    if isinstance(candidate, Mapping):
-                        if decision_id and str(candidate.get("decision_id")) == decision_id:
-                            selected = dict(candidate)
-                            break
-                        if player_id and str(candidate.get("player_id")) == player_id:
-                            selected = dict(candidate)
-                            break
-                if not selected and isinstance(candidates[0], Mapping):
-                    selected = dict(candidates[0])
+        requested_decision = str(decision_id or "").strip()
+        requested_player = str(player_id or "").strip()
+        if not requested_decision or not requested_player:
+            raise IntentDecisionNotFoundError(
+                "both decision_id and player_id are required for intent coaching"
+            )
 
-        open_tick = _integer(selected.get("decision_open_tick"), 0)
+        selected: dict[str, Any] | None = None
+        for candidate in _decision_candidates(pipeline_result):
+            if (
+                str(candidate.get("decision_id") or "") == requested_decision
+                and str(candidate.get("player_id") or "") == requested_player
+            ):
+                selected = dict(candidate)
+                break
+        if selected is None:
+            raise IntentDecisionNotFoundError(
+                "requested decision does not exist for the selected player"
+            )
 
-        # Filter known_before_decision strictly to <= open_tick
-        raw_evidence = selected.get("known_before_decision", [])
-        filtered_evidence = []
-        valid_evidence_ids = set()
+        open_tick = _strict_nonnegative_int(selected.get("decision_open_tick"))
+        if open_tick is None:
+            raise IntentInsufficientEvidenceError(
+                "selected decision has no valid decision_open_tick"
+            )
 
+        round_number = _strict_nonnegative_int(selected.get("round_number"))
+        known_evidence: list[dict[str, Any]] = []
+        known_events: list[dict[str, Any]] = []
+        seen_ids: set[str] = set()
+
+        raw_evidence = selected.get("known_before_decision")
         if isinstance(raw_evidence, list):
             for item in raw_evidence:
                 if not isinstance(item, Mapping):
                     continue
-                tick = _integer(item.get("tick"), open_tick)
-                # Enforce strict cutoff: no future evidence allowed
-                if tick <= open_tick:
-                    filtered_evidence.append(dict(item))
-                    ev_id = item.get("evidence_id")
-                    if ev_id and isinstance(ev_id, str):
-                        valid_evidence_ids.add(ev_id)
+                evidence_id = str(item.get("evidence_id") or "").strip()
+                tick = _strict_nonnegative_int(item.get("tick"))
+                if not evidence_id or tick is None or tick > open_tick:
+                    continue
+                if evidence_id in seen_ids:
+                    continue
+                known_evidence.append(dict(item))
+                seen_ids.add(evidence_id)
 
-        # Also collect evidence IDs from observed action if present
-        obs = selected.get("observed_action")
-        if isinstance(obs, Mapping) and isinstance(obs.get("evidence_ids"), list):
-            for ev_id in obs["evidence_ids"]:
-                if isinstance(ev_id, str):
-                    valid_evidence_ids.add(ev_id)
+        raw_events = pipeline_result.get("key_events")
+        if isinstance(raw_events, list):
+            for event in raw_events:
+                if not isinstance(event, Mapping):
+                    continue
+                event_id = str(event.get("event_id") or "").strip()
+                tick = _strict_nonnegative_int(event.get("tick"))
+                event_round = _strict_nonnegative_int(event.get("round_number"))
+                participants = [str(value) for value in event.get("participant_ids", [])]
+                if (
+                    not event_id
+                    or tick is None
+                    or tick > open_tick
+                    or (round_number is not None and event_round != round_number)
+                    or requested_player not in participants
+                ):
+                    continue
+                if event_id in seen_ids:
+                    continue
+                known_events.append(
+                    {
+                        "evidence_id": event_id,
+                        "tick": tick,
+                        "round_number": event.get("round_number"),
+                        "event_type": event.get("event_type"),
+                        "key_event_type": event.get("key_event_type"),
+                        "participant_ids": participants,
+                        "is_coaching_anchor": bool(event.get("is_coaching_anchor")),
+                    }
+                )
+                seen_ids.add(event_id)
 
-        # If evidence list is explicit in pipeline_result
-        if isinstance(selected.get("evidence"), list):
-            for item in selected["evidence"]:
-                if isinstance(item, str):
-                    valid_evidence_ids.add(item)
-                elif isinstance(item, Mapping) and isinstance(item.get("evidence_id"), str):
-                    valid_evidence_ids.add(item["evidence_id"])
+        if not seen_ids:
+            raise IntentInsufficientEvidenceError(
+                "no citable replay evidence exists at or before the decision cutoff"
+            )
 
-        selected["known_before_decision"] = filtered_evidence
-
-        return selected, valid_evidence_ids, open_tick
+        selected["known_before_decision"] = known_evidence
+        selected["_intent_known_events"] = known_events
+        return selected, seen_ids, open_tick
 
     @staticmethod
-    def _validate_and_filter_facts(
-        raw_facts: list[Any],
+    def _validate_model_output(
+        raw_response: str | Mapping[str, Any],
         valid_evidence_ids: set[str],
-    ) -> list[str]:
-        """Transparency check: remove any hallucinated evidence IDs not in pre-decision facts."""
+    ) -> _IntentModelOutput:
+        try:
+            payload = _decode_pi_output(raw_response)
+            output = _IntentModelOutput.model_validate(payload)
+        except (PiCoachError, TypeError, ValueError, ValidationError) as exc:
+            raise IntentMalformedOutputError(
+                "intent coaching provider returned malformed output"
+            ) from exc
 
-        validated = []
-        for fact in raw_facts:
-            if not isinstance(fact, str):
+        unsupported = set(output.facts_referenced) - valid_evidence_ids
+        if unsupported:
+            raise IntentMalformedOutputError(
+                "intent coaching provider referenced unsupported evidence IDs"
+            )
+        return output
+
+
+def _decision_candidates(pipeline_result: Mapping[str, Any]) -> list[Mapping[str, Any]]:
+    """Return all decision objects carried by either live production shape."""
+
+    candidates: list[Mapping[str, Any]] = []
+    analyses = pipeline_result.get("analyses")
+    if isinstance(analyses, list):
+        for item in analyses:
+            if not isinstance(item, Mapping):
                 continue
-            cleaned = fact.strip()
-            # Grounding check: verify fact exists in valid pre-decision evidence
-            if valid_evidence_ids and cleaned in valid_evidence_ids:
-                validated.append(cleaned)
-            elif not valid_evidence_ids and cleaned:
-                # If no explicit evidence IDs were provided in context, retain non-empty strings
-                validated.append(cleaned)
-            else:
-                logger.info("Filtered out hallucinated evidence_id: %s", cleaned)
+            selected = item.get("selected_decision")
+            if isinstance(selected, Mapping):
+                candidates.append(selected)
 
-        return validated
+    selected_many = pipeline_result.get("selected_decisions")
+    if isinstance(selected_many, list):
+        candidates.extend(item for item in selected_many if isinstance(item, Mapping))
 
-    def _offline_fallback(
-        self,
-        clean_intent: str,
-        open_tick: int,
-        valid_evidence_ids: set[str],
-        score: float = 0.40,
-    ) -> dict[str, Any]:
-        """Deterministic offline fallback grounded in pre-decision evidence."""
+    selected = pipeline_result.get("selected_decision")
+    if isinstance(selected, Mapping):
+        candidates.append(selected)
 
-        feasibility = f"Score {int(score * 100)}/100 — Moderate Risk (Action relies on unconfirmed teammate synchronization)."
-        gap = (
-            f"You acted on the assumption ('{clean_intent}'), but before tick {open_tick}, "
-            "there was no visual or audio confirmation of utility support or entry commitment."
-        )
-        recommendation = (
-            "Initiate contact only after receiving a pop-flash or explicit audio callout. "
-            "If your teammate is not swinging in tandem, hold a passive angle or reset positioning to avoid an isolated duel."
-        )
-        in_depth = (
-            f"Given your intent ('{clean_intent}'), executing the entry alone created a high-risk duel. "
-            f"Prior to knowledge cutoff tick {open_tick}, line-of-sight and distance telemetry indicate your teammate was not in position to trade immediately. "
-            f"{recommendation}"
-        )
-
-        # Fallback facts grounded in pre-decision valid evidence
-        facts = [ev for ev in ["displacement_below_threshold", "opponent_angle_hold"] if not valid_evidence_ids or ev in valid_evidence_ids]
-        if not facts and valid_evidence_ids:
-            facts = sorted(valid_evidence_ids)[:2]
-
-        return {
-            "user_intent": clean_intent,
-            "intent_feasibility": feasibility,
-            "coordination_gap": gap,
-            "recommended_cs2_adjustment": recommendation,
-            "in_depth_coaching": in_depth,
-            "knowledge_cutoff_tick": open_tick,
-            "facts_referenced": facts,
-        }
-
-    def evaluate_realtime_assist(self, telemetry: Mapping[str, Any]) -> dict[str, Any]:
-        """Evaluate live in-game telemetry to produce real-time tactical callouts and threat ratings in <1ms."""
-        hp = int(telemetry.get("hp", 100))
-        teammates = int(telemetry.get("teammates_alive", 1))
-        enemies = int(telemetry.get("enemies_alive", 1))
-        bomb_planted = bool(telemetry.get("bomb_planted", False))
-        bomb_seconds = float(telemetry.get("bomb_time_seconds", 40.0))
-        round_seconds = float(telemetry.get("round_time_seconds", 115.0))
-        map_name = str(telemetry.get("map_name", "de_mirage"))
-        zone = str(telemetry.get("active_zone", "A_SITE"))
-        utility_count = int(telemetry.get("utility_count", 0))
-
-        # Fast cache lookup for spatial tactics
-        from src.tools.fast_cache import FastInferenceEngine
-        tactics = FastInferenceEngine.lookup_zone_tactics(map_name, zone)
-        optimal_angles = tactics.get("optimal_defensive_angles", [zone])
-
-        if teammates == 1 and enemies >= 2:
-            tactical_mode = f"CLUTCH_1v{enemies}"
-            threat_level = "CRITICAL" if hp < 40 else "HIGH"
-        elif bomb_planted:
-            tactical_mode = "POST_PLANT_HOLD" if teammates > enemies else "SITE_RETAKE"
-            threat_level = "HIGH" if bomb_seconds < 15.0 else "MODERATE"
-        elif round_seconds < 20.0:
-            tactical_mode = "TIME_STALL_EXECUTE"
-            threat_level = "HIGH"
-        else:
-            tactical_mode = "TACTICAL_MAP_CONTROL"
-            threat_level = "MODERATE" if hp < 50 else "LOW"
-
-        callout_lines = []
-        best_angle = optimal_angles[0] if optimal_angles else zone
-        if tactical_mode.startswith("CLUTCH"):
-            callout_lines.append(f"[{tactical_mode}] Isolate 1v1 duels near {best_angle}. Use utility before peeking {zone}.")
-        elif tactical_mode == "SITE_RETAKE":
-            callout_lines.append(f"[SITE RETAKE] {bomb_seconds:.1f}s on bomb. Sync entry with team, smoke bomb site from {best_angle}.")
-        elif tactical_mode == "POST_PLANT_HOLD":
-            callout_lines.append(f"[DEFEND BOMB] Hold crossfire at {best_angle}, delay defusal with utility.")
-        else:
-            callout_lines.append(f"[TACTICAL HELP] Holding {zone} via {best_angle}. Keep crosshair at head level.")
-
-        recommended_actions = []
-        if utility_count > 0:
-            recommended_actions.append("USE_FLASH_OR_SMOKE_BEFORE_ENTRY")
-        if hp < 30 and enemies > teammates:
-            recommended_actions.append("SAVE_WEAPON_IF_UNFAVORABLE")
-        else:
-            recommended_actions.append(f"HOLD_ANGLE_{best_angle}")
-
-        return {
-            "tactical_mode": tactical_mode,
-            "threat_level": threat_level,
-            "callout": " ".join(callout_lines),
-            "recommended_actions": recommended_actions,
-            "optimal_angles": optimal_angles,
-            "urgency": "HIGH" if threat_level in ["CRITICAL", "HIGH"] else "NORMAL",
-            "timestamp_seconds": round_seconds,
-        }
+    raw_candidates = pipeline_result.get("decision_candidates")
+    if isinstance(raw_candidates, list):
+        candidates.extend(item for item in raw_candidates if isinstance(item, Mapping))
+    return candidates
 
 
-__all__ = ["IntentCoachingEngine"]
+def _strict_nonnegative_int(value: Any) -> int | None:
+    if isinstance(value, bool):
+        return None
+    try:
+        result = int(value)
+    except (TypeError, ValueError, OverflowError):
+        return None
+    return result if result >= 0 else None
+
+
+def _is_timeout(exc: BaseException) -> bool:
+    """Recognize timeouts even when a transport adapter wraps the root cause."""
+
+    current: BaseException | None = exc
+    seen: set[int] = set()
+    while current is not None and id(current) not in seen:
+        seen.add(id(current))
+        name = current.__class__.__name__.lower()
+        if isinstance(current, TimeoutError) or "timeout" in name or "timed out" in str(current).lower():
+            return True
+        current = current.__cause__ or current.__context__
+    return False
+
+
+def _anonymize(value: Any, aliases: Mapping[str, str]) -> Any:
+    if isinstance(value, str):
+        result = value
+        for raw, alias in aliases.items():
+            if raw:
+                result = result.replace(raw, alias)
+        return result
+    if isinstance(value, list):
+        return [_anonymize(item, aliases) for item in value]
+    if isinstance(value, Mapping):
+        return {str(key): _anonymize(item, aliases) for key, item in value.items()}
+    return value
+
+
+__all__ = [
+    "IntentCoachingEngine",
+    "IntentCoachingError",
+    "IntentDecisionNotFoundError",
+    "IntentInsufficientEvidenceError",
+    "IntentProviderUnavailableError",
+    "IntentProviderTimeoutError",
+    "IntentMalformedOutputError",
+]

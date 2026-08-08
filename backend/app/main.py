@@ -22,6 +22,14 @@ from pydantic import BaseModel, Field, model_validator
 
 from backend.app.blob_import import BlobFetchError, BlobTooLargeError
 from backend.app.coach import HttpCoachAdapter, PiCoachAdapter
+from backend.app.coach.intent_engine import (
+    IntentCoachingError,
+    IntentDecisionNotFoundError,
+    IntentInsufficientEvidenceError,
+    IntentMalformedOutputError,
+    IntentProviderTimeoutError,
+    IntentProviderUnavailableError,
+)
 from backend.app.contracts import (
     AnalysisPreparationResponse,
     AnalysisResponse,
@@ -40,6 +48,7 @@ from backend.app.orchestration import (
     AnalysisNotFound,
     AnalysisNotReady,
     AnalysisService,
+    DecisionSelectionError,
     FixtureOrchestrator,
     PlayerSelectionError,
 )
@@ -295,10 +304,23 @@ def create_analysis_app(*, service: AnalysisService | None = None) -> FastAPI:
             raise HTTPException(status_code=404, detail="analysis job not found") from exc
         except AnalysisNotReady as exc:
             raise HTTPException(status_code=409, detail=str(exc)) from exc
-        except PlayerSelectionError as exc:
+        except (
+            DecisionSelectionError,
+            IntentDecisionNotFoundError,
+            PlayerSelectionError,
+        ) as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
-        except RuntimeError as exc:
-            raise HTTPException(status_code=500, detail=str(exc)) from exc
+        except IntentInsufficientEvidenceError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        except IntentProviderTimeoutError as exc:
+            raise HTTPException(status_code=504, detail=str(exc)) from exc
+        except (
+            IntentMalformedOutputError,
+            IntentProviderUnavailableError,
+        ) as exc:
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
+        except IntentCoachingError as exc:
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
 
     @analysis_app.get(
         "/api/analysis/{analysis_id}/logs", response_class=PlainTextResponse

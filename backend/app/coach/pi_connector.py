@@ -29,6 +29,10 @@ class PiCoachError(RuntimeError):
     """Stable backend error for Pi configuration or response failures."""
 
 
+class PiCoachTimeoutError(PiCoachError):
+    """Stable transport error when a coaching provider exceeds its deadline."""
+
+
 ProcessRunner = Callable[..., subprocess.CompletedProcess[str]]
 
 
@@ -148,6 +152,10 @@ class HttpCoachAdapter:
             response = client.post(endpoint, headers=headers, json=body)
             response.raise_for_status()
             response_body = response.json()
+        except httpx.TimeoutException as exc:
+            raise PiCoachTimeoutError(
+                "HTTP coaching provider failed: timed out"
+            ) from exc
         except (httpx.HTTPError, ValueError) as exc:
             raise PiCoachError("HTTP coaching provider failed") from exc
         finally:
@@ -209,7 +217,7 @@ class PiCoachAdapter:
                 check=False,
             )
         except subprocess.TimeoutExpired as exc:
-            raise PiCoachError("Pi coaching process timed out") from exc
+            raise PiCoachTimeoutError("Pi coaching process timed out") from exc
         except (OSError, subprocess.SubprocessError) as exc:
             raise PiCoachError("Pi coaching process could not be started") from exc
         if completed.returncode != 0:
@@ -238,36 +246,6 @@ class PiCoachAdapter:
 
     def build_prompt(self, pipeline_result: Mapping[str, Any]) -> str:
         return build_coach_prompt(pipeline_result)
-
-    def build_intent_prompt(self, pipeline_result: Mapping[str, Any], user_intent: str) -> str:
-        try:
-            payload = _model_payload(pipeline_result)
-        except PiCoachError:
-            payload = dict(pipeline_result)
-        selected = pipeline_result.get("selected_decision", {})
-        prompt = (
-            "You are an expert outcome-blind Counter-Strike 2 (CS2) tactical coach.\n"
-            "Evaluate the player's decision using ONLY the facts known BEFORE action_close_tick.\n\n"
-            f'PLAYER_INTENT: "{user_intent.strip()}"\n'
-            f"OBSERVED_ACTION: {selected.get('observed_action', 'UNCLASSIFIED')}\n"
-            f"DECISION_PAYLOAD={json.dumps(payload, ensure_ascii=True, separators=(',', ':'))}\n\n"
-            "Return ONLY a JSON object with exactly these string fields:\n"
-            '"intent_feasibility", "coordination_gap", "recommended_cs2_adjustment", "in_depth_coaching".\n'
-            "Ensure in_depth_coaching provides a thorough tactical analysis addressing the player's intent."
-        )
-        if len(prompt.encode("utf-8")) > MAX_PROMPT_BYTES:
-            raise PiCoachError("Intent coaching prompt exceeds the bounded payload size")
-        return prompt
-
-    def evaluate_intent(
-        self,
-        pipeline_result: Mapping[str, Any],
-        user_intent: str,
-    ) -> dict[str, Any]:
-        from backend.app.coach.intent_engine import IntentCoachingEngine
-
-        engine = IntentCoachingEngine(coach_adapter=self)
-        return engine.evaluate_intent(pipeline_result, user_intent)
 
     def _resolve_node(self) -> str:
         if self.node_executable:
@@ -512,6 +490,7 @@ __all__ = [
     "HttpCoachAdapter",
     "PiCoachAdapter",
     "PiCoachError",
+    "PiCoachTimeoutError",
     "build_coach_prompt",
     "normalize_coach_response",
     "validate_coach_response",

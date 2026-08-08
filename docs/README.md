@@ -3,16 +3,15 @@
 Upload a Counter-Strike 2 `.dem` replay, choose a player, and receive coaching
 for their post-contact decisions.
 
-Maintenance documents:
+## Current documentation
 
 - [Current product state](CURRENT_STATE.md)
-- [JavaScript dependency setup](JAVASCRIPT_SETUP.md)
 - [Dependency security policy and checks](DEPENDENCY_SECURITY.md)
-- [Replay maps and demo data](REPLAY_DATA_SETUP.md)
-- [Vercel frontend deployment](VERCEL_DEPLOYMENT.md)
-- [Backend API](../backend/app/API.md)
-- [Frontend implementation status](../frontend/STATUS.md)
-- [Legacy Pi/agent harness setup](../agent-harness/docs/GETTING_STARTED.md)
+
+The root `README.md`, this setup guide, and `CURRENT_STATE.md` are the current
+project-level source of truth. Component `API.md`, `STATUS.md`, deployment,
+setup, and agent-harness plan files are retained as implementation history and
+may contain older paths, test counts, or feature-status statements.
 
 ## First-time setup
 
@@ -110,6 +109,13 @@ Open:
 
 - Product: `http://localhost:3000`
 - Backend API: `http://127.0.0.1:8000/docs`
+
+To test intent coaching, use an uploaded replay or backend sample, complete a
+player analysis, select an analyzed timeline marker, enter what the player was
+trying to do, and press **Send**. Intent is unavailable on bundled processed
+replays because they do not have a live analysis job. The UI currently renders
+the returned `in_depth_coaching`; the complete structured response can be
+inspected in the browser Network panel or FastAPI docs.
 
 Press `Ctrl+C` in both windows to stop.
 

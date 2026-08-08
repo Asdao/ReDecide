@@ -12,6 +12,7 @@ and timeline.
 ```text
 .dem or sample -> parse replay -> choose player -> select safe decision moments
                -> generate coaching -> inspect the replay and timeline
+               -> optionally explain the player's intent at one analyzed moment
 ```
 
 ## Main parts
@@ -21,12 +22,16 @@ and timeline.
 | Frontend | Upload, player selection, radar, timeline, events, and advice | Next.js, React, TypeScript, Tailwind CSS, Zod |
 | Backend | Upload, preparation, player analysis, coaching, and results | Python, FastAPI, Pydantic |
 | Replay engine | Parses CS2 telemetry and calculates replay/model signals | Awpy, LightGBM, Python |
-| Coach | Explains bounded replay evidence using a configured provider | Python HTTP adapter; optional Node.js Pi harness |
+| Coach | Generates baseline advice, then answers an optional intent follow-up using the exact selected decision and pre-decision evidence | Python HTTP adapter; optional Node.js Pi harness |
 | Storage | Keeps replay and analysis artifacts | Local filesystem; optional Vercel Blob |
 
 The replay pipeline selects the evidence and prevents later match information
 from entering the coaching prompt. The language model explains that evidence;
 it does not parse the `.dem` or decide which replay facts are valid.
+
+Intent follow-up is available for uploaded and backend-sample analyses. Bundled
+processed replays have no live `analysis_id`, so their intent composer remains
+disabled.
 
 ## Run locally
 
@@ -73,7 +78,7 @@ provider key; live coaching cannot.
 | Location | Setting | When it is needed |
 |---|---|---|
 | Root `.env` | `DEEPSEEK_API_KEY` | Required only for live HTTP coaching |
-| Root `.env` | `HARNESS_MODEL_BASE_URL` and `HARNESS_MODEL` | Provider endpoint and model; defaults are included in `.env.example` |
+| Root `.env` | `HARNESS_MODEL_BASE_URL` and `HARNESS_MODEL` | Provider endpoint and a model name supported by that provider; template values still require a live smoke test |
 | Root `.env` | `REDECIDE_COACH_MODE` | Optional: blank selects automatically, `http` forces provider HTTP, and `pi` uses the legacy Node harness |
 | Root `.env` | `REDECIDE_ANALYSES_PER_PLAYER` | Optional analysis quota from 1 to 10; default is 10 |
 | `frontend/.env.local` | `NEXT_PUBLIC_API_BASE_URL=http://127.0.0.1:8000` | Connects local Next.js to local FastAPI |
@@ -81,14 +86,15 @@ provider key; live coaching cannot.
 
 Keep provider keys only in the root `.env`; never put secrets in a
 `NEXT_PUBLIC_*` variable or commit a real `.env` file. Vercel Blob is not
-required locally. Its server-side variables and service binding are covered by
-the deployment guide.
+required for the local product flow.
 
 ## Project guides
 
 - [Detailed setup and run guide](docs/README.md)
 - [Current product state](docs/CURRENT_STATE.md)
-- [Backend API](backend/app/API.md)
-- [Frontend status](frontend/STATUS.md)
-- [Vercel deployment](docs/VERCEL_DEPLOYMENT.md)
 - [Dependency security](docs/DEPENDENCY_SECURITY.md)
+
+This root README, `docs/README.md`, and `docs/CURRENT_STATE.md` are the current
+project-level documentation. Component-level `API.md`, `STATUS.md`, plan, and
+deployment notes are useful implementation history but may lag behind the
+integrated branch.

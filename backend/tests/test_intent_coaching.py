@@ -1,116 +1,293 @@
-from unittest import TestCase
+"""API regressions for exact, outcome-blind intent coaching."""
+
+from __future__ import annotations
+
 import json
+from pathlib import Path
+from typing import Any
+
+import pytest
 from fastapi.testclient import TestClient
 
-from backend.app.contracts import IntentCoachingRequest, IntentCoachingResponse
-from backend.app.coach.pi_connector import PiCoachAdapter
-from backend.app.coach.intent_engine import IntentCoachingEngine
-from backend.app.main import create_app
-from backend.app.orchestration import AnalysisService, FIXTURE_ANALYSIS_ID
+from backend.app.coach.pi_connector import PiCoachError, PiCoachTimeoutError
+from backend.app.main import create_analysis_app
+from backend.app.orchestration import AnalysisJob, AnalysisService
 
 
-class IntentCoachingTests(TestCase):
-    def setUp(self) -> None:
-        self.app = create_app()
-        self.client = TestClient(self.app)
+PLAYER_ID = "player-1"
+FIRST_DECISION_ID = "r1:pplayer-1:t100"
+SECOND_DECISION_ID = "r2:pplayer-1:t500"
 
-    def test_pi_adapter_builds_intent_prompt_with_knowledge_cutoff(self) -> None:
-        adapter = PiCoachAdapter()
-        pipeline_result = {
-            "selected_decision": {
-                "decision_id": "r1:p1:t2500",
-                "observed_action": "HOLD_FOR_SUPPORT",
-                "decision_open_tick": 2500,
-                "action_close_tick": 2600,
-                "known_before_decision": [
-                    {"evidence_id": "displacement_below_threshold", "tick": 2400, "category": "movement", "statement": "low movement", "value": 0.1, "source": "telemetry"}
-                ]
+
+class PromptProvider:
+    """Deterministic provider double that preserves the production seam."""
+
+    def __init__(self, response: str | Exception | None = None) -> None:
+        self.response = response or json.dumps(
+            {
+                "intent_feasibility": "The stated reset was feasible.",
+                "coordination_gap": "No coordination claim is established.",
+                "recommended_cs2_adjustment": "Reset behind cover before peeking.",
+                "in_depth_coaching": "The bounded evidence supports a safer reset.",
+                "facts_referenced": ["event-second-contact"],
             }
-        }
-        prompt = adapter.build_intent_prompt(pipeline_result, "I expected my teammate to swing with me")
-        self.assertIn("I expected my teammate to swing with me", prompt)
-        self.assertIn("facts known BEFORE action_close_tick", prompt)
-        self.assertIn("HOLD_FOR_SUPPORT", prompt)
+        )
+        self.prompts: list[str] = []
 
-    def test_intent_engine_temporal_cutoff_and_subjective_framing(self) -> None:
-        engine = IntentCoachingEngine()
-        pipeline_result = {
-            "selected_decision": {
-                "decision_id": "r1:p1:t2500",
-                "observed_action": "HOLD_FOR_SUPPORT",
-                "decision_open_tick": 2500,
-                "known_before_decision": [
-                    {"evidence_id": "valid_past_fact", "tick": 2400},
-                    {"evidence_id": "future_fact_should_be_stripped", "tick": 2600},
-                ]
+    def __call__(self, _pipeline_result: dict[str, Any]) -> dict[str, str]:
+        return {
+            "decision_id": "decision_001",
+            "what_could_be_done_better": "Reset behind cover before re-engaging.",
+        }
+
+    def run_prompt(self, prompt: str) -> str:
+        self.prompts.append(prompt)
+        if isinstance(self.response, Exception):
+            raise self.response
+        return self.response
+
+
+def _decision(
+    decision_id: str,
+    *,
+    round_number: int,
+    tick: int,
+) -> dict[str, Any]:
+    return {
+        "decision_id": decision_id,
+        "round_number": round_number,
+        "player_id": PLAYER_ID,
+        "opponent_id": "opponent-1",
+        "decision_open_tick": tick,
+        "contact_tick": tick,
+        "action_close_tick": tick + 20,
+        "event_category": "damage",
+        "observed_action": "RESET_REPOSITION",
+    }
+
+
+def _completed_result(*, include_evidence: bool = True) -> dict[str, Any]:
+    first = _decision(FIRST_DECISION_ID, round_number=1, tick=100)
+    second = _decision(SECOND_DECISION_ID, round_number=2, tick=500)
+    key_events: list[dict[str, Any]] = []
+    if include_evidence:
+        key_events.extend(
+            [
+                {
+                    "event_id": "event-first-contact",
+                    "round_number": 1,
+                    "tick": 100,
+                    "event_type": "damage",
+                    "participant_ids": [PLAYER_ID, "opponent-1"],
+                    "is_coaching_anchor": True,
+                },
+                {
+                    "event_id": "event-second-contact",
+                    "round_number": 2,
+                    "tick": 490,
+                    "event_type": "damage",
+                    "participant_ids": [PLAYER_ID, "opponent-1"],
+                    "is_coaching_anchor": True,
+                },
+                {
+                    "event_id": "future-death-must-not-leak",
+                    "round_number": 2,
+                    "tick": 525,
+                    "event_type": "kill",
+                    "participant_ids": [PLAYER_ID, "opponent-1"],
+                    "is_coaching_anchor": False,
+                },
+            ]
+        )
+    return {
+        "schema_version": "replay_analysis_v1",
+        "selected_decision": first,
+        "analyses": [
+            {"selected_decision": first, "coach_analysis": {}},
+            {"selected_decision": second, "coach_analysis": {}},
+        ],
+        "key_events": key_events,
+        "win_estimator": {
+            "timeline": [
+                {"tick": 490, "ct_probability": 0.5, "t_probability": 0.5},
+                {"tick": 525, "ct_probability": 0.1, "t_probability": 0.9},
+            ]
+        },
+    }
+
+
+def _client(
+    tmp_path: Path,
+    provider: PromptProvider,
+    *,
+    run_status: str = "complete",
+    include_result: bool = True,
+    include_evidence: bool = True,
+) -> TestClient:
+    service = AnalysisService(log_dir=tmp_path, coach_adapter=provider)
+    analysis_id = "analysis-1"
+    result = _completed_result(include_evidence=include_evidence)
+    job = AnalysisJob(
+        analysis_id=analysis_id,
+        replay={"map": {"name": "de_inferno"}},
+        log_path=tmp_path / "analysis-1.jsonl",
+        status="complete" if run_status == "complete" else "coaching",
+        selected_player_id=PLAYER_ID,
+        result=result if include_result else None,
+        player_runs={
+            PLAYER_ID: {
+                "run_id": "run-1",
+                "status": run_status,
+                "result": result if include_result else None,
+                "error": None,
             }
-        }
-        selected, valid_ids, open_tick = engine._extract_decision_context(pipeline_result)
-        self.assertEqual(open_tick, 2500)
-        self.assertIn("valid_past_fact", valid_ids)
-        self.assertNotIn("future_fact_should_be_stripped", valid_ids)
+        },
+    )
+    with service._jobs_lock:  # noqa: SLF001 - construct a restored job boundary
+        service._jobs[analysis_id] = job  # noqa: SLF001
+    return TestClient(create_analysis_app(service=service))
 
-        prompt = engine.build_intent_prompt(selected, "I wanted to flash for entry", open_tick)
-        self.assertIn("subjective post-hoc explanation", prompt)
-        self.assertIn("BEFORE or AT decision_open_tick", prompt)
 
-    def test_intent_engine_filters_hallucinated_facts(self) -> None:
-        raw_facts = ["valid_past_fact", "hallucinated_nonexistent_fact", "another_fake_id"]
-        valid_ids = {"valid_past_fact", "another_real_fact"}
-        validated = IntentCoachingEngine._validate_and_filter_facts(raw_facts, valid_ids)
-        self.assertEqual(validated, ["valid_past_fact"])
+def _request(
+    client: TestClient,
+    *,
+    analysis_id: str = "analysis-1",
+    body_analysis_id: str | None = None,
+    player_id: str = PLAYER_ID,
+    decision_id: str = SECOND_DECISION_ID,
+) -> Any:
+    return client.post(
+        f"/api/analysis/{analysis_id}/intent",
+        json={
+            "analysis_id": body_analysis_id or analysis_id,
+            "player_id": player_id,
+            "decision_id": decision_id,
+            "intent_text": "I wanted to reset and wait for support.",
+        },
+    )
 
-    def test_intent_engine_calculates_feasibility_score(self) -> None:
-        engine = IntentCoachingEngine()
-        pipeline_result = {
-            "selected_decision": {
-                "decision_id": "r1:p1:t2500",
-                "known_before_decision": [
-                    {"evidence_id": "utility_flash_deployed", "category": "utility", "statement": "pop flash thrown"},
-                    {"evidence_id": "teammate_angle_hold", "category": "support", "statement": "teammate holding trade angle"},
-                ]
+
+def test_endpoint_uses_exact_requested_decision_and_excludes_future_events(
+    tmp_path: Path,
+) -> None:
+    provider = PromptProvider()
+    response = _request(_client(tmp_path, provider))
+
+    assert response.status_code == 200, response.text
+    assert response.json()["decision_id"] == SECOND_DECISION_ID
+    assert response.json()["knowledge_cutoff_tick"] == 500
+    assert response.json()["facts_referenced"] == ["event-second-contact"]
+    assert len(provider.prompts) == 1
+    assert "event-second-contact" in provider.prompts[0]
+    assert FIRST_DECISION_ID not in provider.prompts[0]
+    assert "event-first-contact" not in provider.prompts[0]
+    assert "future-death-must-not-leak" not in provider.prompts[0]
+
+
+@pytest.mark.parametrize(
+    ("player_id", "decision_id"),
+    [
+        ("unknown-player", SECOND_DECISION_ID),
+        (PLAYER_ID, "unknown-decision"),
+        (PLAYER_ID, FIRST_DECISION_ID + "-wrong"),
+    ],
+)
+def test_unknown_player_or_decision_is_not_coached(
+    tmp_path: Path,
+    player_id: str,
+    decision_id: str,
+) -> None:
+    provider = PromptProvider()
+    response = _request(
+        _client(tmp_path, provider),
+        player_id=player_id,
+        decision_id=decision_id,
+    )
+
+    assert response.status_code == 404
+    assert provider.prompts == []
+
+
+def test_incomplete_player_run_returns_conflict_without_calling_provider(
+    tmp_path: Path,
+) -> None:
+    provider = PromptProvider()
+    response = _request(
+        _client(
+            tmp_path,
+            provider,
+            run_status="running",
+            include_result=False,
+        )
+    )
+
+    assert response.status_code == 409
+    assert provider.prompts == []
+
+
+def test_provider_failure_returns_service_unavailable_without_fake_coaching(
+    tmp_path: Path,
+) -> None:
+    provider = PromptProvider(PiCoachError("provider failed"))
+    response = _request(_client(tmp_path, provider))
+
+    assert response.status_code == 503
+    assert "in_depth_coaching" not in response.json()
+    assert "line of sight" not in response.text.lower()
+
+
+def test_provider_timeout_returns_gateway_timeout(tmp_path: Path) -> None:
+    provider = PromptProvider(PiCoachTimeoutError("provider timed out"))
+    response = _request(_client(tmp_path, provider))
+
+    assert response.status_code == 504
+    assert "in_depth_coaching" not in response.json()
+
+
+def test_malformed_or_ungrounded_model_output_fails_closed(tmp_path: Path) -> None:
+    provider = PromptProvider(
+        json.dumps(
+            {
+                "intent_feasibility": "Feasible",
+                "coordination_gap": "Unknown",
+                "recommended_cs2_adjustment": "Reset",
+                "in_depth_coaching": "Unsupported claim",
+                "facts_referenced": ["invented-fact"],
             }
-        }
-        selected, valid_ids, open_tick = engine._extract_decision_context(pipeline_result)
-        score = engine.calculate_feasibility_score(selected, "I wanted to swing with flash", valid_ids)
-        self.assertGreaterEqual(score, 0.70)
+        )
+    )
+    response = _request(_client(tmp_path, provider))
 
-    def test_pi_adapter_evaluates_intent_offline_fallback(self) -> None:
-        adapter = PiCoachAdapter()
-        pipeline_result = {
-            "selected_decision": {
-                "decision_id": "r1:p1:t2500",
-                "decision_open_tick": 2500,
-                "action_close_tick": 2600,
-            }
-        }
-        result = adapter.evaluate_intent(pipeline_result, "I expected my teammate to swing with me")
-        self.assertEqual(result["user_intent"], "I expected my teammate to swing with me")
-        self.assertIn("Moderate Risk", result["intent_feasibility"])
-        self.assertIn("tick 2500", result["coordination_gap"])
-        self.assertEqual(result["knowledge_cutoff_tick"], 2500)
+    assert response.status_code == 503
 
-    def test_intent_endpoint_returns_contextual_coaching(self) -> None:
-        replay_payload = {
-            "map": {"name": "de_inferno", "tick_rate": 64},
-            "players": [{"player_id": "p1", "display_name": "flameZ", "side_by_round": {"1": "t"}}],
-            "rounds": [{"round_num": 1, "start": 100, "end": 3000}],
-            "damages": [{"round_num": 1, "tick": 2579, "attacker_id": "p2", "victim_id": "p1", "damage_health": 80}],
-            "ticks": [{"tick": 2579, "players": [{"player_id": "p1", "side": "t", "X": 0, "Y": 0, "Z": 0, "health": 20, "alive": True}]}]
-        }
-        prepare_resp = self.client.post("/api/analysis/prepare", json={"replay": replay_payload})
-        self.assertIn(prepare_resp.status_code, (200, 202))
-        analysis_id = prepare_resp.json()["analysis_id"]
 
-        intent_payload = {
-            "analysis_id": analysis_id,
-            "player_id": "p1",
-            "decision_id": "r1:p1:t2579",
-            "intent_text": "I expected my teammate to swing with me from Banana."
-        }
-        resp = self.client.post(f"/api/analysis/{analysis_id}/intent", json=intent_payload)
-        self.assertEqual(resp.status_code, 200)
-        data = resp.json()
-        self.assertEqual(data["analysis_id"], analysis_id)
-        self.assertEqual(data["user_intent"], "I expected my teammate to swing with me from Banana.")
-        self.assertTrue(len(data["in_depth_coaching"]) > 20)
+def test_no_citable_evidence_returns_unprocessable_without_provider_call(
+    tmp_path: Path,
+) -> None:
+    provider = PromptProvider()
+    response = _request(_client(tmp_path, provider, include_evidence=False))
+
+    assert response.status_code == 422
+    assert provider.prompts == []
+
+
+def test_path_and_body_analysis_ids_must_match(tmp_path: Path) -> None:
+    provider = PromptProvider()
+    response = _request(
+        _client(tmp_path, provider),
+        body_analysis_id="different-analysis",
+    )
+
+    assert response.status_code == 400
+    assert provider.prompts == []
+
+
+def test_unknown_analysis_returns_not_found(tmp_path: Path) -> None:
+    provider = PromptProvider()
+    response = _request(
+        _client(tmp_path, provider),
+        analysis_id="missing-analysis",
+    )
+
+    assert response.status_code == 404
+    assert provider.prompts == []
