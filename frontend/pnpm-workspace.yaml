@@ -15,6 +15,7 @@ trustPolicyExclude:
   - semver@6.3.1
 
 overrides:
+  nanoid: 3.3.17
   postcss: 8.5.23
   sharp: 0.35.0
 
