@@ -404,7 +404,12 @@ export function ReplayAnalysisScreen({
         if (!normalizedCoaching) {
           throw new Error("The contextual analysis response was empty.");
         }
+        if (intentControllers.current.get(keyPointId) !== controller) return;
         dispatchIntent({ type: "SUCCEED", keyPointId, coaching: normalizedCoaching, requestId });
+        setIntentDrafts((current) => ({
+          ...current,
+          [keyPointId]: "",
+        }));
       })
       .catch((error: unknown) => {
         if (controller.signal.aborted) return;

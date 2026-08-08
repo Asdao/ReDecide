@@ -190,7 +190,9 @@ summary appears above the coaching box, while the editable composer remains at
 the bottom. Its typed, per-moment request lifecycle allows revised submissions,
 preserves the latest successful coaching behind the rotating loading border,
 ignores stale responses, and replaces only that moment's coaching after a
-successful response. Failures remain visible without a separate retry button;
+successful response. A validated successful response also clears that moment's
+intent textbox, while failures retain the draft for editing and resubmission.
+Failures remain visible without a separate retry button;
 the user can edit the intent and submit it again.
 Uploaded and backend-sample viewers now submit the selected moment's stable
 `decision_id`, `analysis_id`, `player_id`, and intent text through
