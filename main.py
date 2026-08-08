@@ -6,10 +6,14 @@ Run local simulation demo:
 
 Run FastAPI API server:
     python main.py --server
+
+Run Garena AI Build Challenge System Diagnostics:
+    python main.py --diagnose
 """
 
 import sys
 import argparse
+import json
 from pathlib import Path
 
 # Ensure repository packages are on sys.path
@@ -31,6 +35,7 @@ from cs2_sim import SimConfig
 from cs2_sim.simulator import Simulator
 from cs2_sim.state import BombState, GameState, PlayerState, Team
 from src.utils.logger import get_logger
+from src.utils.diagnostics import run_garena_diagnostics
 
 logger = get_logger("redecide_main")
 
@@ -70,15 +75,25 @@ def start_server(host: str = "0.0.0.0", port: int = 8000) -> None:
     uvicorn.run("backend.app.main:app", host=host, port=port, reload=True)
 
 
+def run_diagnostics_cli() -> None:
+    """Run full Garena AI Build Challenge system audit."""
+    print("Running Garena AI Build Challenge 2026 Diagnostics...")
+    res = run_garena_diagnostics()
+    print(json.dumps(res, indent=2))
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="RE:DECIDE AI Agent Launcher")
     parser.add_argument("--server", action="store_true", help="Start the FastAPI backend server")
+    parser.add_argument("--diagnose", action="store_true", help="Run Garena AI Build Challenge system diagnostics")
     parser.add_argument("--host", type=str, default="0.0.0.0", help="Host address for the server")
     parser.add_argument("--port", type=int, default=8000, help="Port for the server")
     args = parser.parse_args()
 
     if args.server:
         start_server(host=args.host, port=args.port)
+    elif args.diagnose:
+        run_diagnostics_cli()
     else:
         run_demo()
 

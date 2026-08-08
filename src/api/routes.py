@@ -10,6 +10,8 @@ from src.api.schemas import (
     RealtimeCalloutResponse,
 )
 from src.agent import CS2IntentAgent
+from src.utils.disclosures import get_third_party_disclosures
+from src.utils.diagnostics import run_garena_diagnostics
 
 router = APIRouter(prefix="/api/agent", tags=["AI Agent"])
 agent_instance = CS2IntentAgent()
@@ -42,3 +44,15 @@ async def realtime_tactical_callout(payload: RealtimeTelemetryRequest):
         return RealtimeCalloutResponse(**res)
     except Exception as exc:
         raise HTTPException(status_code=400, detail=str(exc))
+
+
+@router.get("/disclosures")
+async def garena_disclosures():
+    """Return third-party component and model disclosures for Garena judging."""
+    return get_third_party_disclosures()
+
+
+@router.get("/diagnostics")
+async def garena_diagnostics():
+    """Run full system diagnostic audit for Garena AI Build Challenge compliance."""
+    return run_garena_diagnostics()

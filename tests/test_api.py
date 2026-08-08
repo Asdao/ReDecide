@@ -31,3 +31,13 @@ def test_realtime_callout_endpoint():
     assert "tactical_mode" in data
     assert "callout" in data
     assert "recommended_actions" in data
+
+
+def test_disclosures_and_diagnostics_endpoints():
+    res1 = client.get("/api/agent/disclosures")
+    assert res1.status_code == 200
+    assert "components" in res1.json()
+
+    res2 = client.get("/api/agent/diagnostics")
+    assert res2.status_code == 200
+    assert res2.json()["status"] == "PASS"
