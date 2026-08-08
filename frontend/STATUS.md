@@ -193,7 +193,9 @@ ignores stale responses, and replaces only that moment's coaching after a
 successful response. A validated successful response also clears that moment's
 intent textbox, while failures retain the draft for editing and resubmission.
 Failures remain visible without a separate retry button;
-the user can edit the intent and submit it again.
+the user can edit the intent and submit it again. The textbox shows two full
+lines without scrolling; Enter submits it, while Shift+Enter or Ctrl+Enter
+inserts a newline.
 Uploaded and backend-sample viewers now submit the selected moment's stable
 `decision_id`, `analysis_id`, `player_id`, and intent text through
 `POST /api/analysis/{analysis_id}/intent`. The validated response must identify

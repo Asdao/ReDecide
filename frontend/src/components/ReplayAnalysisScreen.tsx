@@ -627,6 +627,7 @@ export function ReplayAnalysisScreen({
                       id={`moment-intent-${selectedEvent.event_id}`}
                       value={selectedIntentDraft}
                       placeholder="What were you trying to do?"
+                      rows={2}
                       maxLength={240}
                       disabled={
                         selectedIntentState?.status === "generating" ||
@@ -639,6 +640,30 @@ export function ReplayAnalysisScreen({
                           ...current,
                           [selectedEvent.event_id]: value,
                         }));
+                      }}
+                      onKeyDown={(event) => {
+                        if (event.key !== "Enter" || event.nativeEvent.isComposing) return;
+                        if (event.shiftKey) return;
+                        if (event.ctrlKey) {
+                          event.preventDefault();
+                          const textarea = event.currentTarget;
+                          const selectionStart = textarea.selectionStart;
+                          const selectionEnd = textarea.selectionEnd;
+                          const nextValue = `${textarea.value.slice(0, selectionStart)}\n${textarea.value.slice(selectionEnd)}`;
+                          if (nextValue.length > 240) return;
+
+                          setIntentDrafts((current) => ({
+                            ...current,
+                            [selectedEvent.event_id]: nextValue,
+                          }));
+                          requestAnimationFrame(() => {
+                            const nextCursor = selectionStart + 1;
+                            textarea.setSelectionRange(nextCursor, nextCursor);
+                          });
+                          return;
+                        }
+                        event.preventDefault();
+                        event.currentTarget.form?.requestSubmit();
                       }}
                     />
                     <button

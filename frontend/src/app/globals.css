@@ -1915,7 +1915,7 @@ button.player-marker {
 }
 
 .moment-intent form {
-  --moment-intent-control-size: 4rem;
+  --moment-intent-control-size: 4.3rem;
   display: grid;
   grid-template-columns: minmax(0, 1fr) var(--moment-intent-control-size);
   gap: 0.55rem;
@@ -1962,6 +1962,7 @@ button.player-marker {
 
 .moment-intent form button {
   width: var(--moment-intent-control-size);
+  height: var(--moment-intent-control-size);
   min-width: var(--moment-intent-control-size);
   aspect-ratio: 1;
   padding: 0.5rem;
