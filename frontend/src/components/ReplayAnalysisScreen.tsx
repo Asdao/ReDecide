@@ -218,6 +218,9 @@ export function ReplayAnalysisScreen({
         : "damage";
   const selectedIntentState = selectedEventId ? intentStates[selectedEventId] : undefined;
   const selectedIntentDraft = selectedEventId ? intentDrafts[selectedEventId] ?? "" : "";
+  const selectedContextualCoaching = selectedIntentState && "coaching" in selectedIntentState
+    ? selectedIntentState.coaching
+    : undefined;
   const currentWinProbability = useMemo(
     () => currentRound && analysis
       ? winProbabilityAtMoment(
@@ -514,6 +517,12 @@ export function ReplayAnalysisScreen({
                 <div><dt>Tick</dt><dd>{selectedEvent.tick}</dd></div>
                 <div><dt>Weapon</dt><dd>{selectedEvent.weapon?.replaceAll("_", " ") ?? "—"}</dd></div>
               </dl>
+              {selectedIntentState ? (
+                <div className="submitted-intent">
+                  <p className="eyebrow">Your intent</p>
+                  <blockquote>{selectedIntentState.intent}</blockquote>
+                </div>
+              ) : null}
               {selectedEventHasAnalysis && selectedEventAnalysis ? (
                 <section
                   className={`saved-coaching${selectedIntentState?.status === "generating" ? " loading-border" : ""}`}
@@ -523,9 +532,8 @@ export function ReplayAnalysisScreen({
                   <p className="eyebrow">Coaching</p>
                   <h3 id="saved-coaching-title">What could be done better</h3>
                   <p>
-                    {selectedIntentState?.status === "complete"
-                      ? selectedIntentState.coaching
-                      : selectedEventAnalysis.coach_analysis.what_could_be_done_better}
+                    {selectedContextualCoaching ??
+                      selectedEventAnalysis.coach_analysis.what_could_be_done_better}
                   </p>
                   {selectedIntentState?.status === "generating" ? (
                     <p className="coaching-generation-status" role="status">
@@ -539,17 +547,26 @@ export function ReplayAnalysisScreen({
                   <p id="moment-intent-title">
                     Want to add more context for your analysis? Send us your intent at this moment.
                   </p>
-                  {selectedIntentState ? (
-                    <div className="submitted-intent">
-                      <p className="eyebrow">Your intent</p>
-                      <blockquote>{selectedIntentState.intent}</blockquote>
+                  {!submitMomentIntent || !analysisId ? (
+                    <p className="moment-intent-unavailable">
+                      Intent follow-up will be enabled when backend support is connected.
+                    </p>
+                  ) : null}
+                  {selectedIntentState?.status === "error" ? (
+                    <div className="moment-intent-error" role="alert">
+                      <p>{selectedIntentState.message}</p>
                     </div>
                   ) : null}
                   <form
                     onSubmit={(event) => {
                       event.preventDefault();
                       const intent = selectedIntentDraft.trim();
-                      if (!intent || selectedIntentState || !submitMomentIntent || !analysisId) return;
+                      if (
+                        !intent ||
+                        selectedIntentState?.status === "generating" ||
+                        !submitMomentIntent ||
+                        !analysisId
+                      ) return;
                       requestContextualAnalysis(selectedEvent.event_id, intent);
                     }}
                   >
@@ -558,10 +575,14 @@ export function ReplayAnalysisScreen({
                     </label>
                     <textarea
                       id={`moment-intent-${selectedEvent.event_id}`}
-                      value={selectedIntentState ? "" : selectedIntentDraft}
-                      placeholder={selectedIntentState ? "Intent sent" : "What were you trying to do?"}
+                      value={selectedIntentDraft}
+                      placeholder="What were you trying to do?"
                       maxLength={240}
-                      disabled={Boolean(selectedIntentState) || !submitMomentIntent || !analysisId}
+                      disabled={
+                        selectedIntentState?.status === "generating" ||
+                        !submitMomentIntent ||
+                        !analysisId
+                      }
                       onChange={(event) => {
                         const value = event.currentTarget.value;
                         setIntentDrafts((current) => ({
@@ -573,7 +594,7 @@ export function ReplayAnalysisScreen({
                     <button
                       type="submit"
                       disabled={
-                        Boolean(selectedIntentState) ||
+                        selectedIntentState?.status === "generating" ||
                         !selectedIntentDraft.trim() ||
                         !submitMomentIntent ||
                         !analysisId
@@ -582,25 +603,6 @@ export function ReplayAnalysisScreen({
                       Send
                     </button>
                   </form>
-                  {!submitMomentIntent || !analysisId ? (
-                    <p className="moment-intent-unavailable">
-                      Intent follow-up will be enabled when backend support is connected.
-                    </p>
-                  ) : null}
-                  {selectedIntentState?.status === "error" ? (
-                    <div className="moment-intent-error" role="alert">
-                      <p>{selectedIntentState.message}</p>
-                      <button
-                        type="button"
-                        onClick={() => requestContextualAnalysis(
-                          selectedEvent.event_id,
-                          selectedIntentState.intent,
-                        )}
-                      >
-                        Try analysis again
-                      </button>
-                    </div>
-                  ) : null}
                 </section>
               ) : null}
             </aside>

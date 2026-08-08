@@ -168,10 +168,14 @@ event and remains absent when the newly selected player has no event at that
 tick. Analysis-backed moments render as distinct blue timeline markers and also
 render the intent follow-up composer
 pinned to the bottom of the inspector. The textbox keeps its base height and
-scrolls internally instead of resizing. Its typed, per-moment request lifecycle
-keeps a one-time submitted intent attached to the stable event ID, disables editing,
-preserves the old coaching behind the rotating loading border, ignores stale
-responses, and replaces only that moment's coaching after a successful response.
+scrolls internally instead of resizing. Keyboard focus changes only its border
+to orange without adding an outer focus outline. A submitted `Your intent`
+summary appears above the coaching box, while the editable composer remains at
+the bottom. Its typed, per-moment request lifecycle allows revised submissions,
+preserves the latest successful coaching behind the rotating loading border,
+ignores stale responses, and replaces only that moment's coaching after a
+successful response. Failures remain visible without a separate retry button;
+the user can edit the intent and submit it again.
 Uploaded and backend-sample viewers now submit the selected moment's stable
 `decision_id`, `analysis_id`, `player_id`, and intent text through
 `POST /api/analysis/{analysis_id}/intent`. The validated response must identify
@@ -446,7 +450,7 @@ preparation behavior, and safe/internal exception logging.
 
 From `frontend/`, the latest checks report:
 
-- Vitest: 13 files and 141 tests collected; all 141 passed, including intent
+- Vitest: 13 files and 142 tests collected; all 142 passed, including intent
   response validation and both
   all-player processed-analysis fixtures and perspective-specific event lookup.
 - TypeScript: passed

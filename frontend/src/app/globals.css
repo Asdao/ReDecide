@@ -1831,7 +1831,6 @@ input[type="file"] {
 
 .moment-intent {
   margin-top: auto;
-  border-top: 1px solid var(--line);
   padding-top: 1.25rem;
 }
 
@@ -1865,10 +1864,11 @@ input[type="file"] {
   font: 0.88rem/1.5 var(--font-interface);
 }
 
+.moment-intent textarea:focus,
 .moment-intent textarea:focus-visible {
   border-color: var(--focus);
-  outline: 2px solid var(--focus);
-  outline-offset: 2px;
+  outline: none;
+  box-shadow: none;
 }
 
 .moment-intent textarea:disabled {
@@ -1876,8 +1876,7 @@ input[type="file"] {
   opacity: 0.52;
 }
 
-.moment-intent form button,
-.moment-intent-error button {
+.moment-intent form button {
   min-width: 5rem;
   border: 1px solid var(--accent);
   background: var(--accent);
@@ -1904,8 +1903,7 @@ input[type="file"] {
 }
 
 .submitted-intent {
-  margin-bottom: 0.75rem;
-  border-left: 3px solid var(--accent);
+  margin-top: 1.25rem;
   background: rgb(238 133 47 / 7%);
   padding: 0.75rem 0.85rem;
 }
@@ -1938,13 +1936,6 @@ input[type="file"] {
 
 .moment-intent-error p {
   color: #f2aaaa;
-}
-
-.moment-intent-error button {
-  margin-top: 0.55rem;
-  border-color: var(--line);
-  background: transparent;
-  color: var(--text);
 }
 
 .replay-timeline {
