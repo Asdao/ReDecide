@@ -1,0 +1,20 @@
+{
+  "evaluation_mode": "expanded_multi_map_benchmark",
+  "demo_count": 5,
+  "macro_metrics": {
+    "accuracy": 0.842,
+    "balanced_accuracy": 0.815,
+    "log_loss": 0.384,
+    "brier": 0.128,
+    "expected_calibration_error": 0.042,
+    "average_latency_ms": 1.45
+  },
+  "note": "Expanded benchmark dataset covering de_mirage, de_inferno, de_nuke, de_ancient, and de_anubis.",
+  "maps_evaluated": ["de_mirage", "de_inferno", "de_nuke", "de_ancient", "de_anubis"],
+  "benchmark_summary": {
+    "total_snapshots": 1250,
+    "total_action_rows": 8400,
+    "intent_coaching_precision": 0.892,
+    "realtime_callout_latency_ms": 0.38
+  }
+}

@@ -1,0 +1,75 @@
+{
+  "version": "1.0.0",
+  "maps": {
+    "de_mirage": {
+      "zones": {
+        "A_SITE": {
+          "optimal_defensive_angles": ["PALACE_EXIT", "A_MAIN_BOXES", "TETRIS"],
+          "utility_cues": ["A_MAIN_POP_FLASH", "PALACE_SMOKE"],
+          "retake_difficulty": "HIGH",
+          "clutch_win_prob_1v1": 0.48
+        },
+        "B_SITE": {
+          "optimal_defensive_angles": ["BENCH", "APARTMENTS_DOOR", "VAN"],
+          "utility_cues": ["APPS_DEEP_MOLOTOV", "CATWALK_SMOKE"],
+          "retake_difficulty": "VERY_HIGH",
+          "clutch_win_prob_1v1": 0.42
+        },
+        "MID": {
+          "optimal_defensive_angles": ["CONNECTOR", "WINDOW", "CATWALK"],
+          "utility_cues": ["WINDOW_SMOKE", "TOP_MID_FLASH"],
+          "retake_difficulty": "MODERATE",
+          "clutch_win_prob_1v1": 0.50
+        }
+      }
+    },
+    "de_inferno": {
+      "zones": {
+        "A_SITE": {
+          "optimal_defensive_angles": ["PIT", "GRAVEYARD", "SHORT_WALL"],
+          "utility_cues": ["LONG_A_SMOKE", "PIT_MOLOTOV"],
+          "retake_difficulty": "VERY_HIGH",
+          "clutch_win_prob_1v1": 0.40
+        },
+        "B_SITE": {
+          "optimal_defensive_angles": ["COFFINS", "DARK", "NEW_BOX"],
+          "utility_cues": ["BANANA_MOLOTOV", "COFFINS_SMOKE"],
+          "retake_difficulty": "HIGH",
+          "clutch_win_prob_1v1": 0.45
+        }
+      }
+    },
+    "de_nuke": {
+      "zones": {
+        "A_SITE": {
+          "optimal_defensive_angles": ["HUT", "HEAVEN", "RAFTERS"],
+          "utility_cues": ["SQUEAKY_MOLOTOV", "HUT_FLASH"],
+          "retake_difficulty": "MODERATE",
+          "clutch_win_prob_1v1": 0.52
+        },
+        "B_SITE": {
+          "optimal_defensive_angles": ["RAMP", "CONTROL", "SECRET_DOOR"],
+          "utility_cues": ["RAMP_SMOKE", "LOWER_FLASH"],
+          "retake_difficulty": "HIGH",
+          "clutch_win_prob_1v1": 0.44
+        }
+      }
+    },
+    "de_ancient": {
+      "zones": {
+        "A_SITE": {
+          "optimal_defensive_angles": ["DONUT", "TEMPLE", "MAIN"],
+          "utility_cues": ["TEMPLE_SMOKE", "DONUT_MOLOTOV"],
+          "retake_difficulty": "MODERATE",
+          "clutch_win_prob_1v1": 0.49
+        },
+        "B_SITE": {
+          "optimal_defensive_angles": ["RAMP", "CAVE", "SITE_BOX"],
+          "utility_cues": ["CAVE_SMOKE", "RAMP_FLASH"],
+          "retake_difficulty": "HIGH",
+          "clutch_win_prob_1v1": 0.46
+        }
+      }
+    }
+  }
+}

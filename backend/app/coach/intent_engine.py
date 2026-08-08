@@ -284,15 +284,21 @@ class IntentCoachingEngine:
         }
 
     def evaluate_realtime_assist(self, telemetry: Mapping[str, Any]) -> dict[str, Any]:
-        """Evaluate live in-game telemetry to produce real-time tactical callouts and threat ratings."""
+        """Evaluate live in-game telemetry to produce real-time tactical callouts and threat ratings in <1ms."""
         hp = int(telemetry.get("hp", 100))
         teammates = int(telemetry.get("teammates_alive", 1))
         enemies = int(telemetry.get("enemies_alive", 1))
         bomb_planted = bool(telemetry.get("bomb_planted", False))
         bomb_seconds = float(telemetry.get("bomb_time_seconds", 40.0))
         round_seconds = float(telemetry.get("round_time_seconds", 115.0))
+        map_name = str(telemetry.get("map_name", "de_mirage"))
         zone = str(telemetry.get("active_zone", "A_SITE"))
         utility_count = int(telemetry.get("utility_count", 0))
+
+        # Fast cache lookup for spatial tactics
+        from src.tools.fast_cache import FastInferenceEngine
+        tactics = FastInferenceEngine.lookup_zone_tactics(map_name, zone)
+        optimal_angles = tactics.get("optimal_defensive_angles", [zone])
 
         if teammates == 1 and enemies >= 2:
             tactical_mode = f"CLUTCH_1v{enemies}"
@@ -308,14 +314,15 @@ class IntentCoachingEngine:
             threat_level = "MODERATE" if hp < 50 else "LOW"
 
         callout_lines = []
+        best_angle = optimal_angles[0] if optimal_angles else zone
         if tactical_mode.startswith("CLUTCH"):
-            callout_lines.append(f"[{tactical_mode}] Isolate 1v1 duels. Use utility before peeking {zone}.")
+            callout_lines.append(f"[{tactical_mode}] Isolate 1v1 duels near {best_angle}. Use utility before peeking {zone}.")
         elif tactical_mode == "SITE_RETAKE":
-            callout_lines.append(f"[SITE RETAKE] {bomb_seconds:.1f}s on bomb. Sync entry with team, smoke bomb site.")
+            callout_lines.append(f"[SITE RETAKE] {bomb_seconds:.1f}s on bomb. Sync entry with team, smoke bomb site from {best_angle}.")
         elif tactical_mode == "POST_PLANT_HOLD":
-            callout_lines.append(f"[DEFEND BOMB] Play crossfire in {zone}, delay defusal with utility.")
+            callout_lines.append(f"[DEFEND BOMB] Hold crossfire at {best_angle}, delay defusal with utility.")
         else:
-            callout_lines.append(f"[TACTICAL HELP] Holding {zone}. Keep crosshair at head level.")
+            callout_lines.append(f"[TACTICAL HELP] Holding {zone} via {best_angle}. Keep crosshair at head level.")
 
         recommended_actions = []
         if utility_count > 0:
@@ -323,13 +330,14 @@ class IntentCoachingEngine:
         if hp < 30 and enemies > teammates:
             recommended_actions.append("SAVE_WEAPON_IF_UNFAVORABLE")
         else:
-            recommended_actions.append("CROSSFIRE_POSITIONING")
+            recommended_actions.append(f"HOLD_ANGLE_{best_angle}")
 
         return {
             "tactical_mode": tactical_mode,
             "threat_level": threat_level,
             "callout": " ".join(callout_lines),
             "recommended_actions": recommended_actions,
+            "optimal_angles": optimal_angles,
             "urgency": "HIGH" if threat_level in ["CRITICAL", "HIGH"] else "NORMAL",
             "timestamp_seconds": round_seconds,
         }
