@@ -155,6 +155,9 @@ Saved coaching uses a borderless blue background. The inspector has no separate
 saved-analysis note or clear button. Player
 and round selectors suppress the browser's native white focus ring while
 retaining the product-colored container state.
+Perspective, round, and playback-speed dropdowns use the same white custom
+chevron with consistent spacing from the right border. Their selected values
+and dark native option menus use pure-white text for consistent contrast.
 Full-match round segments are labeled buttons: hovering or keyboard focus shows
 a round tooltip, and activation jumps to that round's start tick.
 Between recorded rounds, the live-position heading reads `Waiting for next

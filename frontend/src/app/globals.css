@@ -21,7 +21,7 @@
   --scrollbar-thumb: #5d79ae;
   --scrollbar-thumb-hover: var(--accent);
   --scrollbar-thumb-active: #c9782c;
-  --font-body: "Noto Sans Variable", "Noto Sans", ui-sans-serif, system-ui, sans-serif;
+  --font-body: "Saira Variable", "Saira", "Arial Narrow", sans-serif;
   --font-interface: "Saira Variable", "Saira", "Arial Narrow", sans-serif;
   --font-display: "Saira Condensed", "Arial Narrow", sans-serif;
 }
@@ -1387,13 +1387,32 @@ input[type="file"] {
 .analysis-toolbar select,
 .speed-control select {
   min-height: 2.4rem;
+  appearance: none;
+  -webkit-appearance: none;
+  color-scheme: dark;
   border: 0;
   border-left: 1px solid var(--line);
   border-radius: 0;
-  background: var(--surface-raised);
-  color: var(--text);
-  padding: 0.4rem 1.8rem 0.4rem 0.65rem;
+  background-color: var(--surface-raised);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' fill='none' stroke='%23fff' stroke-width='2' stroke-linecap='square'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 0.75rem center;
+  background-size: 0.75rem 0.5rem;
+  color: #fff;
+  padding: 0.4rem 2.25rem 0.4rem 0.65rem;
   font-family: var(--font-interface);
+}
+
+.analysis-toolbar select option,
+.speed-control select option {
+  background-color: var(--surface);
+  color: #fff;
+}
+
+.analysis-toolbar select option:checked,
+.speed-control select option:checked {
+  background-color: #28364d;
+  color: #fff;
 }
 
 .analysis-toolbar-controls label:focus-within,
@@ -2029,13 +2048,17 @@ button.player-marker {
 }
 
 .speed-control {
+  position: relative;
   padding: 0;
 }
 
 .speed-control select {
   min-height: 2.1rem;
   border: 0;
-  padding-block: 0.2rem;
+  background-color: transparent;
+  color: var(--text);
+  padding: 0.2rem 2.25rem 0.2rem 0.65rem;
+  cursor: pointer;
 }
 
 .speed-control:focus-within,
@@ -2043,6 +2066,10 @@ button.player-marker {
 .speed-control select:focus-visible {
   outline: none;
   box-shadow: none;
+}
+
+.speed-control:focus-within {
+  border-color: var(--accent);
 }
 
 .playback-controls output {
@@ -2161,6 +2188,10 @@ button.player-marker {
   cursor: ew-resize;
   outline: none;
   box-shadow: none;
+}
+
+.playback-controls .skip-control {
+  text-transform: none;
 }
 
 .timeline-range::-webkit-slider-runnable-track {

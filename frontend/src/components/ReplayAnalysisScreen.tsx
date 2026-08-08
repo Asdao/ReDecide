@@ -730,7 +730,7 @@ export function ReplayAnalysisScreen({
 
         <section className="replay-timeline" aria-label="Replay timeline">
           <div className="playback-controls">
-            <button type="button" onClick={() => seek(currentTick - replay.map.tick_rate * 5)} aria-label="Rewind 5 seconds">−5s</button>
+            <button className="skip-control" type="button" onClick={() => seek(currentTick - replay.map.tick_rate * 5)} aria-label="Rewind 5 seconds">−5s</button>
             <button
               className="play-toggle"
               type="button"
@@ -742,7 +742,7 @@ export function ReplayAnalysisScreen({
             >
               {playing ? "Pause" : "Play"}
             </button>
-            <button type="button" onClick={() => seek(currentTick + replay.map.tick_rate * 5)} aria-label="Fast-forward 5 seconds">+5s</button>
+            <button className="skip-control" type="button" onClick={() => seek(currentTick + replay.map.tick_rate * 5)} aria-label="Fast-forward 5 seconds">+5s</button>
             <label className="speed-control">
               <span className="sr-only">Playback speed</span>
               <select value={playbackRate} onChange={(event) => setPlaybackRate(Number(event.currentTarget.value))}>
