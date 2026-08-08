@@ -3,6 +3,7 @@ export type MomentIntentRequest = {
   analysisId: string;
   playerId: string;
   keyPointId: string;
+  decisionId: string;
   intent: string;
 };
 

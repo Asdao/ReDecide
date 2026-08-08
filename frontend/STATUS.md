@@ -172,9 +172,12 @@ scrolls internally instead of resizing. Its typed, per-moment request lifecycle
 keeps a one-time submitted intent attached to the stable event ID, disables editing,
 preserves the old coaching behind the rotating loading border, ignores stale
 responses, and replaces only that moment's coaching after a successful response.
-The composer remains visibly disabled in the running app until the backend
-provides a documented endpoint and a submission function is connected; the
-viewer does not invent or call an unsupported API.
+Uploaded and backend-sample viewers now submit the selected moment's stable
+`decision_id`, `analysis_id`, `player_id`, and intent text through
+`POST /api/analysis/{analysis_id}/intent`. The validated response must identify
+the same analysis, player, and decision before its `in_depth_coaching` text can
+replace that moment's original coaching. Processed saves keep the composer
+disabled because they do not have a live backend analysis job.
 The radar workspace always renders a compact win-rate strip directly under the
 live radar status and above the moment inspector. The strip is capped at half
 the inspector's maximum width. The selected player's current team is flushed
@@ -443,7 +446,8 @@ preparation behavior, and safe/internal exception logging.
 
 From `frontend/`, the latest checks report:
 
-- Vitest: 13 files and 139 tests collected; all 139 passed, including both
+- Vitest: 13 files and 141 tests collected; all 141 passed, including intent
+  response validation and both
   all-player processed-analysis fixtures and perspective-specific event lookup.
 - TypeScript: passed
 - ESLint: passed with no warnings
@@ -508,14 +512,19 @@ viewer and event inspector remain free of horizontal overflow.
   The new retention route still needs one observed scheduled dry run.
 - Each processed save contains ten generated coaching moments per player. These
   are static save artifacts rather than live regeneration; uploaded replays use
-  their completed backend analysis. The player intent UI and typed request
-  lifecycle are implemented, but submission remains disabled because no public
-  backend endpoint or response contract exists.
+  their completed backend analysis. Intent submission therefore remains disabled
+  for processed saves even though it is connected for uploaded and backend-sample
+  analysis jobs.
 
 ## Contract/API impact
 
-No public response-shape changes and no intent endpoint were introduced. The sample
-adapter consumes the backend replay envelope from `POST /api/analyze`
+The frontend now consumes `POST /api/analysis/{analysis_id}/intent` from the
+intent-coaching backend branch. It validates the complete structured response,
+checks that the returned analysis, player, and decision IDs match the active
+request, and uses `in_depth_coaching` as the replacement prose for that selected
+moment. The endpoint must be merged into the running backend before this flow is
+available locally or in deployment. The sample adapter consumes the backend
+replay envelope from `POST /api/analyze`
 (`sample_id`, `replay_id`, `manifest`, and `analysis`), while the local
 processed-replay adapter and uploaded flow consume the documented
 `replay_visualization_v1` shape directly. The frontend implements the

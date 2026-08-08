@@ -334,6 +334,8 @@ export function ReplayAnalysisScreen({
 
   const requestContextualAnalysis = useCallback((keyPointId: string, intent: string) => {
     if (!submitMomentIntent || !analysisId || !replay || !selectedPlayerId) return;
+    const decisionId = analysisByEventId.get(keyPointId)?.selected_decision.decision_id;
+    if (!decisionId) return;
 
     intentControllers.current.get(keyPointId)?.abort();
     const controller = new AbortController();
@@ -346,6 +348,7 @@ export function ReplayAnalysisScreen({
       analysisId,
       playerId: selectedPlayerId,
       keyPointId,
+      decisionId,
       intent,
     }, controller.signal)
       .then((coaching) => {
@@ -371,7 +374,7 @@ export function ReplayAnalysisScreen({
           intentControllers.current.delete(keyPointId);
         }
       });
-  }, [analysisId, replay, selectedPlayerId, submitMomentIntent]);
+  }, [analysisByEventId, analysisId, replay, selectedPlayerId, submitMomentIntent]);
 
   if (!replay) {
     return (
@@ -557,6 +560,7 @@ export function ReplayAnalysisScreen({
                       id={`moment-intent-${selectedEvent.event_id}`}
                       value={selectedIntentState ? "" : selectedIntentDraft}
                       placeholder={selectedIntentState ? "Intent sent" : "What were you trying to do?"}
+                      maxLength={240}
                       disabled={Boolean(selectedIntentState) || !submitMomentIntent || !analysisId}
                       onChange={(event) => {
                         const value = event.currentTarget.value;
