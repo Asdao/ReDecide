@@ -66,3 +66,7 @@ data/eval/human/*
 # Hackathon brief / case documents
 Garena AI Build*
 *.pdf
+
+# Logs
+logs/*
+!logs/.gitkeep

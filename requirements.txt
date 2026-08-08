@@ -1,0 +1,11 @@
+fastapi>=0.115,<1
+httpx>=0.28,<1
+python-dotenv>=1,<2
+pydantic>=2.7,<3
+python-multipart>=0.0.9,<1
+uvicorn>=0.34,<1
+lightgbm>=4.0
+pandas>=2.0
+pyarrow>=15.0
+fastparquet>=2024.0
+pytest>=9.0.3,<10

@@ -28,7 +28,58 @@ The replay pipeline selects the evidence and prevents later match information
 from entering the coaching prompt. The language model explains that evidence;
 it does not parse the `.dem` or decide which replay facts are valid.
 
+## AI Agent Project Structure
+
+```text
+redecide/
+├── README.md              # Project overview, setup, usage, and examples
+├── requirements.txt       # Python dependencies list
+├── .env.example           # Environment variables template
+├── .gitignore             # Files and directories ignored by Git
+├── docker-compose.yml     # Docker Compose for backend and frontend services
+├── main.py                # Primary entry point (Simulator demo & FastAPI server)
+├── src/                   # AI Agent Core Package
+│   ├── agent/             # Core agent logic, execution loop, state, and memory
+│   │   ├── __init__.py
+│   │   ├── agent.py
+│   │   ├── executor.py
+│   │   ├── state.py
+│   │   └── memory.py
+│   ├── tools/             # Tool definitions (replay extraction, simulation, search)
+│   │   ├── __init__.py
+│   │   ├── replay_extractor.py
+│   │   ├── cs2_simulator.py
+│   │   └── search.py
+│   ├── models/            # LLM clients & embedding models
+│   │   ├── __init__.py
+│   │   ├── llm_client.py
+│   │   └── embeddings.py
+│   ├── prompts/           # System & agent prompt templates
+│   │   ├── __init__.py
+│   │   ├── system_prompts.py
+│   │   └── agent_prompts.py
+│   ├── utils/             # Helper functions, logging, and config
+│   │   ├── __init__.py
+│   │   ├── helpers.py
+│   │   ├── logger.py
+│   │   └── config.py
+│   └── api/               # API router layer (FastAPI)
+│       ├── __init__.py
+│       ├── routes.py
+│       └── schemas.py
+├── tests/                 # Unit tests, integration tests, and tool tests
+│   ├── __init__.py
+│   ├── test_agent.py
+│   ├── test_tools.py
+│   └── test_api.py
+├── backend/               # FastAPI backend implementation & replay engine
+├── frontend/              # Next.js interactive radar & coaching UI
+├── data/                  # Sample data, evaluation datasets, and runtime stores
+└── logs/                  # Log files for debugging and monitoring
+```
+
 ## Run locally
+
 
 Requirements:
 
