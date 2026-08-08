@@ -549,7 +549,7 @@ export function ReplayAnalysisScreen({
                   </p>
                   {!submitMomentIntent || !analysisId ? (
                     <p className="moment-intent-unavailable">
-                      Intent follow-up will be enabled when backend support is connected.
+                      Contextualised analysis is not available on processed replays.
                     </p>
                   ) : null}
                   {selectedIntentState?.status === "error" ? (
