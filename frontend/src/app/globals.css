@@ -1507,6 +1507,11 @@ input[type="file"] {
 
 .replay-map-loading-frame {
   overflow: hidden;
+  background: transparent;
+}
+
+.replay-map-loading-indicators {
+  visibility: hidden;
 }
 
 .replay-map-loading-frame > img {
@@ -1520,10 +1525,10 @@ input[type="file"] {
   display: grid;
   place-content: center;
   gap: 0.65rem;
-  background: rgb(7 10 14 / 46%);
+  background: transparent;
   padding: clamp(1.5rem, 5vw, 3rem);
   text-align: center;
-  backdrop-filter: blur(2px);
+  backdrop-filter: none;
 }
 
 .replay-map-loading-copy strong {

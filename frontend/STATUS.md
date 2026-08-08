@@ -89,10 +89,13 @@ entry that could otherwise reopen the processed replay catalog. The upload itsel
 not restored on Forward because browsers do not allow local `File` objects to
 be reconstructed safely.
 
-Every loading surface now uses the same rotating orange perimeter around its
-content box, including sample retrieval, the selected sample card during preparation,
-browser replay loading and preparation,
-and all uploaded-replay progress states. The former
+Loading cards use the same rotating orange perimeter, including sample
+retrieval, the selected sample card during preparation, and browser replay
+loading and preparation. The replay map loading screen is intentionally exempt:
+its radar frame and loading-copy overlay are fully transparent and have no
+orange perimeter. It retains an invisible indicator row with the same geometry
+as the interactive replay, keeping the radar in the same position across the
+loading-to-replay transition. The former
 floating square markers and pulse animations were removed. The moving border is
 a solid, hard-edged orange segment without a translucent gradient ramp, and the
 global reduced-motion treatment still collapses it to a static border state.

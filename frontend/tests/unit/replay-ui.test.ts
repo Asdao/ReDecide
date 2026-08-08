@@ -161,11 +161,14 @@ describe("uploaded replay screens", () => {
       }),
     );
 
-    for (const html of [uploadHtml, sampleHtml, processedPlayerHtml, analysisHtml, mapLoadingHtml]) {
+    for (const html of [uploadHtml, sampleHtml, processedPlayerHtml, analysisHtml]) {
       expect(html).toContain("loading-border");
       expect(html).not.toContain("loading-marker");
       expect(html).not.toContain("progress-marker");
     }
+    expect(mapLoadingHtml).not.toContain("loading-border");
+    expect(mapLoadingHtml).not.toContain("loading-marker");
+    expect(mapLoadingHtml).not.toContain("progress-marker");
     expect(sampleHtml).toContain('aria-busy="true"');
   });
 
@@ -229,7 +232,9 @@ describe("uploaded replay screens", () => {
     expect(html).not.toContain("85%");
     expect(html).toContain("T One");
     expect(html).toContain("%2Fradars%2Fde_mirage.png");
-    expect(html).toContain("radar-frame loading-border replay-map-loading-frame");
+    expect(html).toContain("radar-indicators replay-map-loading-indicators");
+    expect(html).toContain("radar-frame replay-map-loading-frame");
+    expect(html).not.toContain("loading-border");
     expect(html).toContain("Back to player selection");
     expect(html).not.toContain("Perspective");
     expect(html).toContain('aria-live="polite"');
