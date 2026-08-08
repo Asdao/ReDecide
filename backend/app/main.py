@@ -31,6 +31,8 @@ from backend.app.contracts import (
     APIErrorDetail,
     APIErrorResponse,
     HealthResponse,
+    IntentCoachingRequest,
+    IntentCoachingResponse,
     SamplesResponse,
 )
 from backend.app.errors import IntegrationError
@@ -269,6 +271,30 @@ def create_analysis_app(*, service: AnalysisService | None = None) -> FastAPI:
             raise HTTPException(status_code=404, detail="analysis job not found") from exc
         except AnalysisNotReady as exc:
             raise HTTPException(status_code=202, detail=str(exc)) from exc
+        except PlayerSelectionError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        except RuntimeError as exc:
+            raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+    @analysis_app.post("/api/analysis/{analysis_id}/intent")
+    def intent_coaching(
+        analysis_id: str,
+        request: IntentCoachingRequest,
+    ) -> IntentCoachingResponse:
+        if request.analysis_id != analysis_id:
+            raise HTTPException(status_code=400, detail="analysis_id in path and body must match")
+        try:
+            result = analysis.run_intent_coaching(
+                analysis_id,
+                player_id=request.player_id,
+                decision_id=request.decision_id,
+                intent_text=request.intent_text,
+            )
+            return IntentCoachingResponse.model_validate(result)
+        except AnalysisNotFound as exc:
+            raise HTTPException(status_code=404, detail="analysis job not found") from exc
+        except AnalysisNotReady as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
         except PlayerSelectionError as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
         except RuntimeError as exc:

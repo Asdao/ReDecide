@@ -431,6 +431,47 @@ class AnalysisService:
                 raise AnalysisNotReady("analysis result is not ready")
             return dict(job.result)
 
+    def run_intent_coaching(
+        self,
+        analysis_id: str,
+        *,
+        player_id: str,
+        decision_id: str,
+        intent_text: str,
+    ) -> dict[str, Any]:
+        job = self.get_job(analysis_id)
+        with job.lock:
+            source_result = job.result or job.prepared_result or job.replay or {}
+
+            from backend.app.coach.intent_engine import IntentCoachingEngine
+            from backend.app.coach.pi_connector import HttpCoachAdapter, PiCoachAdapter
+            adapter = (
+                self.coach_adapter
+                if isinstance(self.coach_adapter, (PiCoachAdapter, HttpCoachAdapter))
+                else PiCoachAdapter()
+            )
+            engine = IntentCoachingEngine(coach_adapter=adapter)
+            evaluation = engine.evaluate_intent(
+                source_result,
+                intent_text,
+                player_id=player_id,
+                decision_id=decision_id,
+            )
+
+            response = {
+                "analysis_id": analysis_id,
+                "player_id": player_id,
+                "decision_id": decision_id,
+                "user_intent": evaluation["user_intent"],
+                "intent_feasibility": evaluation["intent_feasibility"],
+                "coordination_gap": evaluation["coordination_gap"],
+                "recommended_cs2_adjustment": evaluation["recommended_cs2_adjustment"],
+                "in_depth_coaching": evaluation["in_depth_coaching"],
+                "knowledge_cutoff_tick": evaluation["knowledge_cutoff_tick"],
+                "facts_referenced": evaluation["facts_referenced"],
+            }
+            return response
+
     def logs(self, analysis_id: str) -> str:
         job = self.get_job(analysis_id)
         if not job.log_path.is_file():

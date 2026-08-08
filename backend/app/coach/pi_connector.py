@@ -121,14 +121,14 @@ class HttpCoachAdapter:
         self.timeout_seconds = timeout_seconds
         self._client = client
 
-    def __call__(self, pipeline_result: Mapping[str, Any]) -> str:
+    def run_prompt(self, prompt: str) -> str:
+        """Send a raw prompt string to the HTTP model endpoint."""
         if not self.base_url:
             raise PiCoachError("HARNESS_MODEL_BASE_URL is required for HTTP coaching")
         if not self.api_key:
             raise PiCoachError(
                 "HARNESS_MODEL_API_KEY or DEEPSEEK_API_KEY is required for HTTP coaching"
             )
-        prompt = build_coach_prompt(pipeline_result)
         endpoint = self.base_url.rstrip("/")
         if not endpoint.endswith("/chat/completions"):
             endpoint = f"{endpoint}/chat/completions"
@@ -159,6 +159,11 @@ class HttpCoachAdapter:
             raise PiCoachError("HTTP coaching provider returned an invalid response") from exc
         if not isinstance(content, str):
             raise PiCoachError("HTTP coaching provider returned non-text content")
+        return content
+
+    def __call__(self, pipeline_result: Mapping[str, Any]) -> str:
+        prompt = build_coach_prompt(pipeline_result)
+        content = self.run_prompt(prompt)
         return normalize_coach_response(content, expected_decision_ids=_expected_decision_ids(pipeline_result))
 
 
@@ -183,8 +188,8 @@ class PiCoachAdapter:
         self.timeout_seconds = timeout_seconds
         self._runner = runner
 
-    def __call__(self, pipeline_result: Mapping[str, Any]) -> str:
-        prompt = build_coach_prompt(pipeline_result)
+    def run_prompt(self, prompt: str) -> str:
+        """Execute a raw prompt string via the Node/harness subprocess runner."""
         executable = self._resolve_node()
         command = [
             executable,
@@ -209,7 +214,12 @@ class PiCoachAdapter:
             raise PiCoachError("Pi coaching process could not be started") from exc
         if completed.returncode != 0:
             raise PiCoachError("Pi coaching process failed")
-        return normalize_coach_response(completed.stdout, expected_decision_ids=_expected_decision_ids(pipeline_result))
+        return completed.stdout
+
+    def __call__(self, pipeline_result: Mapping[str, Any]) -> str:
+        prompt = build_coach_prompt(pipeline_result)
+        stdout = self.run_prompt(prompt)
+        return normalize_coach_response(stdout, expected_decision_ids=_expected_decision_ids(pipeline_result))
 
     def _process_environment(self) -> dict[str, str]:
         """Inherit deployment values and point Pi at the repository dotenv.
@@ -228,6 +238,36 @@ class PiCoachAdapter:
 
     def build_prompt(self, pipeline_result: Mapping[str, Any]) -> str:
         return build_coach_prompt(pipeline_result)
+
+    def build_intent_prompt(self, pipeline_result: Mapping[str, Any], user_intent: str) -> str:
+        try:
+            payload = _model_payload(pipeline_result)
+        except PiCoachError:
+            payload = dict(pipeline_result)
+        selected = pipeline_result.get("selected_decision", {})
+        prompt = (
+            "You are an expert outcome-blind Counter-Strike 2 (CS2) tactical coach.\n"
+            "Evaluate the player's decision using ONLY the facts known BEFORE action_close_tick.\n\n"
+            f'PLAYER_INTENT: "{user_intent.strip()}"\n'
+            f"OBSERVED_ACTION: {selected.get('observed_action', 'UNCLASSIFIED')}\n"
+            f"DECISION_PAYLOAD={json.dumps(payload, ensure_ascii=True, separators=(',', ':'))}\n\n"
+            "Return ONLY a JSON object with exactly these string fields:\n"
+            '"intent_feasibility", "coordination_gap", "recommended_cs2_adjustment", "in_depth_coaching".\n'
+            "Ensure in_depth_coaching provides a thorough tactical analysis addressing the player's intent."
+        )
+        if len(prompt.encode("utf-8")) > MAX_PROMPT_BYTES:
+            raise PiCoachError("Intent coaching prompt exceeds the bounded payload size")
+        return prompt
+
+    def evaluate_intent(
+        self,
+        pipeline_result: Mapping[str, Any],
+        user_intent: str,
+    ) -> dict[str, Any]:
+        from backend.app.coach.intent_engine import IntentCoachingEngine
+
+        engine = IntentCoachingEngine(coach_adapter=self)
+        return engine.evaluate_intent(pipeline_result, user_intent)
 
     def _resolve_node(self) -> str:
         if self.node_executable:
