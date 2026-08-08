@@ -283,5 +283,56 @@ class IntentCoachingEngine:
             "facts_referenced": facts,
         }
 
+    def evaluate_realtime_assist(self, telemetry: Mapping[str, Any]) -> dict[str, Any]:
+        """Evaluate live in-game telemetry to produce real-time tactical callouts and threat ratings."""
+        hp = int(telemetry.get("hp", 100))
+        teammates = int(telemetry.get("teammates_alive", 1))
+        enemies = int(telemetry.get("enemies_alive", 1))
+        bomb_planted = bool(telemetry.get("bomb_planted", False))
+        bomb_seconds = float(telemetry.get("bomb_time_seconds", 40.0))
+        round_seconds = float(telemetry.get("round_time_seconds", 115.0))
+        zone = str(telemetry.get("active_zone", "A_SITE"))
+        utility_count = int(telemetry.get("utility_count", 0))
+
+        if teammates == 1 and enemies >= 2:
+            tactical_mode = f"CLUTCH_1v{enemies}"
+            threat_level = "CRITICAL" if hp < 40 else "HIGH"
+        elif bomb_planted:
+            tactical_mode = "POST_PLANT_HOLD" if teammates > enemies else "SITE_RETAKE"
+            threat_level = "HIGH" if bomb_seconds < 15.0 else "MODERATE"
+        elif round_seconds < 20.0:
+            tactical_mode = "TIME_STALL_EXECUTE"
+            threat_level = "HIGH"
+        else:
+            tactical_mode = "TACTICAL_MAP_CONTROL"
+            threat_level = "MODERATE" if hp < 50 else "LOW"
+
+        callout_lines = []
+        if tactical_mode.startswith("CLUTCH"):
+            callout_lines.append(f"[{tactical_mode}] Isolate 1v1 duels. Use utility before peeking {zone}.")
+        elif tactical_mode == "SITE_RETAKE":
+            callout_lines.append(f"[SITE RETAKE] {bomb_seconds:.1f}s on bomb. Sync entry with team, smoke bomb site.")
+        elif tactical_mode == "POST_PLANT_HOLD":
+            callout_lines.append(f"[DEFEND BOMB] Play crossfire in {zone}, delay defusal with utility.")
+        else:
+            callout_lines.append(f"[TACTICAL HELP] Holding {zone}. Keep crosshair at head level.")
+
+        recommended_actions = []
+        if utility_count > 0:
+            recommended_actions.append("USE_FLASH_OR_SMOKE_BEFORE_ENTRY")
+        if hp < 30 and enemies > teammates:
+            recommended_actions.append("SAVE_WEAPON_IF_UNFAVORABLE")
+        else:
+            recommended_actions.append("CROSSFIRE_POSITIONING")
+
+        return {
+            "tactical_mode": tactical_mode,
+            "threat_level": threat_level,
+            "callout": " ".join(callout_lines),
+            "recommended_actions": recommended_actions,
+            "urgency": "HIGH" if threat_level in ["CRITICAL", "HIGH"] else "NORMAL",
+            "timestamp_seconds": round_seconds,
+        }
+
 
 __all__ = ["IntentCoachingEngine"]
