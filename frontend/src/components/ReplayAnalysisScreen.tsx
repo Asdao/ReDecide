@@ -13,6 +13,7 @@ import {
   analysisTimelineEvents,
   analysisEntryForEvent,
   buildReplayFrames,
+  eventAtExactTick,
   eventMatchesAnalysis,
   firstEventCrossed,
   formatReplayTime,
@@ -138,16 +139,21 @@ export function ReplayAnalysisScreen({
         ) {
           throw new Error("The saved analysis did not match the processed replay.");
         }
+        const playerId = replayValue.players.some(({ player_id }) => player_id === initialPlayerId)
+          ? initialPlayerId!
+          : replayValue.players[0].player_id;
         const firstTick = replayValue.ticks[0]?.tick ?? replayValue.rounds[0].start;
+        const selectedEvent = eventAtExactTick(analysisTimelineEvents(
+          replayValue.events,
+          playerId,
+          analysisValue,
+        ), firstTick);
         setReplay(replayValue);
         setAnalysis(analysisValue);
         currentTickRef.current = firstTick;
         setCurrentTick(firstTick);
-        setSelectedPlayerId((current) =>
-          replayValue.players.some(({ player_id }) => player_id === current)
-            ? current
-            : replayValue.players[0].player_id,
-        );
+        setSelectedPlayerId(playerId);
+        setSelectedEventId(selectedEvent?.event_id);
       })
       .catch((error: unknown) => {
         if (active && !isAbortError(error)) {
@@ -158,7 +164,7 @@ export function ReplayAnalysisScreen({
       active = false;
       controller.abort();
     };
-  }, [initialAnalysis, initialReplay, loadAttempt, replayId]);
+  }, [initialAnalysis, initialPlayerId, initialReplay, loadAttempt, replayId]);
 
   const frames = useMemo(() => (replay ? buildReplayFrames(replay.ticks) : []), [replay]);
   const firstTick = frames[0]?.tick ?? 0;
@@ -190,11 +196,11 @@ export function ReplayAnalysisScreen({
   const analysisByEventId = useMemo(
     () => new Map(
       timelineEvents.flatMap((event) => {
-        const entry = analysisEntryForEvent(event, analysis);
+        const entry = analysisEntryForEvent(event, analysis, selectedPlayerId);
         return entry ? [[event.event_id, entry] as const] : [];
       }),
     ),
-    [analysis, timelineEvents],
+    [analysis, selectedPlayerId, timelineEvents],
   );
   const selectedEventAnalysis = selectedEvent ? analysisByEventId.get(selectedEvent.event_id) : undefined;
   const selectedEventHasAnalysis = Boolean(selectedEventAnalysis);
@@ -298,8 +304,14 @@ export function ReplayAnalysisScreen({
   const changePerspective = useCallback((playerId: string) => {
     if (uploaded) return;
     setSelectedPlayerId(playerId);
-    setSelectedEventId(undefined);
-  }, [uploaded]);
+    const eventAtCurrentTick = replay
+      ? eventAtExactTick(
+          analysisTimelineEvents(replay.events, playerId, analysis),
+          currentTickRef.current,
+        )
+      : undefined;
+    setSelectedEventId(eventAtCurrentTick?.event_id);
+  }, [analysis, replay, uploaded]);
 
   const moveEventMarkerFocus = useCallback(
     (eventIndex: number, direction: "first" | "last" | "next" | "previous") => {

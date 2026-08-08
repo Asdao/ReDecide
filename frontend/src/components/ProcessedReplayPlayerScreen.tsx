@@ -103,11 +103,11 @@ export function ProcessedReplayPlayerScreen({
                         <strong>{playerDisplayName(player)}</strong>
                         <small>
                           {player.sides.map((side) => side.toUpperCase()).join(" / ")}
-                          {player.player_id === summary.analysisPlayerId ? " · Saved analysis" : " · Replay only"}
+                          {summary.analysisAvailable ? " · Saved analysis" : " · Replay only"}
                         </small>
                       </span>
                       <span className="replay-player-action">
-                        {player.player_id === summary.analysisPlayerId ? "Open analysis" : "Open perspective"}
+                        {summary.analysisAvailable ? "Open analysis" : "Open perspective"}
                       </span>
                     </button>
                   </li>

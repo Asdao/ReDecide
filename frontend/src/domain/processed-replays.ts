@@ -8,7 +8,6 @@ export type ProcessedReplaySummary = {
   replayUrl: string;
   analysisAvailable: boolean;
   analysisUrl?: string;
-  analysisPlayerId?: string;
 };
 
 export const PROCESSED_REPLAYS: readonly ProcessedReplaySummary[] = [
@@ -20,7 +19,8 @@ export const PROCESSED_REPLAYS: readonly ProcessedReplaySummary[] = [
     rounds: 30,
     players: 10,
     replayUrl: "/replays/mirage-showcase.replay.json",
-    analysisAvailable: false,
+    analysisAvailable: true,
+    analysisUrl: "/replays/mirage-showcase.analysis.json",
   },
   {
     replayId: "inferno-processed",
@@ -32,7 +32,6 @@ export const PROCESSED_REPLAYS: readonly ProcessedReplaySummary[] = [
     replayUrl: "/replays/inferno-processed.replay.json",
     analysisAvailable: true,
     analysisUrl: "/replays/inferno-processed.analysis.json",
-    analysisPlayerId: "76561197978835160",
   },
 ] as const;
 

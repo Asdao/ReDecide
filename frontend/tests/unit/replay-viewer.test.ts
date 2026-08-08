@@ -6,6 +6,7 @@ import {
   analysisTimelineEvents,
   buildReplayFrames,
   cleanAnalysisEvents,
+  eventAtExactTick,
   firstEventCrossed,
   formatReplayTime,
   frameAtTick,
@@ -53,26 +54,35 @@ describe("processed replay viewer", () => {
     expect(replay.ticks.every(({ player_id, alive }) => player_id && typeof alive === "boolean")).toBe(true);
   });
 
-  it("validates the Inferno analysis against its processed replay identity", () => {
+  it.each([
+    ["mirage-showcase.replay.json", "mirage-showcase.analysis.json"],
+    ["inferno-processed.replay.json", "inferno-processed.analysis.json"],
+  ])("validates every player's saved analysis for %s", (replayFilename, analysisFilename) => {
     const replay = normalizeBackendReplay(JSON.parse(readFileSync(
-      resolve(process.cwd(), "public/replays/inferno-processed.replay.json"),
+      resolve(process.cwd(), "public/replays", replayFilename),
       "utf8",
     )));
     const analysis = replayAnalysisResultSchema.parse(JSON.parse(readFileSync(
-      resolve(process.cwd(), "public/replays/inferno-processed.analysis.json"),
+      resolve(process.cwd(), "public/replays", analysisFilename),
       "utf8",
     )));
 
     expect(analysis.replay_id).toBe(replay.replay_id);
     expect(analysis.source).toBe(replay.source);
     expect(analysis.map_name).toBe(replay.map.name);
-    expect(replay.players.some(({ player_id }) => player_id === analysis.coach_analysis.player_id)).toBe(true);
-    expect(replay.events.some((event) =>
-      event.tick === analysis.selected_decision.contact_tick &&
-      event.round_num === analysis.selected_decision.round_number &&
-      event.event === analysis.selected_decision.event_category &&
-      event.victim_id === analysis.selected_decision.player_id
-    )).toBe(true);
+    const analyzedPlayerIds = new Set(
+      analysis.analyses?.map(({ selected_decision }) => selected_decision.player_id) ?? [],
+    );
+    expect(analysis.analyses).toHaveLength(100);
+    expect(analyzedPlayerIds).toEqual(new Set(replay.players.map(({ player_id }) => player_id)));
+    for (const player of replay.players) {
+      expect(analysis.analyses?.filter(
+        ({ selected_decision }) => selected_decision.player_id === player.player_id,
+      )).toHaveLength(10);
+      expect(analysisTimelineEvents(replay.events, player.player_id, analysis).some((event) =>
+        analysisEntryForEvent(event, analysis, player.player_id)?.selected_decision.player_id === player.player_id
+      )).toBe(true);
+    }
   });
 
   it("adapts backend snapshot names and derives optional alive state", () => {
@@ -208,6 +218,8 @@ describe("processed replay viewer", () => {
     expect(firstEventCrossed(selectedEvents, 90, 105)?.event_id).toBe("damage-in");
     expect(firstEventCrossed(selectedEvents, 100, 119)).toBeUndefined();
     expect(firstEventCrossed(selectedEvents, 100, 120)?.event_id).toBe("death");
+    expect(eventAtExactTick(selectedEvents, 120)?.event_id).toBe("death");
+    expect(eventAtExactTick(selectedEvents, 119)).toBeUndefined();
   });
 
   it("adds an attacker analysis point and removes a competing same-tick death marker", () => {
@@ -217,6 +229,7 @@ describe("processed replay viewer", () => {
     )));
     const attackerAnalysis = {
       ...analysis,
+      analyses: undefined,
       selected_decision: {
         ...analysis.selected_decision,
         player_id: "p1",
@@ -246,6 +259,7 @@ describe("processed replay viewer", () => {
     )));
     const victimAnalysis = {
       ...analysis,
+      analyses: undefined,
       selected_decision: {
         ...analysis.selected_decision,
         player_id: "p1",
@@ -282,14 +296,15 @@ describe("processed replay viewer", () => {
     ];
 
     expect(cleanAnalysisEvents(dirtyEvents)).toEqual([validEvent]);
-    expect(analysisTimelineEvents([], analysis.selected_decision.player_id, analysis)).toMatchObject([
-      {
-        event: analysis.selected_decision.event_category,
-        tick: analysis.selected_decision.contact_tick,
-        round_num: analysis.selected_decision.round_number,
-        victim_id: analysis.selected_decision.player_id,
-      },
-    ]);
+    const synthetic = analysisTimelineEvents([], analysis.selected_decision.player_id, analysis);
+    expect(synthetic).toHaveLength(10);
+    expect(synthetic[0]).toMatchObject({
+      event: analysis.selected_decision.event_category,
+      tick: analysis.selected_decision.contact_tick,
+      round_num: analysis.selected_decision.round_number,
+    });
+    expect(analysisEntryForEvent(synthetic[0], analysis, analysis.selected_decision.player_id))
+      .toMatchObject({ selected_decision: { player_id: analysis.selected_decision.player_id } });
   });
 
   it("renders every analysed decision as its own timeline marker", () => {

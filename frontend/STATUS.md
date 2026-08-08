@@ -1,6 +1,6 @@
 # Frontend Status
 
-Last verified: 2026-08-07 (Asia/Singapore)
+Last verified: 2026-08-08 (Asia/Singapore)
 
 ## Vercel Services deployment
 
@@ -45,8 +45,8 @@ keeps data when metadata inspection fails. `CRON_SECRET` authentication and an
 optional dry-run mode prevent browser-driven or accidental broad deletion.
 
 The latest validation state for the merged frontend is recorded under
-Verification. TypeScript, ESLint, and the production Turbopack build pass; one
-SSE adapter test still carries the pre-merge absolute-URL expectation.
+Verification. Vitest, TypeScript, ESLint, and the production Turbopack build
+all pass.
 
 ## Status
 
@@ -160,9 +160,13 @@ original opacity, colors, and 22-degree angle.
 The moment inspector is absent during ordinary playback. Selecting an event
 slides a wider inspector in from the right and shifts the centered radar
 slightly left; resuming playback restores the centered
-map. Inferno's saved coaching is attached to the matching flameZ damage event at
-tick 2579, shown as a distinct blue timeline marker, and rendered in the moment
-inspector. Analysis-backed moments now also render the intent follow-up composer
+map. Both processed saves now contain ten saved first-contact analyses for every
+player. Changing the selected perspective keeps the playback clock at the same
+tick and resolves only that player's event at that exact tick, including when
+both players share the same contact event. The inspector opens for the matching
+event and remains absent when the newly selected player has no event at that
+tick. Analysis-backed moments render as distinct blue timeline markers and also
+render the intent follow-up composer
 pinned to the bottom of the inspector. The textbox keeps its base height and
 scrolls internally instead of resizing. Its typed, per-moment request lifecycle
 keeps a one-time submitted intent attached to the stable event ID, disables editing,
@@ -193,7 +197,9 @@ The processed replay adapter accepts the documented backend
 It associates backend snapshots with stable top-level players by their unique
 display names, normalizes sides and event participants, derives `alive` from
 health only when absent, removes duplicate parser event aliases from the viewer,
-and generates deterministic event IDs when the backend did not return one.
+and generates deterministic event IDs when the backend did not return one. Its
+saved-analysis validation requires every player with a decision candidate to
+have a corresponding entry in the additive `analyses` array.
 
 The backend-driven sample catalog, replay-envelope schema, adapter, reducer
 transition, and tests power the sample-match landing action. The processed
@@ -255,8 +261,9 @@ analysis. Manifest validation also keeps visualization failures, coaching
 completion, and visualization unlock state internally consistent.
 Compatibility sample contracts now mirror the backend's unique-player and
 recommended-player rules and enforce the payload associated with each
-preparation stage. Both bundled processed replay JSON files and the Inferno
-saved-analysis JSON remain validated directly from disk in the test suite.
+preparation stage. Both bundled processed replay JSON files and both paired
+saved-analysis JSON files are validated directly from disk in the test suite,
+including all-player coverage and perspective-specific timeline resolution.
 
 The replay state machine is now connected to the adapter and rendered screens.
 Choosing a `.dem` uploads it once, prepares analysis by `replay_id`, polls the
@@ -317,8 +324,8 @@ outcomes are not rendered in the coaching result.
 - `src/domain/replay-viewer.ts` - backend-output normalization, frame indexing,
   deterministic seeking, clock formatting, and reviewed map transforms
 - `public/replays/*.replay.json` - browser-served Mirage and Inferno processed saves
-- `public/replays/inferno-processed.analysis.json` - validated saved coaching
-  result paired with the Inferno replay by replay, map, source, player, and tick
+- `public/replays/*.analysis.json` - validated all-player saved coaching results
+  paired with each processed replay by replay, map, source, player, and tick
 - `src/components/ReplayFlowScreen.tsx` - upload/preparation progress, player
   selection, coaching/recovery, safe errors, and final coaching result
 - `src/components/SampleSelectorScreen.tsx` - loading, error, empty, list, map
@@ -436,8 +443,8 @@ preparation behavior, and safe/internal exception logging.
 
 From `frontend/`, the latest checks report:
 
-- Vitest: 13 files and 138 tests collected; all 138 passed, including the
-  authenticated retention, expiration, pinning, dry-run, and safe-failure cases.
+- Vitest: 13 files and 139 tests collected; all 139 passed, including both
+  all-player processed-analysis fixtures and perspective-specific event lookup.
 - TypeScript: passed
 - ESLint: passed with no warnings
 - Next.js 16.2.12 production build: passed with Turbopack in the default direct
@@ -499,10 +506,11 @@ viewer and event inspector remain free of horizontal overflow.
   abuse.
 - Durable replay and analysis JSON use the private OIDC Blob bridge on Vercel.
   The new retention route still needs one observed scheduled dry run.
-- Only Inferno currently has a paired saved coaching result for the processed
-  save catalog. Uploaded replays use their live completed analysis. The player
-  intent UI and typed request lifecycle are implemented, but submission remains
-  disabled because no public backend endpoint or response contract exists.
+- Each processed save contains ten generated coaching moments per player. These
+  are static save artifacts rather than live regeneration; uploaded replays use
+  their completed backend analysis. The player intent UI and typed request
+  lifecycle are implemented, but submission remains disabled because no public
+  backend endpoint or response contract exists.
 
 ## Contract/API impact
 
