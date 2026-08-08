@@ -161,11 +161,14 @@ describe("uploaded replay screens", () => {
       }),
     );
 
-    for (const html of [uploadHtml, sampleHtml, processedPlayerHtml, analysisHtml, mapLoadingHtml]) {
+    for (const html of [uploadHtml, sampleHtml, processedPlayerHtml, analysisHtml]) {
       expect(html).toContain("loading-border");
       expect(html).not.toContain("loading-marker");
       expect(html).not.toContain("progress-marker");
     }
+    expect(mapLoadingHtml).not.toContain("loading-border");
+    expect(mapLoadingHtml).not.toContain("loading-marker");
+    expect(mapLoadingHtml).not.toContain("progress-marker");
     expect(sampleHtml).toContain('aria-busy="true"');
   });
 
@@ -229,7 +232,9 @@ describe("uploaded replay screens", () => {
     expect(html).not.toContain("85%");
     expect(html).toContain("T One");
     expect(html).toContain("%2Fradars%2Fde_mirage.png");
-    expect(html).toContain("radar-frame loading-border replay-map-loading-frame");
+    expect(html).toContain("radar-indicators replay-map-loading-indicators");
+    expect(html).toContain("radar-frame replay-map-loading-frame");
+    expect(html).not.toContain("loading-border");
     expect(html).toContain("Back to player selection");
     expect(html).not.toContain("Perspective");
     expect(html).toContain('aria-live="polite"');
@@ -250,6 +255,9 @@ describe("uploaded replay screens", () => {
     expect(html).not.toContain("Perspective");
     expect(html).not.toContain("eventual_winner");
     expect(html).not.toContain("round_score");
+    expect(html).toContain('aria-keyshortcuts="Space"');
+    expect(html).toContain('aria-keyshortcuts="ArrowLeft"');
+    expect(html).toContain('aria-keyshortcuts="ArrowRight"');
   });
 
   it("places health left of win rate and applies the strict health color thresholds", () => {
@@ -538,8 +546,7 @@ describe("sample replay screens", () => {
 
     expect(html).toContain("Mirage showcase");
     expect(html).toContain("Inferno processed replay");
-    expect(html).toContain("No saved analysis");
-    expect(html).toContain("Saved analysis included");
+    expect(html.match(/Saved analysis included/g)).toHaveLength(2);
     expect(html.match(/Choose player/g)).toHaveLength(2);
     expect(html).not.toContain("Choose your");
     expect(html).toContain(
@@ -577,12 +584,12 @@ describe("sample replay screens", () => {
     expect(html).toContain("Choose your");
     expect(html).toContain("CT One");
     expect(html).toContain("T One");
-    expect(html).toContain("Open perspective");
+    expect(html).toContain("Open analysis");
     expect(html).toContain("Back to replays");
-    expect(html).toContain("Not included");
+    expect(html).toContain("Included");
   });
 
-  it("identifies the player with saved analysis in the Inferno roster", () => {
+  it("identifies every player as having saved analysis in the Inferno roster", () => {
     const infernoSummary = PROCESSED_REPLAYS[1];
     const replay = {
       schema_version: "replay_visualization_v1" as const,
@@ -590,7 +597,7 @@ describe("sample replay screens", () => {
       source: "inferno.dem",
       map: { name: "de_inferno", tick_rate: 64 },
       players: [
-        { player_id: infernoSummary.analysisPlayerId!, display_name: "flameZ", sides: ["t"] },
+        { player_id: "flamez", display_name: "flameZ", sides: ["t"] },
         { player_id: "other-player", display_name: "Other", sides: ["ct"] },
       ],
       rounds: [{ round_num: 1, start: 1, end: 100 }],
@@ -609,9 +616,9 @@ describe("sample replay screens", () => {
     );
 
     expect(html).toContain("Included");
-    expect(html).toContain("Saved analysis");
-    expect(html).toContain("Replay only");
-    expect(html).toContain("Open analysis");
+    expect(html.match(/Saved analysis/g)).toHaveLength(2);
+    expect(html).not.toContain("Replay only");
+    expect(html.match(/Open analysis/g)).toHaveLength(2);
   });
 
   it("animates the selected sample border while its preparation is running", () => {

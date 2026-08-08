@@ -69,6 +69,14 @@ missing:
 .\scripts\start-dev.ps1
 ```
 
+To stop the healthy RE:DECIDE services started on ports 3000 and 8000:
+
+```powershell
+.\scripts\stop-dev.ps1
+```
+
+Preview the processes it would stop with `-WhatIf`.
+
 Pass `-SkipSetup` when the locked Python and frontend dependencies are already
 installed. The launcher refuses to replace an unrelated process occupying
 either port.

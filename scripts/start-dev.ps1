@@ -7,7 +7,9 @@ $ErrorActionPreference = "Stop"
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 $frontendRoot = Join-Path $repoRoot "frontend"
 $devLogRoot = Join-Path $env:TEMP "GHackathon-dev"
+$devStatePath = Join-Path $devLogRoot "services.json"
 $startedProcesses = [System.Collections.Generic.List[System.Diagnostics.Process]]::new()
+$startedServiceRecords = [System.Collections.Generic.List[object]]::new()
 
 function Test-TcpPort([int]$Port) {
     $client = [System.Net.Sockets.TcpClient]::new()
@@ -150,6 +152,11 @@ try {
             -FilePath $uvCommand.Source `
             -Arguments @("run", "uvicorn", "backend.app.main:app", "--env-file", ".env", "--reload", "--port", "8000") `
             -WorkingDirectory $repoRoot
+        $startedServiceRecords.Add([pscustomobject]@{
+            Service = "backend"
+            Id = $backend.Process.Id
+            Name = $backend.Process.ProcessName
+        })
         Wait-ForService -Name "Backend" -HealthCheck ${function:Test-Backend} -Process $backend.Process -ErrorLog $backend.Stderr
         Write-Host "Started backend (PID $($backend.Process.Id)). Logs: $($backend.Stdout)"
     }
@@ -164,6 +171,11 @@ try {
             -FilePath $pnpmCommand.Source `
             -Arguments @("dev") `
             -WorkingDirectory $frontendRoot
+        $startedServiceRecords.Add([pscustomobject]@{
+            Service = "frontend"
+            Id = $frontend.Process.Id
+            Name = $frontend.Process.ProcessName
+        })
         Wait-ForService -Name "Frontend" -HealthCheck ${function:Test-Frontend} -Process $frontend.Process -ErrorLog $frontend.Stderr
         Write-Host "Started frontend (PID $($frontend.Process.Id)). Logs: $($frontend.Stdout)"
     }
@@ -188,5 +200,6 @@ Write-Host ""
 Write-Host "Rerunning this script will reuse these healthy services instead of starting conflicting copies."
 if ($startedProcesses.Count -gt 0) {
     $ids = ($startedProcesses | ForEach-Object { $_.Id }) -join ","
+    $startedServiceRecords | ConvertTo-Json | Set-Content -Path $devStatePath -Encoding utf8
     Write-Host "To stop services started by this run: Stop-Process -Id $ids"
 }

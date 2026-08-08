@@ -1,6 +1,6 @@
 # Frontend Status
 
-Last verified: 2026-08-07 (Asia/Singapore)
+Last verified: 2026-08-08 (Asia/Singapore)
 
 ## Vercel Services deployment
 
@@ -45,8 +45,8 @@ keeps data when metadata inspection fails. `CRON_SECRET` authentication and an
 optional dry-run mode prevent browser-driven or accidental broad deletion.
 
 The latest validation state for the merged frontend is recorded under
-Verification. TypeScript, ESLint, and the production Turbopack build pass; one
-SSE adapter test still carries the pre-merge absolute-URL expectation.
+Verification. Vitest, TypeScript, ESLint, and the production Turbopack build
+all pass.
 
 ## Status
 
@@ -89,10 +89,13 @@ entry that could otherwise reopen the processed replay catalog. The upload itsel
 not restored on Forward because browsers do not allow local `File` objects to
 be reconstructed safely.
 
-Every loading surface now uses the same rotating orange perimeter around its
-content box, including sample retrieval, the selected sample card during preparation,
-browser replay loading and preparation,
-and all uploaded-replay progress states. The former
+Loading cards use the same rotating orange perimeter, including sample
+retrieval, the selected sample card during preparation, and browser replay
+loading and preparation. The replay map loading screen is intentionally exempt:
+its radar frame and loading-copy overlay are fully transparent and have no
+orange perimeter. It retains an invisible indicator row with the same geometry
+as the interactive replay, keeping the radar in the same position across the
+loading-to-replay transition. The former
 floating square markers and pulse animations were removed. The moving border is
 a solid, hard-edged orange segment without a translucent gradient ramp, and the
 global reduced-motion treatment still collapses it to a static border state.
@@ -119,7 +122,14 @@ timeline, scrubber, elapsed time, and event inspector. The viewer supports
 play/pause, five-second rewind/fast-forward, 0.5x through 8x playback, direct
 scrubbing, round jumps, and stable kill/objective event markers. Selecting a
 marker seeks to its exact tick and exposes the known event facts without
-starting another model call. Timeline markers are perspective-specific:
+starting another model call. Outside form controls, Space toggles play/pause and
+the Left/Right Arrow keys seek backward/forward by five seconds without changing
+the current play/pause state; holding either arrow continues seeking through
+keyboard repeat. The on-screen ±5s buttons preserve playback in the same way. The scrubber
+uses a sharp-cornered muted steel-blue
+track matching the round selector, a muted-orange played section, and a circular
+bright-orange thumb, with native white focus outlines replaced by a brighter
+themed focus state. Timeline markers are perspective-specific:
 ordinary markers show damage received and deaths where the selected player is
 the victim, while the selected analysis point is always included for its
 analyzed player even when that player was the attacker. An analysis point
@@ -149,6 +159,9 @@ Saved coaching uses a borderless blue background. The inspector has no separate
 saved-analysis note or clear button. Player
 and round selectors suppress the browser's native white focus ring while
 retaining the product-colored container state.
+Perspective, round, and playback-speed dropdowns use the same white custom
+chevron with consistent spacing from the right border. Their selected values
+and dark native option menus use pure-white text for consistent contrast.
 Full-match round segments are labeled buttons: hovering or keyboard focus shows
 a round tooltip, and activation jumps to that round's start tick.
 Between recorded rounds, the live-position heading reads `Waiting for next
@@ -157,20 +170,34 @@ tick; it no longer repeats the active round number.
 The analysis shell, toolbar, and workspace are transparent over the shared page
 background, so the homepage's diagonal stripe treatment continues with its
 original opacity, colors, and 22-degree angle.
+Global page, inspector, and textarea scrollbars use a square-cornered dark
+steel-blue track and steel-blue thumb that changes to orange on hover, with
+matching thin-scrollbar colors in Firefox.
 The moment inspector is absent during ordinary playback. Selecting an event
 slides a wider inspector in from the right and shifts the centered radar
 slightly left; resuming playback restores the centered
-map. Inferno's saved coaching is attached to the matching flameZ damage event at
-tick 2579, shown as a distinct blue timeline marker, and rendered in the moment
-inspector. Analysis-backed moments now also render the intent follow-up composer
+map. Both processed saves now contain ten saved first-contact analyses for every
+player. Changing the selected perspective keeps the playback clock at the same
+tick and resolves only that player's event at that exact tick, including when
+both players share the same contact event. The inspector opens for the matching
+event and remains absent when the newly selected player has no event at that
+tick. Analysis-backed moments render as distinct blue timeline markers and also
+render the intent follow-up composer
 pinned to the bottom of the inspector. The textbox keeps its base height and
-scrolls internally instead of resizing. Its typed, per-moment request lifecycle
-keeps a one-time submitted intent attached to the stable event ID, disables editing,
-preserves the old coaching behind the rotating loading border, ignores stale
-responses, and replaces only that moment's coaching after a successful response.
-The composer remains visibly disabled in the running app until the backend
-provides a documented endpoint and a submission function is connected; the
-viewer does not invent or call an unsupported API.
+scrolls internally instead of resizing. Keyboard focus changes only its border
+to orange without adding an outer focus outline. A submitted `Your intent`
+summary appears above the coaching box, while the editable composer remains at
+the bottom. Its typed, per-moment request lifecycle allows revised submissions,
+preserves the latest successful coaching behind the rotating loading border,
+ignores stale responses, and replaces only that moment's coaching after a
+successful response. Failures remain visible without a separate retry button;
+the user can edit the intent and submit it again.
+Uploaded and backend-sample viewers now submit the selected moment's stable
+`decision_id`, `analysis_id`, `player_id`, and intent text through
+`POST /api/analysis/{analysis_id}/intent`. The validated response must identify
+the same analysis, player, and decision before its `in_depth_coaching` text can
+replace that moment's original coaching. Processed saves keep the composer
+disabled because they do not have a live backend analysis job.
 The radar workspace always renders a compact win-rate strip directly under the
 live radar status and above the moment inspector. The strip is capped at half
 the inspector's maximum width. The selected player's current team is flushed
@@ -193,7 +220,9 @@ The processed replay adapter accepts the documented backend
 It associates backend snapshots with stable top-level players by their unique
 display names, normalizes sides and event participants, derives `alive` from
 health only when absent, removes duplicate parser event aliases from the viewer,
-and generates deterministic event IDs when the backend did not return one.
+and generates deterministic event IDs when the backend did not return one. Its
+saved-analysis validation requires every player with a decision candidate to
+have a corresponding entry in the additive `analyses` array.
 
 The backend-driven sample catalog, replay-envelope schema, adapter, reducer
 transition, and tests power the sample-match landing action. The processed
@@ -255,8 +284,9 @@ analysis. Manifest validation also keeps visualization failures, coaching
 completion, and visualization unlock state internally consistent.
 Compatibility sample contracts now mirror the backend's unique-player and
 recommended-player rules and enforce the payload associated with each
-preparation stage. Both bundled processed replay JSON files and the Inferno
-saved-analysis JSON remain validated directly from disk in the test suite.
+preparation stage. Both bundled processed replay JSON files and both paired
+saved-analysis JSON files are validated directly from disk in the test suite,
+including all-player coverage and perspective-specific timeline resolution.
 
 The replay state machine is now connected to the adapter and rendered screens.
 Choosing a `.dem` uploads it once, prepares analysis by `replay_id`, polls the
@@ -317,8 +347,8 @@ outcomes are not rendered in the coaching result.
 - `src/domain/replay-viewer.ts` - backend-output normalization, frame indexing,
   deterministic seeking, clock formatting, and reviewed map transforms
 - `public/replays/*.replay.json` - browser-served Mirage and Inferno processed saves
-- `public/replays/inferno-processed.analysis.json` - validated saved coaching
-  result paired with the Inferno replay by replay, map, source, player, and tick
+- `public/replays/*.analysis.json` - validated all-player saved coaching results
+  paired with each processed replay by replay, map, source, player, and tick
 - `src/components/ReplayFlowScreen.tsx` - upload/preparation progress, player
   selection, coaching/recovery, safe errors, and final coaching result
 - `src/components/SampleSelectorScreen.tsx` - loading, error, empty, list, map
@@ -436,8 +466,9 @@ preparation behavior, and safe/internal exception logging.
 
 From `frontend/`, the latest checks report:
 
-- Vitest: 13 files and 138 tests collected; all 138 passed, including the
-  authenticated retention, expiration, pinning, dry-run, and safe-failure cases.
+- Vitest: 13 files and 142 tests collected; all 142 passed, including intent
+  response validation and both
+  all-player processed-analysis fixtures and perspective-specific event lookup.
 - TypeScript: passed
 - ESLint: passed with no warnings
 - Next.js 16.2.12 production build: passed with Turbopack in the default direct
@@ -499,15 +530,21 @@ viewer and event inspector remain free of horizontal overflow.
   abuse.
 - Durable replay and analysis JSON use the private OIDC Blob bridge on Vercel.
   The new retention route still needs one observed scheduled dry run.
-- Only Inferno currently has a paired saved coaching result for the processed
-  save catalog. Uploaded replays use their live completed analysis. The player
-  intent UI and typed request lifecycle are implemented, but submission remains
-  disabled because no public backend endpoint or response contract exists.
+- Each processed save contains ten generated coaching moments per player. These
+  are static save artifacts rather than live regeneration; uploaded replays use
+  their completed backend analysis. Intent submission therefore remains disabled
+  for processed saves even though it is connected for uploaded and backend-sample
+  analysis jobs.
 
 ## Contract/API impact
 
-No public response-shape changes and no intent endpoint were introduced. The sample
-adapter consumes the backend replay envelope from `POST /api/analyze`
+The frontend now consumes `POST /api/analysis/{analysis_id}/intent` from the
+intent-coaching backend branch. It validates the complete structured response,
+checks that the returned analysis, player, and decision IDs match the active
+request, and uses `in_depth_coaching` as the replacement prose for that selected
+moment. The endpoint must be merged into the running backend before this flow is
+available locally or in deployment. The sample adapter consumes the backend
+replay envelope from `POST /api/analyze`
 (`sample_id`, `replay_id`, `manifest`, and `analysis`), while the local
 processed-replay adapter and uploaded flow consume the documented
 `replay_visualization_v1` shape directly. The frontend implements the

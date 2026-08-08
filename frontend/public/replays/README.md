@@ -29,9 +29,9 @@ it. The browser adapter associates snapshots with the stable top-level player
 records by their unique display names and derives alive state from health only
 when the field is absent.
 
-`inferno-processed.analysis.json` is the matching validated
-`replay_pipeline_v1` result for the Inferno save. It contains saved coaching for
-flameZ at the round-one damage event on tick 2579. The Mirage save has no
-matching analysis artifact. The selector reports analysis availability
-independently from visualization availability because they remain separate
-backend contracts.
+`inferno-processed.analysis.json` and `mirage-showcase.analysis.json` are the
+matching validated `replay_pipeline_v1` results. Each file contains ten saved
+coaching moments for every player, so changing perspective can resolve that
+player's analysis without a model request. The selector reports analysis
+availability independently from visualization availability because they remain
+separate backend contracts.
