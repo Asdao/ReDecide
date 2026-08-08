@@ -163,6 +163,9 @@ tick; it no longer repeats the active round number.
 The analysis shell, toolbar, and workspace are transparent over the shared page
 background, so the homepage's diagonal stripe treatment continues with its
 original opacity, colors, and 22-degree angle.
+Global page, inspector, and textarea scrollbars use a square-cornered dark
+steel-blue track and steel-blue thumb that changes to orange on hover, with
+matching thin-scrollbar colors in Firefox.
 The moment inspector is absent during ordinary playback. Selecting an event
 slides a wider inspector in from the right and shifts the centered radar
 slightly left; resuming playback restores the centered
