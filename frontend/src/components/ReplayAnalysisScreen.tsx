@@ -302,8 +302,8 @@ export function ReplayAnalysisScreen({
   }, [firstTick, lastTick, playbackRate, playing, replay, timelineEvents]);
 
   const seek = useCallback(
-    (tick: number, eventId?: string) => {
-      setPlaying(false);
+    (tick: number, eventId?: string, pausePlayback = true) => {
+      if (pausePlayback) setPlaying(false);
       const nextTick = clamp(tick, firstTick, lastTick);
       currentTickRef.current = nextTick;
       setCurrentTick(nextTick);
@@ -311,6 +311,43 @@ export function ReplayAnalysisScreen({
     },
     [firstTick, lastTick],
   );
+
+  useEffect(() => {
+    if (!replay) return;
+
+    const handleReplayShortcut = (event: KeyboardEvent) => {
+      if (event.defaultPrevented || event.altKey || event.ctrlKey || event.metaKey) {
+        return;
+      }
+      const target = event.target;
+      if (
+        target instanceof HTMLElement &&
+        (target.isContentEditable || target.closest("input, textarea, select, button"))
+      ) {
+        return;
+      }
+
+      if (event.code === "Space") {
+        if (event.repeat) return;
+        event.preventDefault();
+        setSelectedEventId(undefined);
+        setPlaying((current) => !current);
+        return;
+      }
+      if (event.code === "ArrowLeft") {
+        event.preventDefault();
+        seek(currentTickRef.current - replay.map.tick_rate * 5, undefined, false);
+        return;
+      }
+      if (event.code === "ArrowRight") {
+        event.preventDefault();
+        seek(currentTickRef.current + replay.map.tick_rate * 5, undefined, false);
+      }
+    };
+
+    window.addEventListener("keydown", handleReplayShortcut);
+    return () => window.removeEventListener("keydown", handleReplayShortcut);
+  }, [replay, seek]);
 
   const changePerspective = useCallback((playerId: string) => {
     if (uploaded) return;
@@ -730,7 +767,7 @@ export function ReplayAnalysisScreen({
 
         <section className="replay-timeline" aria-label="Replay timeline">
           <div className="playback-controls">
-            <button className="skip-control" type="button" onClick={() => seek(currentTick - replay.map.tick_rate * 5)} aria-label="Rewind 5 seconds">−5s</button>
+            <button className="skip-control" type="button" onClick={() => seek(currentTick - replay.map.tick_rate * 5, undefined, false)} aria-label="Rewind 5 seconds" aria-keyshortcuts="ArrowLeft">−5s</button>
             <button
               className="play-toggle"
               type="button"
@@ -739,10 +776,11 @@ export function ReplayAnalysisScreen({
                 setPlaying(!playing);
               }}
               aria-label={playing ? "Pause replay" : "Play replay"}
+              aria-keyshortcuts="Space"
             >
               {playing ? "Pause" : "Play"}
             </button>
-            <button className="skip-control" type="button" onClick={() => seek(currentTick + replay.map.tick_rate * 5)} aria-label="Fast-forward 5 seconds">+5s</button>
+            <button className="skip-control" type="button" onClick={() => seek(currentTick + replay.map.tick_rate * 5, undefined, false)} aria-label="Fast-forward 5 seconds" aria-keyshortcuts="ArrowRight">+5s</button>
             <label className="speed-control">
               <span className="sr-only">Playback speed</span>
               <select value={playbackRate} onChange={(event) => setPlaybackRate(Number(event.currentTarget.value))}>

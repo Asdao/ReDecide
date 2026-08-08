@@ -255,6 +255,9 @@ describe("uploaded replay screens", () => {
     expect(html).not.toContain("Perspective");
     expect(html).not.toContain("eventual_winner");
     expect(html).not.toContain("round_score");
+    expect(html).toContain('aria-keyshortcuts="Space"');
+    expect(html).toContain('aria-keyshortcuts="ArrowLeft"');
+    expect(html).toContain('aria-keyshortcuts="ArrowRight"');
   });
 
   it("places health left of win rate and applies the strict health color thresholds", () => {

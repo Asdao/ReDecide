@@ -122,7 +122,11 @@ timeline, scrubber, elapsed time, and event inspector. The viewer supports
 play/pause, five-second rewind/fast-forward, 0.5x through 8x playback, direct
 scrubbing, round jumps, and stable kill/objective event markers. Selecting a
 marker seeks to its exact tick and exposes the known event facts without
-starting another model call. The scrubber uses a sharp-cornered muted steel-blue
+starting another model call. Outside form controls, Space toggles play/pause and
+the Left/Right Arrow keys seek backward/forward by five seconds without changing
+the current play/pause state; holding either arrow continues seeking through
+keyboard repeat. The on-screen ±5s buttons preserve playback in the same way. The scrubber
+uses a sharp-cornered muted steel-blue
 track matching the round selector, a muted-orange played section, and a circular
 bright-orange thumb, with native white focus outlines replaced by a brighter
 themed focus state. Timeline markers are perspective-specific:
