@@ -1554,8 +1554,12 @@ input[type="file"] {
   font-weight: 800;
   line-height: 1;
   transform: translate(-50%, -50%);
-  cursor: pointer;
+  cursor: default;
   box-shadow: 0 0 0 1px rgb(255 255 255 / 35%), 0 2px 7px rgb(0 0 0 / 65%);
+}
+
+button.player-marker {
+  cursor: pointer;
 }
 
 .player-marker.side-t:not(.selected) {
@@ -1817,7 +1821,9 @@ input[type="file"] {
 .saved-coaching > p:nth-of-type(2) {
   margin: 0.7rem 0 0;
   color: #d9e8ff;
-  line-height: 1.6;
+  font-family: var(--font-interface);
+  font-size: 0.9rem;
+  line-height: 1.5;
 }
 
 .saved-coaching .coaching-generation-status {
@@ -1831,7 +1837,6 @@ input[type="file"] {
 
 .moment-intent {
   margin-top: auto;
-  border-top: 1px solid var(--line);
   padding-top: 1.25rem;
 }
 
@@ -1865,10 +1870,11 @@ input[type="file"] {
   font: 0.88rem/1.5 var(--font-interface);
 }
 
+.moment-intent textarea:focus,
 .moment-intent textarea:focus-visible {
   border-color: var(--focus);
-  outline: 2px solid var(--focus);
-  outline-offset: 2px;
+  outline: none;
+  box-shadow: none;
 }
 
 .moment-intent textarea:disabled {
@@ -1876,8 +1882,7 @@ input[type="file"] {
   opacity: 0.52;
 }
 
-.moment-intent form button,
-.moment-intent-error button {
+.moment-intent form button {
   min-width: 5rem;
   border: 1px solid var(--accent);
   background: var(--accent);
@@ -1904,8 +1909,7 @@ input[type="file"] {
 }
 
 .submitted-intent {
-  margin-bottom: 0.75rem;
-  border-left: 3px solid var(--accent);
+  margin-top: 1.25rem;
   background: rgb(238 133 47 / 7%);
   padding: 0.75rem 0.85rem;
 }
@@ -1938,13 +1942,6 @@ input[type="file"] {
 
 .moment-intent-error p {
   color: #f2aaaa;
-}
-
-.moment-intent-error button {
-  margin-top: 0.55rem;
-  border-color: var(--line);
-  background: transparent;
-  color: var(--text);
 }
 
 .replay-timeline {

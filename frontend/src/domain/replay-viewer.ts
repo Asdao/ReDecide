@@ -529,8 +529,13 @@ export function replayAnalysisEntries(
 export function analysisEntryForEvent(
   event: ReplayEvent,
   analysis?: ReplayAnalysisResult,
+  playerId?: string,
 ): ReplayAnalysisEntry | undefined {
-  return analysis ? replayAnalysisEntries(analysis).find((entry) =>
+  const entries = analysis ? replayAnalysisEntries(analysis) : [];
+  const playerEntries = playerId
+    ? entries.filter((entry) => entry.selected_decision.player_id === playerId)
+    : entries;
+  return playerEntries.find((entry) =>
     eventMatchesAnalysis(event, entry) || (
       replayEventIsDeath(event) &&
       entry.selected_decision.event_category === "damage" &&
@@ -540,7 +545,7 @@ export function analysisEntryForEvent(
       event.victim_id === entry.selected_decision.player_id &&
       event.attacker_id === entry.selected_decision.opponent_id
     )
-  ) : undefined;
+  );
 }
 
 export function cleanAnalysisEvents(
@@ -643,4 +648,11 @@ export function firstEventCrossed(
   return events.find(
     (event) => event.tick > previousTick && event.tick <= nextTick,
   );
+}
+
+export function eventAtExactTick(
+  events: readonly ReplayEvent[],
+  tick: number,
+): ReplayEvent | undefined {
+  return events.find((event) => event.tick === tick);
 }

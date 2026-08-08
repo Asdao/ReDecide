@@ -70,6 +70,32 @@ describe("moment intent state", () => {
     })).toBe(retry);
   });
 
+  it("keeps the latest coaching visible while a revised intent is submitted", () => {
+    const complete = momentIntentReducer(momentIntentReducer({}, {
+      type: "SUBMIT",
+      keyPointId: "event-1",
+      intent: "First intent",
+      requestId: 1,
+    }), {
+      type: "SUCCEED",
+      keyPointId: "event-1",
+      coaching: "First contextual analysis",
+      requestId: 1,
+    });
+    const resubmitted = momentIntentReducer(complete, {
+      type: "SUBMIT",
+      keyPointId: "event-1",
+      intent: "Revised intent",
+      requestId: 2,
+    });
+
+    expect(resubmitted["event-1"]).toMatchObject({
+      status: "generating",
+      intent: "Revised intent",
+      coaching: "First contextual analysis",
+    });
+  });
+
   it("keeps the original intent available for a same-text retry after failure", () => {
     const generating = momentIntentReducer({}, {
       type: "SUBMIT",

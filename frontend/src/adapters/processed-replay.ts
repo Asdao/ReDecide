@@ -99,8 +99,20 @@ export async function getProcessedReplayAnalysis(
   if (!parsed.success) {
     throw new ProcessedReplayError("The saved replay analysis did not match the analysis format.");
   }
-  if (parsed.data.coach_analysis.player_id !== summary.analysisPlayerId) {
-    throw new ProcessedReplayError("The saved replay analysis did not match its catalog entry.");
+  const analyses = parsed.data.analyses?.length
+    ? parsed.data.analyses
+    : [{
+        selected_decision: parsed.data.selected_decision,
+        coach_analysis: parsed.data.coach_analysis,
+      }];
+  const analyzedPlayerIds = new Set(
+    analyses.map(({ selected_decision }) => selected_decision.player_id),
+  );
+  const missingPlayer = parsed.data.players.find(
+    ({ player_id, decision_ids }) => decision_ids.length > 0 && !analyzedPlayerIds.has(player_id),
+  );
+  if (missingPlayer) {
+    throw new ProcessedReplayError("The saved replay analysis did not cover every player.");
   }
 
   analysisCache.set(summary.replayId, parsed.data);

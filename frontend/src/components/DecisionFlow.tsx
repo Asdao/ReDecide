@@ -10,6 +10,7 @@ import {
   getReplayVisualization,
   prepareReplayWorkspace,
   runReplayCoaching,
+  submitPlayerIntent,
   subscribeToAnalysisProgress,
   uploadReplay,
 } from "@/adapters/replay-api";
@@ -42,6 +43,7 @@ import { PROCESSED_REPLAYS, processedReplayById } from "@/domain/processed-repla
 import type { ProcessedReplay } from "@/domain/replay-viewer";
 import { normalizeBackendReplay } from "@/domain/replay-viewer";
 import type { AnalysisProgressEvent, ReplayAnalysisResult } from "@/domain/replay";
+import type { MomentIntentSubmission } from "@/domain/moment-intent";
 import { formatTabTitle, tabLocationForScreen } from "@/domain/tab-title";
 import { isAbortError } from "@/lib/http";
 import { ReplayAnalysisScreen } from "./ReplayAnalysisScreen";
@@ -134,6 +136,16 @@ export function DecisionFlow() {
   const nextRequestId = useCallback((operation: string) => {
     requestSequence.current += 1;
     return `${operation}-${requestSequence.current}`;
+  }, []);
+  const submitMomentIntent = useCallback<MomentIntentSubmission>(async (request, signal) => {
+    const response = await submitPlayerIntent(
+      request.analysisId,
+      request.playerId,
+      request.decisionId,
+      request.intent,
+      signal,
+    );
+    return response.in_depth_coaching;
   }, []);
 
   useEffect(() => {
@@ -748,6 +760,7 @@ export function DecisionFlow() {
         initialAnalysis={state.result}
         uploaded
         onChoosePlayer={returnToPlayerSelection}
+        submitMomentIntent={submitMomentIntent}
       />
     );
   }

@@ -13,6 +13,7 @@ import {
   analysisTimelineEvents,
   analysisEntryForEvent,
   buildReplayFrames,
+  eventAtExactTick,
   eventMatchesAnalysis,
   firstEventCrossed,
   formatReplayTime,
@@ -164,16 +165,21 @@ export function ReplayAnalysisScreen({
         ) {
           throw new Error("The saved analysis did not match the processed replay.");
         }
+        const playerId = replayValue.players.some(({ player_id }) => player_id === initialPlayerId)
+          ? initialPlayerId!
+          : replayValue.players[0].player_id;
         const firstTick = replayValue.ticks[0]?.tick ?? replayValue.rounds[0].start;
+        const selectedEvent = eventAtExactTick(analysisTimelineEvents(
+          replayValue.events,
+          playerId,
+          analysisValue,
+        ), firstTick);
         setReplay(replayValue);
         setAnalysis(analysisValue);
         currentTickRef.current = firstTick;
         setCurrentTick(firstTick);
-        setSelectedPlayerId((current) =>
-          replayValue.players.some(({ player_id }) => player_id === current)
-            ? current
-            : replayValue.players[0].player_id,
-        );
+        setSelectedPlayerId(playerId);
+        setSelectedEventId(selectedEvent?.event_id);
       })
       .catch((error: unknown) => {
         if (active && !isAbortError(error)) {
@@ -184,7 +190,7 @@ export function ReplayAnalysisScreen({
       active = false;
       controller.abort();
     };
-  }, [initialAnalysis, initialReplay, loadAttempt, replayId]);
+  }, [initialAnalysis, initialPlayerId, initialReplay, loadAttempt, replayId]);
 
   const frames = useMemo(() => (replay ? buildReplayFrames(replay.ticks) : []), [replay]);
   const firstTick = frames[0]?.tick ?? 0;
@@ -216,11 +222,11 @@ export function ReplayAnalysisScreen({
   const analysisByEventId = useMemo(
     () => new Map(
       timelineEvents.flatMap((event) => {
-        const entry = analysisEntryForEvent(event, analysis);
+        const entry = analysisEntryForEvent(event, analysis, selectedPlayerId);
         return entry ? [[event.event_id, entry] as const] : [];
       }),
     ),
-    [analysis, timelineEvents],
+    [analysis, selectedPlayerId, timelineEvents],
   );
   const selectedEventAnalysis = selectedEvent ? analysisByEventId.get(selectedEvent.event_id) : undefined;
   const selectedEventHasAnalysis = Boolean(selectedEventAnalysis);
@@ -238,6 +244,9 @@ export function ReplayAnalysisScreen({
         : "damage";
   const selectedIntentState = selectedEventId ? intentStates[selectedEventId] : undefined;
   const selectedIntentDraft = selectedEventId ? intentDrafts[selectedEventId] ?? "" : "";
+  const selectedContextualCoaching = selectedIntentState && "coaching" in selectedIntentState
+    ? selectedIntentState.coaching
+    : undefined;
   const currentWinProbability = useMemo(
     () => currentRound && analysis
       ? winProbabilityAtMoment(
@@ -324,8 +333,14 @@ export function ReplayAnalysisScreen({
   const changePerspective = useCallback((playerId: string) => {
     if (uploaded) return;
     setSelectedPlayerId(playerId);
-    setSelectedEventId(undefined);
-  }, [uploaded]);
+    const eventAtCurrentTick = replay
+      ? eventAtExactTick(
+          analysisTimelineEvents(replay.events, playerId, analysis),
+          currentTickRef.current,
+        )
+      : undefined;
+    setSelectedEventId(eventAtCurrentTick?.event_id);
+  }, [analysis, replay, uploaded]);
 
   const moveEventMarkerFocus = useCallback(
     (eventIndex: number, direction: "first" | "last" | "next" | "previous") => {
@@ -348,6 +363,8 @@ export function ReplayAnalysisScreen({
 
   const requestContextualAnalysis = useCallback((keyPointId: string, intent: string) => {
     if (!submitMomentIntent || !analysisId || !replay || !selectedPlayerId) return;
+    const decisionId = analysisByEventId.get(keyPointId)?.selected_decision.decision_id;
+    if (!decisionId) return;
 
     intentControllers.current.get(keyPointId)?.abort();
     const controller = new AbortController();
@@ -360,6 +377,7 @@ export function ReplayAnalysisScreen({
       analysisId,
       playerId: selectedPlayerId,
       keyPointId,
+      decisionId,
       intent,
     }, controller.signal)
       .then((coaching) => {
@@ -385,7 +403,7 @@ export function ReplayAnalysisScreen({
           intentControllers.current.delete(keyPointId);
         }
       });
-  }, [analysisId, replay, selectedPlayerId, submitMomentIntent]);
+  }, [analysisByEventId, analysisId, replay, selectedPlayerId, submitMomentIntent]);
 
   if (!replay) {
     return (
@@ -525,6 +543,12 @@ export function ReplayAnalysisScreen({
                 <div><dt>Tick</dt><dd>{selectedEvent.tick}</dd></div>
                 <div><dt>Weapon</dt><dd>{selectedEvent.weapon?.replaceAll("_", " ") ?? "—"}</dd></div>
               </dl>
+              {selectedIntentState ? (
+                <div className="submitted-intent">
+                  <p className="eyebrow">Your intent</p>
+                  <blockquote>{selectedIntentState.intent}</blockquote>
+                </div>
+              ) : null}
               {selectedEventHasAnalysis && selectedEventAnalysis ? (
                 <section
                   className={`saved-coaching${selectedIntentState?.status === "generating" ? " loading-border" : ""}`}
@@ -534,9 +558,8 @@ export function ReplayAnalysisScreen({
                   <p className="eyebrow">Coaching</p>
                   <h3 id="saved-coaching-title">What could be done better</h3>
                   <p>
-                    {selectedIntentState?.status === "complete"
-                      ? selectedIntentState.coaching
-                      : selectedEventAnalysis.coach_analysis.what_could_be_done_better}
+                    {selectedContextualCoaching ??
+                      selectedEventAnalysis.coach_analysis.what_could_be_done_better}
                   </p>
                   {selectedIntentState?.status === "generating" ? (
                     <p className="coaching-generation-status" role="status">
@@ -550,17 +573,26 @@ export function ReplayAnalysisScreen({
                   <p id="moment-intent-title">
                     Want to add more context for your analysis? Send us your intent at this moment.
                   </p>
-                  {selectedIntentState ? (
-                    <div className="submitted-intent">
-                      <p className="eyebrow">Your intent</p>
-                      <blockquote>{selectedIntentState.intent}</blockquote>
+                  {!submitMomentIntent || !analysisId ? (
+                    <p className="moment-intent-unavailable">
+                      Contextualised analysis is not available on processed replays.
+                    </p>
+                  ) : null}
+                  {selectedIntentState?.status === "error" ? (
+                    <div className="moment-intent-error" role="alert">
+                      <p>{selectedIntentState.message}</p>
                     </div>
                   ) : null}
                   <form
                     onSubmit={(event) => {
                       event.preventDefault();
                       const intent = selectedIntentDraft.trim();
-                      if (!intent || selectedIntentState || !submitMomentIntent || !analysisId) return;
+                      if (
+                        !intent ||
+                        selectedIntentState?.status === "generating" ||
+                        !submitMomentIntent ||
+                        !analysisId
+                      ) return;
                       requestContextualAnalysis(selectedEvent.event_id, intent);
                     }}
                   >
@@ -569,9 +601,14 @@ export function ReplayAnalysisScreen({
                     </label>
                     <textarea
                       id={`moment-intent-${selectedEvent.event_id}`}
-                      value={selectedIntentState ? "" : selectedIntentDraft}
-                      placeholder={selectedIntentState ? "Intent sent" : "What were you trying to do?"}
-                      disabled={Boolean(selectedIntentState) || !submitMomentIntent || !analysisId}
+                      value={selectedIntentDraft}
+                      placeholder="What were you trying to do?"
+                      maxLength={240}
+                      disabled={
+                        selectedIntentState?.status === "generating" ||
+                        !submitMomentIntent ||
+                        !analysisId
+                      }
                       onChange={(event) => {
                         const value = event.currentTarget.value;
                         setIntentDrafts((current) => ({
@@ -583,7 +620,7 @@ export function ReplayAnalysisScreen({
                     <button
                       type="submit"
                       disabled={
-                        Boolean(selectedIntentState) ||
+                        selectedIntentState?.status === "generating" ||
                         !selectedIntentDraft.trim() ||
                         !submitMomentIntent ||
                         !analysisId
@@ -592,25 +629,6 @@ export function ReplayAnalysisScreen({
                       Send
                     </button>
                   </form>
-                  {!submitMomentIntent || !analysisId ? (
-                    <p className="moment-intent-unavailable">
-                      Intent follow-up will be enabled when backend support is connected.
-                    </p>
-                  ) : null}
-                  {selectedIntentState?.status === "error" ? (
-                    <div className="moment-intent-error" role="alert">
-                      <p>{selectedIntentState.message}</p>
-                      <button
-                        type="button"
-                        onClick={() => requestContextualAnalysis(
-                          selectedEvent.event_id,
-                          selectedIntentState.intent,
-                        )}
-                      >
-                        Try analysis again
-                      </button>
-                    </div>
-                  ) : null}
                 </section>
               ) : null}
 

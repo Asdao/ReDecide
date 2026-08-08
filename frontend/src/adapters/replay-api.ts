@@ -32,6 +32,7 @@ type ReplayOperation =
   | "analysis-status"
   | "players"
   | "coaching"
+  | "intent-coaching"
   | "result"
   | "replay-status"
   | "visualization";
@@ -79,6 +80,23 @@ export type VisualizationResponse =
   | { state: "locked" }
   | { state: "failed" }
   | { state: "ready"; value: ReplayVisualization };
+
+const intentCoachingResponseSchema = z
+  .object({
+    analysis_id: z.string().min(1),
+    player_id: z.string().min(1),
+    decision_id: z.string().min(1),
+    user_intent: z.string().min(1),
+    intent_feasibility: z.string().min(1),
+    coordination_gap: z.string().min(1),
+    recommended_cs2_adjustment: z.string().min(1),
+    in_depth_coaching: z.string().min(1),
+    knowledge_cutoff_tick: z.number().int().nonnegative(),
+    facts_referenced: z.array(z.string().min(1)),
+  })
+  .strict();
+
+export type IntentCoachingResponse = z.infer<typeof intentCoachingResponseSchema>;
 
 async function request(
   url: string,
@@ -407,6 +425,50 @@ export async function runReplayCoaching(
     "coaching",
   );
   return parseSuccessful(response, replayAnalysisResultSchema, "coaching");
+}
+
+export async function submitPlayerIntent(
+  analysisId: string,
+  playerId: string,
+  decisionId: string,
+  intentText: string,
+  signal?: AbortSignal,
+): Promise<IntentCoachingResponse> {
+  const response = await request(
+    `/api/analysis/${resourcePath(analysisId)}/intent`,
+    {
+      method: "POST",
+      headers: {
+        Accept: "application/json",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        analysis_id: analysisId,
+        player_id: playerId,
+        decision_id: decisionId,
+        intent_text: intentText,
+      }),
+      signal,
+    },
+    "intent-coaching",
+  );
+  const result = await parseSuccessful(
+    response,
+    intentCoachingResponseSchema,
+    "intent-coaching",
+  );
+  if (
+    result.analysis_id !== analysisId ||
+    result.player_id !== playerId ||
+    result.decision_id !== decisionId
+  ) {
+    throw new ReplayApiError("The backend returned data for a different replay moment.", {
+      kind: "invalid-response",
+      operation: "intent-coaching",
+      status: response.status,
+    });
+  }
+  return result;
 }
 
 export async function getAnalysisResult(
