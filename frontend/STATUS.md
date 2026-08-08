@@ -122,7 +122,10 @@ timeline, scrubber, elapsed time, and event inspector. The viewer supports
 play/pause, five-second rewind/fast-forward, 0.5x through 8x playback, direct
 scrubbing, round jumps, and stable kill/objective event markers. Selecting a
 marker seeks to its exact tick and exposes the known event facts without
-starting another model call. Timeline markers are perspective-specific:
+starting another model call. The scrubber uses a sharp-cornered muted steel-blue
+track matching the round selector, a muted-orange played section, and a circular
+bright-orange thumb, with native white focus outlines replaced by a brighter
+themed focus state. Timeline markers are perspective-specific:
 ordinary markers show damage received and deaths where the selected player is
 the victim, while the selected analysis point is always included for its
 analyzed player even when that player was the attacker. An analysis point

@@ -1,7 +1,15 @@
 "use client";
 
 import Image from "next/image";
-import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
+import {
+  type CSSProperties,
+  useCallback,
+  useEffect,
+  useMemo,
+  useReducer,
+  useRef,
+  useState,
+} from "react";
 import { getProcessedReplay, getProcessedReplayAnalysis } from "@/adapters/processed-replay";
 import { mapDisplayName } from "@/domain/maps";
 import {
@@ -771,6 +779,9 @@ export function ReplayAnalysisScreen({
               max={lastTick}
               step={1}
               value={Math.round(currentTick)}
+              style={{
+                "--timeline-progress-position": `${((currentTick - firstTick) / duration) * 100}%`,
+              } as CSSProperties}
               aria-label="Replay position"
               aria-valuetext={`${elapsed}, round ${currentRound?.round_num ?? "unknown"}`}
               onChange={(event) => seek(Number(event.currentTarget.value))}
