@@ -11,7 +11,7 @@ Welcome to the **Team Pandamonium** submission for the **Garena AI Build Challen
 | Resource | Link / Details |
 |---|---|
 | 🌐 **Live Deployed Web App** | [https://g-hackathon.vercel.app](https://g-hackathon.vercel.app) |
-| 💻 **GitHub Repository** | [https://github.com/Asdao/GHackathon](https://github.com/Asdao/GHackathon)<br>*(Private repository — `garena-ai-build-challenge` invited as collaborator)* |
+| 💻 **GitHub Repository** | [https://github.com/Asdao/ReDecide](https://github.com/Asdao/ReDecide)<br>*(Private repository — `garena-ai-build-challenge` invited as collaborator)* |
 | 📁 **Google Drive Submission** | [Google Drive Folder Link](https://drive.google.com/drive/folders/1Eima82TLMptejoeU0MlVPEEJhM6KafMg?usp=sharing) |
 | 📹 **Demo Video** | `Team_Pandamonium_Redecide-demo-voiced-subtitled.mp4` *(4 min 35 sec)* |
 | 📄 **Slide Deck Proposal** | `Team Pandamonium_Redecide_Slide_Deck.pdf` *(10 slides)* |

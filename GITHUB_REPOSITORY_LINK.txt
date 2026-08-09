@@ -1,5 +1,5 @@
 GitHub Repository Link:
-https://github.com/Asdao/GHackathon
+https://github.com/Asdao/ReDecide
 
 Note:
 - Repository is set to private.
