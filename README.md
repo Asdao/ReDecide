@@ -33,6 +33,11 @@ team coordination remain explicitly unestablished until deterministic rules
 can prove them. The model does not parse the `.dem`, author public replay
 facts, or decide which replay facts are valid.
 
+The backend also maps explicit intent wording to a small tactical goal such as
+gathering information, escaping, taking a duel, waiting for support, using
+utility, or repositioning. It asks for clarification when no goal is clear and
+keeps parser terminology out of player-facing coaching.
+
 Intent follow-up is available for uploaded and backend-sample analyses. Bundled
 processed replays have no live `analysis_id`, so their intent composer remains
 disabled.

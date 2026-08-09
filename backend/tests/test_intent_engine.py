@@ -11,6 +11,7 @@ from backend.app.coach.intent_engine import (
     IntentMalformedOutputError,
     IntentProviderTimeoutError,
     IntentProviderUnavailableError,
+    _classify_stated_intent,
 )
 from backend.app.coach.pi_connector import PiCoachError
 
@@ -194,6 +195,21 @@ def _bounded_replay() -> dict[str, Any]:
 
 
 class IntentEngineTests(unittest.TestCase):
+    def test_classifies_explicit_tactical_goals_conservatively(self) -> None:
+        cases = {
+            "I just wanted information.": "GATHER_INFORMATION",
+            "I was trying to escape and reset.": "ESCAPE_RESET",
+            "I wanted to take the duel.": "TAKE_DUEL",
+            "I expected my teammate to trade me.": "HOLD_FOR_SUPPORT",
+            "I wanted to create space with a flash.": "CREATE_SPACE_WITH_UTILITY",
+            "I wanted to reposition.": "REPOSITION",
+            "I had a plan.": "UNCLEAR",
+            "I did not want to fight.": "ESCAPE_RESET",
+        }
+        for text, expected in cases.items():
+            with self.subTest(text=text):
+                self.assertEqual(_classify_stated_intent(text), expected)
+
     def test_selects_exact_nonfirst_production_analysis_and_bounds_prompt(self) -> None:
         provider = RecordingProvider(_valid_response("decision:observed-action"))
         engine = IntentCoachingEngine(provider)
@@ -401,7 +417,7 @@ class IntentEngineTests(unittest.TestCase):
             decision_id="r2:p1:t500",
         )
 
-        self.assertIn("Replay evidence:", result["in_depth_coaching"])
+        self.assertIn("Because you said you wanted to escape and reset", result["in_depth_coaching"])
         self.assertNotIn("two-stage", result["in_depth_coaching"])
 
     def test_rejects_representative_hallucinated_or_invalid_tactical_claims(self) -> None:
@@ -463,6 +479,76 @@ class IntentEngineTests(unittest.TestCase):
         self.assertNotIn("replay coordinate", public_text)
         self.assertNotRegex(public_text.lower(), r"\btick\s*\d+\b")
         self.assertEqual(result["knowledge_cutoff_tick"], 660)
+
+    def test_information_intent_receives_plain_contextual_coaching(self) -> None:
+        replay = _bounded_replay()
+        replay["damages"][0]["victim_place"] = "Banana"
+        replay["ticks"][0]["place"] = "Banana"
+        replay["ticks"][1].update(
+            {"place": "Banana", "X": 100.1, "Y": 200.0, "Z": 10.0}
+        )
+        context = _production_result()
+        context["_intent_source_replay"] = replay
+        response = _valid_response("telemetry:contact-state")
+        response["recommended_adjustment"] = "REASSESS_BEFORE_REENGAGING"
+        response["evidence_claims"] = [
+            {
+                "evidence_id": "telemetry:contact-state",
+                "supports": "recommended_cs2_adjustment",
+            },
+            {
+                "evidence_id": "telemetry:reaction-movement",
+                "supports": "in_depth_coaching",
+            },
+        ]
+
+        result = IntentCoachingEngine(RecordingProvider(response)).evaluate_intent(
+            context,
+            "I just wanted information.",
+            player_id="p1",
+            decision_id="r2:p1:t500",
+        )
+
+        coaching = result["in_depth_coaching"]
+        self.assertIn("You took first damage on Banana", coaching)
+        self.assertIn("You remained almost stationary", coaching)
+        self.assertIn("wanted to gather information", coaching)
+        self.assertIn("shoulder or jiggle peek", coaching)
+        for internal_word in (
+            "deterministic",
+            "threshold",
+            "parser",
+            "bounded",
+            "units",
+            "decision window",
+        ):
+            self.assertNotIn(internal_word, coaching.lower())
+
+    def test_unclear_intent_asks_for_clarification_without_calling_provider(self) -> None:
+        provider = RecordingProvider(AssertionError("provider must not be called"))
+        result = IntentCoachingEngine(provider).evaluate_intent(
+            _production_result(),
+            "I had a plan.",
+            player_id="p1",
+            decision_id="r2:p1:t500",
+        )
+
+        self.assertEqual(provider.prompts, [])
+        self.assertEqual(result["facts_referenced"], [])
+        self.assertIn("Tell us whether you were trying", result["in_depth_coaching"])
+        self.assertNotIn("first damage", result["in_depth_coaching"].lower())
+
+    def test_provider_adjustment_must_match_the_stated_goal(self) -> None:
+        response = _valid_response("decision:observed-action")
+        response["recommended_adjustment"] = "CONTROLLED_REENGAGEMENT"
+
+        with self.assertRaises(IntentMalformedOutputError):
+            IntentCoachingEngine(RecordingProvider(response)).evaluate_intent(
+                _production_result(),
+                "I just wanted information.",
+                player_id="p1",
+                decision_id="r2:p1:t500",
+            )
 
     def test_parser_labels_cannot_disguise_coordinates_aliases_or_schema_names(self) -> None:
         unsafe_labels = ("0500", "5 00", "5e2", "player-02", "player 02", "contactTick")

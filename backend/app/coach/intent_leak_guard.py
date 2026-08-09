@@ -49,6 +49,7 @@ FORBIDDEN_INTERNAL_TOKENS: tuple[str, ...] = (
     "known_events",
     "evidence_claims",
     "intent_assessment",
+    "stated_intent_category",
     "coordination_assessment",
     "recommended_adjustment",
     "intent_coach_input_v1",

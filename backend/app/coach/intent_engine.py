@@ -36,6 +36,16 @@ from backend.app.replay.pipeline import _decode_pi_output
 MAX_PROMPT_BYTES = 64 * 1024
 MAX_REACTION_SECONDS = 3.0
 
+IntentCategory = Literal[
+    "GATHER_INFORMATION",
+    "ESCAPE_RESET",
+    "TAKE_DUEL",
+    "HOLD_FOR_SUPPORT",
+    "CREATE_SPACE_WITH_UTILITY",
+    "REPOSITION",
+    "UNCLEAR",
+]
+
 _FORBIDDEN_OUTCOME_EVENT_TYPES = {
     "death",
     "kill",
@@ -46,17 +56,13 @@ _FORBIDDEN_OUTCOME_EVENT_TYPES = {
 }
 _NON_SUBSTANTIVE_DECISION_SIGNALS = {"no_action_window_observation"}
 _DECISION_SIGNAL_STATEMENTS = {
-    "contact_initiator": "The player initiated the first-damage contact.",
-    "displacement_above_threshold": (
-        "The deterministic action window measured displacement above its movement threshold."
-    ),
-    "displacement_below_threshold": (
-        "The deterministic action window measured displacement below its movement threshold."
-    ),
+    "contact_initiator": "You initiated the first exchange of damage.",
+    "displacement_above_threshold": "You changed position immediately after contact.",
+    "displacement_below_threshold": "You barely changed position immediately after contact.",
     "no_action_window_observation": (
-        "The parser could not establish a usable post-contact action observation."
+        "The replay could not establish a clear immediate response."
     ),
-    "zone_changed": "The player changed named map zones during the action window.",
+    "zone_changed": "You moved into a different area immediately after contact.",
 }
 class IntentCoachingError(RuntimeError):
     """Base class for failures at the intent-coaching domain boundary."""
@@ -132,13 +138,26 @@ class IntentCoachingEngine:
         clean_intent = str(user_intent).strip()
         if not clean_intent:
             raise IntentInsufficientEvidenceError("player intent cannot be blank")
+        intent_category = _classify_stated_intent(clean_intent)
 
         selected, valid_evidence_ids, cutoff_tick = self._extract_decision_context(
             pipeline_result,
             decision_id=decision_id,
             player_id=player_id,
         )
-        prompt = self.build_intent_prompt(selected, clean_intent, cutoff_tick)
+        if intent_category == "UNCLEAR":
+            return _clarification_response(
+                selected=selected,
+                clean_intent=clean_intent,
+                cutoff_tick=cutoff_tick,
+            )
+
+        prompt = self.build_intent_prompt(
+            selected,
+            clean_intent,
+            cutoff_tick,
+            intent_category=intent_category,
+        )
 
         if self.coach_adapter is None:
             raise IntentProviderUnavailableError("intent coaching provider is not configured")
@@ -159,10 +178,15 @@ class IntentCoachingEngine:
             available_utility=set(selected.get("_intent_available_utility", [])),
             authoritative_evidence=_authoritative_evidence(selected),
         )
+        _validate_adjustment_for_intent(
+            intent_category,
+            output.recommended_adjustment,
+        )
         public_response = _render_public_response(
             output,
             grounded_claims=grounded_claims,
             available_utility=set(selected.get("_intent_available_utility", [])),
+            intent_category=intent_category,
         )
         result = {
             "decision_id": str(selected["decision_id"]),
@@ -174,31 +198,15 @@ class IntentCoachingEngine:
                 dict.fromkeys(claim.evidence_id for claim in grounded_claims)
             ),
         }
-        try:
-            validate_public_coaching_payload(
-                result,
-                forbidden_replay_coordinates={
-                    value
-                    for value in (
-                        _strict_nonnegative_int(selected.get("decision_open_tick")),
-                        _strict_nonnegative_int(selected.get("contact_tick")),
-                        _strict_nonnegative_int(selected.get("action_close_tick")),
-                        cutoff_tick,
-                    )
-                    if value is not None
-                },
-            )
-        except PublicCoachingProseError as exc:
-            raise IntentMalformedOutputError(
-                "intent coaching public prose failed the leak guard"
-            ) from exc
-        return result
+        return _validate_public_result(result, selected=selected, cutoff_tick=cutoff_tick)
 
     def build_intent_prompt(
         self,
         selected: Mapping[str, Any],
         user_intent: str,
         cutoff_tick: int,
+        *,
+        intent_category: IntentCategory | None = None,
     ) -> str:
         """Build a compact prompt containing only the bounded evidence projection."""
 
@@ -218,8 +226,12 @@ class IntentCoachingEngine:
         opponent_id = str(selected.get("opponent_id") or "")
         aliases = _context_aliases(player_id, opponent_id, known_events)
 
+        resolved_intent_category = intent_category or _classify_stated_intent(
+            user_intent
+        )
         bounded_payload = {
             "schema_version": "intent_coach_input_v1",
+            "stated_intent_category": resolved_intent_category,
             "decision": {
                 # The provider never needs the raw Steam ID embedded in the
                 # product decision ID; the API response restores it outside
@@ -284,7 +296,9 @@ class IntentCoachingEngine:
             "not established by the available telemetry. The same evidence ID may support "
             "different fields, but do not repeat the same ID/field pair. Do not "
             "return coaching prose or factual claim text; "
-            "the backend renders public text from the selected evidence IDs."
+            "the backend renders public text from the selected evidence IDs. Choose "
+            "a recommended_adjustment that is tactically compatible with the supplied "
+            "stated_intent_category."
         )
         if len(prompt.encode("utf-8")) > MAX_PROMPT_BYTES:
             raise IntentInsufficientEvidenceError(
@@ -504,6 +518,247 @@ _INTENT_ASSESSMENT_TEXT = {
         "was feasible."
     ),
 }
+_INTENT_PHRASES: dict[IntentCategory, tuple[str, ...]] = {
+    "GATHER_INFORMATION": (
+        "gather information",
+        "get information",
+        "wanted information",
+        "get info",
+        "gather info",
+        "spot the enemy",
+        "check the angle",
+        "see where",
+        "find out",
+        "scout",
+        "information",
+        "info",
+    ),
+    "ESCAPE_RESET": (
+        "did not want to fight",
+        "didn t want to fight",
+        "avoid the fight",
+        "avoid fighting",
+        "get away",
+        "fall back",
+        "disengage",
+        "retreat",
+        "escape",
+        "reset",
+        "survive",
+    ),
+    "TAKE_DUEL": (
+        "re-engage",
+        "reengage",
+        "take the duel",
+        "take a duel",
+        "challenge",
+        "fight",
+        "swing",
+        "duel",
+        "kill",
+    ),
+    "HOLD_FOR_SUPPORT": (
+        "wait for support",
+        "wait for my teammate",
+        "teammate would trade",
+        "play for the trade",
+        "hold for support",
+        "support",
+        "teammate",
+        "trade",
+        "wait",
+        "hold",
+    ),
+    "CREATE_SPACE_WITH_UTILITY": (
+        "create space",
+        "use utility",
+        "molotov",
+        "grenade",
+        "utility",
+        "flash",
+        "smoke",
+        "nade",
+    ),
+    "REPOSITION": (
+        "change angle",
+        "move position",
+        "reposition",
+        "rotate",
+    ),
+    "UNCLEAR": (),
+}
+_INTENT_PUBLIC_GOAL: dict[IntentCategory, str] = {
+    "GATHER_INFORMATION": "gather information",
+    "ESCAPE_RESET": "escape and reset",
+    "TAKE_DUEL": "take the duel",
+    "HOLD_FOR_SUPPORT": "wait for support",
+    "CREATE_SPACE_WITH_UTILITY": "create space with utility",
+    "REPOSITION": "reposition",
+    "UNCLEAR": "clarify the tactical goal",
+}
+_INTENT_COACHING_TEXT: dict[IntentCategory, str] = {
+    "GATHER_INFORMATION": (
+        "Keep the exposure brief with a shoulder or jiggle peek, preserve a path "
+        "back to cover, and reset once you confirm the opponent's position."
+    ),
+    "ESCAPE_RESET": (
+        "Prioritize the shortest route to hard cover, keep your crosshair on the "
+        "danger angle, and reassess before exposing yourself again."
+    ),
+    "TAKE_DUEL": (
+        "Commit to one controlled angle: stop accurately, keep the crosshair at "
+        "head level, and avoid widening the fight into multiple threats."
+    ),
+    "HOLD_FOR_SUPPORT": (
+        "Delay the next exposure until support can trade the contact, and choose a "
+        "position that lets both players fight the same threat."
+    ),
+    "CREATE_SPACE_WITH_UTILITY": (
+        "Use utility only when it can safely block, delay, or displace the opponent, "
+        "then move while that advantage is active."
+    ),
+    "REPOSITION": (
+        "Move through hard cover, preserve your crosshair on the likely follow-up "
+        "angle, and avoid crossing the same exposed line twice."
+    ),
+    "UNCLEAR": "Clarify the tactical goal before requesting coaching.",
+}
+_ALLOWED_ADJUSTMENTS: dict[IntentCategory, frozenset[str]] = {
+    "GATHER_INFORMATION": frozenset(
+        {
+            "RESET_BEHIND_COVER",
+            "MAINTAIN_CROSSHAIR_WHILE_DISENGAGING",
+            "REASSESS_BEFORE_REENGAGING",
+        }
+    ),
+    "ESCAPE_RESET": frozenset(
+        {
+            "RESET_BEHIND_COVER",
+            "MAINTAIN_CROSSHAIR_WHILE_DISENGAGING",
+            "USE_AVAILABLE_UTILITY",
+            "REASSESS_BEFORE_REENGAGING",
+        }
+    ),
+    "TAKE_DUEL": frozenset(
+        {
+            "CONTROLLED_REENGAGEMENT",
+            "HOLD_FOR_SUPPORT",
+            "USE_AVAILABLE_UTILITY",
+            "REASSESS_BEFORE_REENGAGING",
+        }
+    ),
+    "HOLD_FOR_SUPPORT": frozenset(
+        {"HOLD_FOR_SUPPORT", "RESET_BEHIND_COVER", "REASSESS_BEFORE_REENGAGING"}
+    ),
+    "CREATE_SPACE_WITH_UTILITY": frozenset(
+        {"USE_AVAILABLE_UTILITY", "RESET_BEHIND_COVER", "REASSESS_BEFORE_REENGAGING"}
+    ),
+    "REPOSITION": frozenset(
+        {
+            "RESET_BEHIND_COVER",
+            "HOLD_FOR_SUPPORT",
+            "MAINTAIN_CROSSHAIR_WHILE_DISENGAGING",
+            "REASSESS_BEFORE_REENGAGING",
+        }
+    ),
+    "UNCLEAR": frozenset(),
+}
+_DEFAULT_ADJUSTMENT: dict[IntentCategory, str] = {
+    "GATHER_INFORMATION": "REASSESS_BEFORE_REENGAGING",
+    "ESCAPE_RESET": "RESET_BEHIND_COVER",
+    "TAKE_DUEL": "CONTROLLED_REENGAGEMENT",
+    "HOLD_FOR_SUPPORT": "HOLD_FOR_SUPPORT",
+    "CREATE_SPACE_WITH_UTILITY": "USE_AVAILABLE_UTILITY",
+    "REPOSITION": "MAINTAIN_CROSSHAIR_WHILE_DISENGAGING",
+    "UNCLEAR": "REASSESS_BEFORE_REENGAGING",
+}
+
+
+def _classify_stated_intent(user_intent: str) -> IntentCategory:
+    """Map explicit player wording to a conservative tactical goal."""
+
+    normalized = re.sub(r"[^a-z0-9]+", " ", user_intent.lower()).strip()
+    matches: list[tuple[int, int, IntentCategory]] = []
+    for category, phrases in _INTENT_PHRASES.items():
+        for phrase in phrases:
+            match = re.search(
+                rf"(?<![a-z0-9]){re.escape(phrase)}(?![a-z0-9])",
+                normalized,
+            )
+            if match is not None:
+                # Prefer the earliest explicit goal; for the same position,
+                # prefer the more specific phrase.
+                matches.append((match.start(), -len(phrase), category))
+    if not matches:
+        return "UNCLEAR"
+    matches.sort(key=lambda item: (item[0], item[1], item[2]))
+    return matches[0][2]
+
+
+def _validate_adjustment_for_intent(
+    intent_category: IntentCategory,
+    adjustment: str,
+) -> None:
+    if adjustment not in _ALLOWED_ADJUSTMENTS[intent_category]:
+        raise IntentMalformedOutputError(
+            "intent coaching provider selected an adjustment incompatible with the stated goal"
+        )
+
+
+def _clarification_response(
+    *,
+    selected: Mapping[str, Any],
+    clean_intent: str,
+    cutoff_tick: int,
+) -> dict[str, Any]:
+    clarification = (
+        "Tell us whether you were trying to gather information, escape, take the "
+        "duel, wait for support, use utility, or reposition."
+    )
+    result = {
+        "decision_id": str(selected["decision_id"]),
+        "player_id": str(selected["player_id"]),
+        "user_intent": clean_intent,
+        "intent_feasibility": "Your tactical goal is not clear enough to evaluate.",
+        "coordination_gap": (
+            "Replay telemetry does not establish communication, readiness, or a "
+            "team coordination plan."
+        ),
+        "recommended_cs2_adjustment": clarification,
+        "in_depth_coaching": clarification,
+        "knowledge_cutoff_tick": cutoff_tick,
+        "facts_referenced": [],
+    }
+    return _validate_public_result(result, selected=selected, cutoff_tick=cutoff_tick)
+
+
+def _validate_public_result(
+    result: dict[str, Any],
+    *,
+    selected: Mapping[str, Any],
+    cutoff_tick: int,
+) -> dict[str, Any]:
+    try:
+        validate_public_coaching_payload(
+            result,
+            forbidden_replay_coordinates={
+                value
+                for value in (
+                    _strict_nonnegative_int(selected.get("decision_open_tick")),
+                    _strict_nonnegative_int(selected.get("contact_tick")),
+                    _strict_nonnegative_int(selected.get("action_close_tick")),
+                    cutoff_tick,
+                )
+                if value is not None
+            },
+        )
+    except PublicCoachingProseError as exc:
+        raise IntentMalformedOutputError(
+            "intent coaching public prose failed the leak guard"
+        ) from exc
+    return result
+
+
 _COORDINATION_ASSESSMENT_TEXT = {
     "NOT_ESTABLISHED": (
         "Replay telemetry does not establish communication, readiness, or a team "
@@ -581,6 +836,7 @@ def _render_public_response(
     *,
     grounded_claims: list[GroundedEvidenceClaim],
     available_utility: set[str],
+    intent_category: IntentCategory,
 ) -> dict[str, str]:
     """Render all public prose from backend-owned templates and evidence."""
 
@@ -589,20 +845,31 @@ def _render_public_response(
             "intent coaching provider recommended unavailable utility"
         )
     try:
-        evidence_summary = render_public_evidence_summary(grounded_claims)
+        evidence_summary = render_public_evidence_summary(
+            grounded_claims,
+            max_items=2,
+        )
     except IntentClaimValidationError as exc:
         raise IntentMalformedOutputError(
             "intent coaching evidence could not be rendered safely"
         ) from exc
 
+    evidence_text = evidence_summary.removeprefix("Replay evidence: ").strip()
     adjustment = _ADJUSTMENT_TEXT[output.recommended_adjustment]
+    contextual_adjustment = _INTENT_COACHING_TEXT[intent_category]
+    if output.recommended_adjustment != _DEFAULT_ADJUSTMENT[intent_category]:
+        contextual_adjustment = f"{contextual_adjustment} {adjustment}"
+    public_goal = _INTENT_PUBLIC_GOAL[intent_category]
     response = {
         "intent_feasibility": _INTENT_ASSESSMENT_TEXT[output.intent_assessment],
         "coordination_gap": _COORDINATION_ASSESSMENT_TEXT[
             output.coordination_assessment
         ],
-        "recommended_cs2_adjustment": adjustment,
-        "in_depth_coaching": f"{evidence_summary} Coaching focus: {adjustment}",
+        "recommended_cs2_adjustment": contextual_adjustment,
+        "in_depth_coaching": (
+            f"{evidence_text} Because you said you wanted to {public_goal}, "
+            f"{contextual_adjustment[0].lower()}{contextual_adjustment[1:]}"
+        ),
     }
     return {
         field_name: translate_provider_aliases(value)
@@ -652,6 +919,21 @@ def _authoritative_evidence(selected: Mapping[str, Any]) -> list[dict[str, Any]]
                 {"evidence_id": evidence_id, "statement": statement}
             )
             seen.add(evidence_id)
+    evidence_priority = {
+        "telemetry:contact-state": 0,
+        "telemetry:reaction-movement": 1,
+        "telemetry:teammate-spacing": 2,
+        "decision:observed-action": 3,
+    }
+    evidence.sort(
+        key=lambda item: (
+            evidence_priority.get(
+                str(item["evidence_id"]),
+                4 if str(item["evidence_id"]).startswith("decision:signal:") else 5,
+            ),
+            str(item["evidence_id"]),
+        )
+    )
     return evidence
 
 
@@ -664,7 +946,7 @@ def _typed_public_evidence_statement(
     """Render one evidence item without trusting an upstream prose field."""
 
     if field_name == "known_before_decision":
-        return "The replay parser recorded a bounded pre-decision observation."
+        return "The replay captured relevant context from before the engagement."
 
     if field_name == "_intent_known_events":
         event_type = _safe_public_label(
@@ -673,8 +955,7 @@ def _typed_public_evidence_statement(
             forbidden_replay_coordinates=forbidden_replay_coordinates,
         )
         return (
-            f"The replay parser recorded a {event_type} involving the player "
-            "within the bounded decision window."
+            f"The replay recorded a {event_type} involving you during the immediate response."
         )
 
     kind = str(item.get("kind") or "").strip().lower()
@@ -682,30 +963,44 @@ def _typed_public_evidence_statement(
     if kind == "observed_action":
         action = str(item.get("value") or "").strip().lower()
         if re.fullmatch(r"[a-z0-9_-]{1,64}", action):
-            return (
-                "The bounded action classifier labeled the immediate reaction as "
-                f"{action.replace('_', ' ').replace('-', ' ')}."
+            public_actions = {
+                "hold": "You held your position immediately after contact.",
+                "reset": "You disengaged immediately after contact.",
+                "reset_reposition": "You repositioned immediately after contact.",
+                "re_engage": "You re-engaged immediately after contact.",
+                "re-engage": "You re-engaged immediately after contact.",
+            }
+            return public_actions.get(
+                action,
+                "The replay captured your immediate response after contact.",
             )
     if kind == "action_signal":
         signal = str(item.get("value") or "").strip().lower()
         return _DECISION_SIGNAL_STATEMENTS.get(
             signal,
-            "The deterministic action classifier recorded a bounded action signal.",
+            "The replay captured part of your immediate response.",
         )
     if kind == "contact_state":
-        bits = ["At first damage contact"]
+        role = str(value.get("role") or "").lower()
         place = _safe_public_label(
             value.get("place"),
             fallback="",
             forbidden_replay_coordinates=forbidden_replay_coordinates,
         )
-        if place:
-            bits.append(f"the player was in parser region {place}")
         health_before = _number(value.get("health_before"))
         health_after = _number(value.get("health_after_contact"))
-        if health_before is not None and health_after is not None:
-            bits.append(f"health changed from {health_before:g} to {health_after:g}")
-        return "; ".join(bits) + "."
+        if role == "victim" and health_before is not None and health_after is not None:
+            return (
+                f"You took first damage on {place or 'the recorded area'}, and your "
+                f"health changed from {health_before:g} to {health_after:g}."
+            )
+        if role == "victim":
+            return f"You took first damage on {place or 'the recorded area'}."
+        if role == "attacker":
+            return f"You initiated first damage from {place or 'the recorded area'}."
+        if place:
+            return f"First damage contact happened while you were on {place}."
+        return "The first exchange of damage was recorded."
     if kind == "reaction_movement":
         displacement = _number(value.get("displacement_units"))
         if displacement is not None:
@@ -719,19 +1014,23 @@ def _typed_public_evidence_statement(
                 fallback="an unnamed region",
                 forbidden_replay_coordinates=forbidden_replay_coordinates,
             )
-            return (
-                "During the bounded reaction window, the player moved "
-                f"{displacement:g} units from {start_place} to {end_place}."
-            )
+            if displacement <= 10:
+                return "You remained almost stationary immediately after contact."
+            if start_place != end_place:
+                return f"You moved from {start_place} to {end_place} immediately after contact."
+            if displacement <= 100:
+                return "You moved only a short distance immediately after contact."
+            return "You made a clear reposition immediately after contact."
     if kind == "teammate_spacing":
         nearest = _number(value.get("nearest_living_teammate_distance_units"))
         nearby = _strict_nonnegative_int(value.get("living_teammates_within_500_units"))
         if nearest is not None and nearby is not None:
-            return (
-                f"At contact, the nearest living teammate was {nearest:g} units away; "
-                f"{nearby} living teammates were within 500 units."
-            )
-    return "The replay parser recorded a bounded reaction observation."
+            if nearby == 0:
+                return "No living teammate was recorded nearby at contact."
+            if nearby == 1:
+                return "One living teammate was recorded nearby at contact."
+            return f"{nearby} living teammates were recorded nearby at contact."
+    return "The replay captured part of your immediate response."
 
 
 def _safe_public_label(

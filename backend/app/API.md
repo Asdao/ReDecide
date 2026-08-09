@@ -116,6 +116,12 @@ from parser-owned evidence statements. Provider-authored factual sentences,
 unknown evidence IDs, internal prompt labels, player aliases, and exact tick
 coordinates in coaching prose fail closed. `knowledge_cutoff_tick` remains
 available as structured response metadata.
+Explicit user wording is conservatively categorized as information gathering,
+escape/reset, taking a duel, waiting for support, creating space with utility,
+or repositioning. When no tactical goal is clear, the route returns a concise
+clarification request without calling the provider or exposing replay details.
+Player-facing evidence uses normal CS2 language rather than parser fields,
+movement thresholds, or internal action-classifier labels.
 
 ### `GET /api/analysis/{analysis_id}/events`
 

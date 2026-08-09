@@ -48,6 +48,12 @@ live `analysis_id`.
   prompt labels, provider-authored fact text, public player aliases, and exact
   tick coordinates in coaching prose, then fails closed when output is unsafe
   or the provider is unavailable.
+- Intent wording is conservatively mapped to information gathering,
+  escape/reset, taking a duel, waiting for support, creating space with utility,
+  or repositioning. Unclear wording receives a clarification request without a
+  provider call. Public evidence is rendered in normal player-facing language;
+  parser regions, thresholds, raw movement units, and classifier labels are not
+  shown.
 - When the parser provides the required telemetry, intent context now includes
   contact health/armor/location/inventory, held utility, immediate movement,
   deterministic action signals, and teammate spacing. Missing evidence remains
@@ -133,8 +139,8 @@ enhancement, not a missing backend capability.
 
 On 2026-08-09:
 
-- Python: 327 passed, 3 expected skips, 88 subtests passed.
-- Intent/transport/API focused suite: 74 passed, 82 subtests passed.
+- Python: 331 passed, 3 expected skips, 97 subtests passed.
+- Intent/transport/API focused suite: 78 passed, 91 subtests passed.
 - Frontend: 142 Vitest tests passed; TypeScript, ESLint, and production build
   passed.
 - Agent harness: 26 Vitest tests passed; TypeScript and production build passed.
