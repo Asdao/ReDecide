@@ -62,3 +62,9 @@ data/eval/human/*
 !backend/replay_engine/model/artifacts/full_replay_calibrator.json
 !backend/replay_engine/model/artifacts/small_snapshot_value.json
 .vercel
+
+# Submission binaries and logs
+*.zip
+*.mp4
+*.pdf
+logs/

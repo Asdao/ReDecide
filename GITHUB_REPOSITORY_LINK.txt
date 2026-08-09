@@ -1,0 +1,7 @@
+GitHub Repository Link:
+https://github.com/Asdao/GHackathon
+
+Note:
+- Repository is set to private.
+- Added 'garena-ai-build-challenge' as a collaborator.
+- The latest production code on 'main' branch corresponds to Team_Pandamonium_Redecide-main.zip.
