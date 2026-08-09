@@ -22,12 +22,16 @@ and timeline.
 | Frontend | Upload, player selection, radar, timeline, events, and advice | Next.js, React, TypeScript, Tailwind CSS, Zod |
 | Backend | Upload, preparation, player analysis, coaching, and results | Python, FastAPI, Pydantic |
 | Replay engine | Parses CS2 telemetry and calculates replay/model signals | Awpy, LightGBM, Python |
-| Coach | Generates baseline advice, then answers an optional intent follow-up using the exact selected decision and pre-decision evidence | Python HTTP adapter; optional Node.js Pi harness |
+| Coach | Generates baseline advice, then answers an optional intent follow-up using the exact selected decision and bounded contact/reaction evidence | Python HTTP adapter; optional Node.js Pi harness |
 | Storage | Keeps replay and analysis artifacts | Local filesystem; optional Vercel Blob |
 
 The replay pipeline selects the evidence and prevents later match information
-from entering the coaching prompt. The language model explains that evidence;
-it does not parse the `.dem` or decide which replay facts are valid.
+from entering the coaching prompt. For intent follow-up, the language model
+selects a bounded tactical adjustment and evidence IDs; the backend renders
+the visible factual text from typed, parser-owned evidence. Feasibility and
+team coordination remain explicitly unestablished until deterministic rules
+can prove them. The model does not parse the `.dem`, author public replay
+facts, or decide which replay facts are valid.
 
 Intent follow-up is available for uploaded and backend-sample analyses. Bundled
 processed replays have no live `analysis_id`, so their intent composer remains

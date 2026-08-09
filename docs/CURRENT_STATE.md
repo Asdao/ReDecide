@@ -1,6 +1,6 @@
 # Current state of RE:DECIDE
 
-Last reviewed: 2026-08-08 (Asia/Singapore)
+Last reviewed: 2026-08-09 (Asia/Singapore)
 
 ## Current product flow
 
@@ -39,9 +39,19 @@ live `analysis_id`.
 - Uploaded and backend-sample analyses can submit intent through
   `POST /api/analysis/{analysis_id}/intent`.
 - Intent coaching resolves the exact completed player and decision, restricts
-  evidence to the decision cutoff, anonymizes provider-visible identifiers,
-  validates strict JSON, rejects unsupported evidence references, and fails
-  closed when the provider is unavailable or malformed.
+  evidence to the bounded contact/reaction window, anonymizes provider-visible
+  identifiers, and requires a strict tactical-adjustment enum plus
+  claim-to-evidence mappings. Feasibility and team coordination remain
+  explicitly unestablished because the current telemetry cannot prove them.
+  The backend—not the provider—renders visible factual text from
+  parser-owned evidence. It rejects unsupported evidence references, internal
+  prompt labels, provider-authored fact text, public player aliases, and exact
+  tick coordinates in coaching prose, then fails closed when output is unsafe
+  or the provider is unavailable.
+- When the parser provides the required telemetry, intent context now includes
+  contact health/armor/location/inventory, held utility, immediate movement,
+  deterministic action signals, and teammate spacing. Missing evidence remains
+  unknown rather than being converted into claims that something did not occur.
 - Local replay and analysis state persists under `data/runtime/`; completed
   per-player results can be restored after a backend restart.
 - Vercel Services can use private Blob-backed replay/analysis persistence and
@@ -67,14 +77,15 @@ enhancement, not a missing backend capability.
 ## Known limits
 
 - A fresh browser upload through a live provider has not been repeated after
-  the latest intent fix. The backend has been checked against a persisted
-  analysis derived from the Vitality-versus-G2 Inferno `.dem`.
+  the latest intent fix. The local Vitality-versus-G2 Inferno `.dem` has been
+  freshly parsed and exercised through player selection, analysis, and the
+  exact-decision intent API using a deterministic provider.
 - Live coaching requires a valid provider URL, supported model name, and API
   key. Provider availability, latency, cost, and account limits are external
   deployment concerns.
-- Current intent evidence is safe but sparse: key events provide IDs, ticks,
-  event types, round, and participants. Richer health, cover, spacing, utility,
-  and teammate-state evidence would improve coaching specificity.
+- Exact geometry, cover visibility, line of sight, voice communication, and
+  enemy intent are not established by the current parser projection. The
+  backend rejects provider responses that present those as replay facts.
 - Intent results are request responses; they are not currently persisted as a
   conversation history or cached by intent text.
 - Bundled processed replays cannot submit live intent.
@@ -93,8 +104,9 @@ enhancement, not a missing backend capability.
 - The win-rate strip uses the latest estimate at or before the current replay
   tick in the same round. It shows a muted 50/50 baseline when no estimate is
   available.
-- Intent coaching uses `decision_open_tick` as its knowledge cutoff. Later
-  kills, deaths, round winners, and match outcomes are excluded.
+- Intent coaching uses the bounded `action_close_tick` as its knowledge cutoff
+  so it can inspect the immediate post-contact reaction. Kill, death,
+  round-result, match-result, and later events remain excluded.
 
 ## Main folders
 
@@ -119,16 +131,20 @@ enhancement, not a missing backend capability.
 
 ## Latest verification
 
-On 2026-08-08:
+On 2026-08-09:
 
-- Python: 298 passed, 3 expected skips, 16 subtests passed.
-- Intent-focused backend: 31 passed, 12 subtests passed after the final fix.
+- Python: 327 passed, 3 expected skips, 88 subtests passed.
+- Intent/transport/API focused suite: 74 passed, 82 subtests passed.
 - Frontend: 142 Vitest tests passed; TypeScript, ESLint, and production build
   passed.
 - Agent harness: 26 Vitest tests passed; TypeScript and production build passed.
-- Persisted real-replay intent regression: requesting decision tick `254126`
-  returned cutoff `254126`; an unknown decision returned `404`; provider
-  failure returned `503` with no fabricated coaching.
+- Endpoint regressions confirm that an unknown decision returns `404`, sparse
+  evidence returns `422`, invalid or ungrounded model output returns `503`, and
+  provider failure returns `503` without fabricated coaching.
+- A fresh full check parsed `vitality-vs-g2-m2-inferno.dem`, found 10 players,
+  analyzed an exact HeavyGoD decision, retained its cutoff as structured
+  metadata, and returned backend-rendered coaching without prompt tokens,
+  player aliases, exact tick prose, raw IDs, or later outcomes.
 
 No paid/live provider call was made during this verification.
 

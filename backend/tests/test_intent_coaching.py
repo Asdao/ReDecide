@@ -25,11 +25,19 @@ class PromptProvider:
     def __init__(self, response: str | Exception | None = None) -> None:
         self.response = response or json.dumps(
             {
-                "intent_feasibility": "The stated reset was feasible.",
-                "coordination_gap": "No coordination claim is established.",
-                "recommended_cs2_adjustment": "Reset behind cover before peeking.",
-                "in_depth_coaching": "The bounded evidence supports a safer reset.",
-                "facts_referenced": ["event-second-contact"],
+                "intent_assessment": "NOT_ESTABLISHED",
+                "coordination_assessment": "NOT_ESTABLISHED",
+                "recommended_adjustment": "RESET_BEHIND_COVER",
+                "evidence_claims": [
+                    {
+                        "evidence_id": "decision:observed-action",
+                        "supports": "recommended_cs2_adjustment",
+                    },
+                    {
+                        "evidence_id": "decision:observed-action",
+                        "supports": "in_depth_coaching",
+                    }
+                ],
             }
         )
         self.prompts: list[str] = []
@@ -63,6 +71,7 @@ def _decision(
         "action_close_tick": tick + 20,
         "event_category": "damage",
         "observed_action": "RESET_REPOSITION",
+        "evidence": ["displacement_above_threshold"],
     }
 
 
@@ -92,13 +101,17 @@ def _completed_result(*, include_evidence: bool = True) -> dict[str, Any]:
                 {
                     "event_id": "future-death-must-not-leak",
                     "round_number": 2,
-                    "tick": 525,
+                    "tick": 510,
                     "event_type": "kill",
                     "participant_ids": [PLAYER_ID, "opponent-1"],
                     "is_coaching_anchor": False,
                 },
             ]
         )
+    else:
+        for decision in (first, second):
+            decision["observed_action"] = "unknown"
+            decision["evidence"] = ["no_action_window_observation"]
     return {
         "schema_version": "replay_analysis_v1",
         "selected_decision": first,
@@ -175,8 +188,8 @@ def test_endpoint_uses_exact_requested_decision_and_excludes_future_events(
 
     assert response.status_code == 200, response.text
     assert response.json()["decision_id"] == SECOND_DECISION_ID
-    assert response.json()["knowledge_cutoff_tick"] == 500
-    assert response.json()["facts_referenced"] == ["event-second-contact"]
+    assert response.json()["knowledge_cutoff_tick"] == 520
+    assert response.json()["facts_referenced"] == ["decision:observed-action"]
     assert len(provider.prompts) == 1
     assert "event-second-contact" in provider.prompts[0]
     assert FIRST_DECISION_ID not in provider.prompts[0]
@@ -248,11 +261,19 @@ def test_malformed_or_ungrounded_model_output_fails_closed(tmp_path: Path) -> No
     provider = PromptProvider(
         json.dumps(
             {
-                "intent_feasibility": "Feasible",
-                "coordination_gap": "Unknown",
-                "recommended_cs2_adjustment": "Reset",
-                "in_depth_coaching": "Unsupported claim",
-                "facts_referenced": ["invented-fact"],
+                "intent_assessment": "NOT_ESTABLISHED",
+                "coordination_assessment": "NOT_ESTABLISHED",
+                "recommended_adjustment": "RESET_BEHIND_COVER",
+                "evidence_claims": [
+                    {
+                        "evidence_id": "invented-fact",
+                        "supports": "recommended_cs2_adjustment",
+                    },
+                    {
+                        "evidence_id": "invented-fact",
+                        "supports": "in_depth_coaching",
+                    }
+                ],
             }
         )
     )

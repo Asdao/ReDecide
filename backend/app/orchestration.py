@@ -499,6 +499,7 @@ class AnalysisService:
                     "schema_version",
                     "replay_id",
                     "map",
+                    "map_name",
                     "key_events",
                     "events",
                     "win_estimator",
@@ -507,6 +508,11 @@ class AnalysisService:
                 if key in raw_result
             }
             source_result["selected_decision"] = deepcopy(selected_decision)
+            # The intent engine receives the authoritative parsed replay only as
+            # an internal evidence source. It projects a compact, bounded
+            # contact/reaction snapshot before constructing the provider prompt;
+            # the full replay and future events are never serialized to the LLM.
+            source_result["_intent_source_replay"] = job.replay
             adapter = self.coach_adapter
 
         from backend.app.coach.intent_engine import (

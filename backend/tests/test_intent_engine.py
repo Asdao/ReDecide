@@ -29,11 +29,16 @@ class RecordingProvider:
 
 def _valid_response(fact_id: str) -> dict[str, Any]:
     return {
-        "intent_feasibility": "Plausible, but exposed to an isolated duel.",
-        "coordination_gap": "The replay cannot confirm the stated callout.",
-        "recommended_cs2_adjustment": "Confirm support before re-engaging.",
-        "in_depth_coaching": "Reset behind cover, confirm the trade setup, then choose the next peek.",
-        "facts_referenced": [fact_id],
+        "intent_assessment": "NOT_ESTABLISHED",
+        "coordination_assessment": "NOT_ESTABLISHED",
+        "recommended_adjustment": "RESET_BEHIND_COVER",
+        "evidence_claims": [
+            {
+                "evidence_id": fact_id,
+                "supports": "recommended_cs2_adjustment",
+            },
+            {"evidence_id": fact_id, "supports": "in_depth_coaching"},
+        ],
     }
 
 
@@ -49,7 +54,8 @@ def _decision(decision_id: str, player_id: str, tick: int, round_number: int) ->
         "contact_tick": tick,
         "action_close_tick": tick + 160,
         "opponent_id": "opponent-secret",
-        # These post-contact classifier fields must not enter the prompt.
+        # These fields are deterministic observations from the bounded reaction
+        # window and must enter the prompt without later round outcomes.
         "observed_action": "RE_ENGAGE",
         "evidence": ["post_contact_displacement"],
     }
@@ -109,9 +115,87 @@ def _production_result() -> dict[str, Any]:
     }
 
 
+def _bounded_replay() -> dict[str, Any]:
+    return {
+        "tick_rate": 64.0,
+        "header": {"map_name": "de_ancient"},
+        "damages": [
+            {
+                "tick": 500,
+                "round_num": 2,
+                "victim_steamid": "p1",
+                "attacker_steamid": "opponent-secret",
+                "victim_place": "MainHall",
+                "victim_health": 100,
+                "health": 80,
+                "victim_armor": 100,
+                "armor": 92,
+                "dmg_health_real": 20,
+                "dmg_armor": 8,
+                "hitgroup": "chest",
+                "victim_X": 100.0,
+                "victim_Y": 200.0,
+                "victim_Z": 10.0,
+                "victim_inventory": ["AK-47", "Flashbang"],
+            }
+        ],
+        "ticks": [
+            {
+                "tick": 480,
+                "round_num": 2,
+                "steamid": "p1",
+                "side": "t",
+                "health": 100,
+                "armor": 100,
+                "place": "MainHall",
+                "X": 100.0,
+                "Y": 200.0,
+                "Z": 10.0,
+                "inventory": ["AK-47", "Flashbang"],
+            },
+            {
+                "tick": 640,
+                "round_num": 2,
+                "steamid": "p1",
+                "side": "t",
+                "health": 80,
+                "armor": 92,
+                "place": "SideHall",
+                "X": 220.0,
+                "Y": 260.0,
+                "Z": 10.0,
+                "inventory": ["AK-47", "Flashbang"],
+            },
+            {
+                "tick": 480,
+                "round_num": 2,
+                "steamid": "teammate-secret",
+                "side": "t",
+                "health": 100,
+                "place": "MainHall",
+                "X": 300.0,
+                "Y": 200.0,
+                "Z": 10.0,
+            },
+            {
+                "tick": 900,
+                "round_num": 2,
+                "steamid": "p1",
+                "side": "t",
+                "health": 0,
+                "place": "future-secret-place",
+                "X": 900.0,
+                "Y": 900.0,
+                "Z": 0.0,
+            },
+        ],
+        "round_winner": "future-secret-winner",
+    }
+
+
 class IntentEngineTests(unittest.TestCase):
     def test_selects_exact_nonfirst_production_analysis_and_bounds_prompt(self) -> None:
-        provider = RecordingProvider(_valid_response("requested-anchor"))
+        provider = RecordingProvider(_valid_response("decision:observed-action"))
         engine = IntentCoachingEngine(provider)
 
         result = engine.evaluate_intent(
@@ -123,14 +207,14 @@ class IntentEngineTests(unittest.TestCase):
 
         self.assertEqual(result["decision_id"], "r2:p1:t500")
         self.assertEqual(result["player_id"], "p1")
-        self.assertEqual(result["knowledge_cutoff_tick"], 500)
-        self.assertEqual(result["facts_referenced"], ["requested-anchor"])
+        self.assertEqual(result["knowledge_cutoff_tick"], 660)
+        self.assertEqual(result["facts_referenced"], ["decision:observed-action"])
         prompt = provider.prompts[0]
         self.assertIn("requested-anchor", prompt)
         self.assertNotIn("first-anchor", prompt)
         self.assertNotIn("future-death", prompt)
         self.assertNotIn("other-player", prompt)
-        self.assertNotIn("post_contact_displacement", prompt)
+        self.assertIn("post_contact_displacement", prompt)
         self.assertNotIn("secret future result", prompt)
         self.assertNotIn("opponent-secret", prompt)
         self.assertIn('"decision_open_tick":500', prompt)
@@ -149,8 +233,11 @@ class IntentEngineTests(unittest.TestCase):
                     )
 
     def test_rejects_context_without_citable_predecision_evidence(self) -> None:
+        decision = _decision("r2:p1:t500", "p1", 500, 2)
+        decision["observed_action"] = "unknown"
+        decision["evidence"] = ["no_action_window_observation"]
         context = {
-            "selected_decision": _decision("r2:p1:t500", "p1", 500, 2),
+            "selected_decision": decision,
             "key_events": [
                 {
                     "event_id": "future-only",
@@ -214,8 +301,22 @@ class IntentEngineTests(unittest.TestCase):
         cases = [
             {"intent_feasibility": "missing the other required fields"},
             {**_valid_response("requested-anchor"), "unexpected": "not allowed"},
+            {**_valid_response("requested-anchor"), "intent_assessment": "SUPPORTED"},
+            {
+                **_valid_response("requested-anchor"),
+                "coordination_assessment": "GAP_OBSERVED",
+            },
             _valid_response("invented-fact"),
-            {**_valid_response("requested-anchor"), "facts_referenced": []},
+            {**_valid_response("requested-anchor"), "evidence_claims": []},
+            {
+                **_valid_response("requested-anchor"),
+                "evidence_claims": [
+                    {
+                        "evidence_id": "requested-anchor",
+                        "supports": "in_depth_coaching",
+                    }
+                ],
+            },
         ]
         for response in cases:
             with self.subTest(response=response):
@@ -227,6 +328,163 @@ class IntentEngineTests(unittest.TestCase):
                         player_id="p1",
                         decision_id="r2:p1:t500",
                     )
+
+    def test_projects_contact_reaction_utility_and_teammate_spacing(self) -> None:
+        context = _production_result()
+        context["_intent_source_replay"] = _bounded_replay()
+        provider = RecordingProvider(_valid_response("telemetry:reaction-movement"))
+
+        result = IntentCoachingEngine(provider).evaluate_intent(
+            context,
+            "I was trying to escape.",
+            player_id="p1",
+            decision_id="r2:p1:t500",
+        )
+
+        self.assertEqual(result["knowledge_cutoff_tick"], 660)
+        prompt = provider.prompts[0]
+        self.assertIn("telemetry:contact-state", prompt)
+        self.assertIn("telemetry:reaction-movement", prompt)
+        self.assertIn("telemetry:teammate-spacing", prompt)
+        self.assertIn("MainHall", prompt)
+        self.assertIn('"available_utility":["flash"]', prompt)
+        self.assertIn('"displacement_units":134.2', prompt)
+        self.assertNotIn("future-secret-place", prompt)
+        self.assertNotIn("future-secret-winner", prompt)
+        self.assertNotIn("teammate-secret", prompt)
+        self.assertNotIn("opponent-secret", prompt)
+
+    def test_each_public_coaching_field_requires_substantive_evidence(self) -> None:
+        response = _valid_response("decision:observed-action")
+        response["evidence_claims"] = [
+            {
+                "evidence_id": "requested-anchor",
+                "supports": "recommended_cs2_adjustment",
+            },
+            {
+                "evidence_id": "decision:observed-action",
+                "supports": "in_depth_coaching",
+            },
+        ]
+
+        with self.assertRaises(IntentMalformedOutputError):
+            IntentCoachingEngine(RecordingProvider(response)).evaluate_intent(
+                _production_result(),
+                "I wanted to reset.",
+                player_id="p1",
+                decision_id="r2:p1:t500",
+            )
+
+    def test_utility_adjustment_must_cite_bounded_inventory_evidence(self) -> None:
+        context = _production_result()
+        context["_intent_source_replay"] = _bounded_replay()
+        response = _valid_response("telemetry:reaction-movement")
+        response["recommended_adjustment"] = "USE_AVAILABLE_UTILITY"
+
+        with self.assertRaises(IntentMalformedOutputError):
+            IntentCoachingEngine(RecordingProvider(response)).evaluate_intent(
+                context,
+                "I wanted to create space with utility.",
+                player_id="p1",
+                decision_id="r2:p1:t500",
+            )
+
+    def test_backend_ignores_provider_prose_and_renders_its_own_text(self) -> None:
+        response = _valid_response("decision:observed-action")
+        response["in_depth_coaching"] = "Use a two-stage pathâ€”then reset â€“ safely."
+
+        response.pop("in_depth_coaching")
+        result = IntentCoachingEngine(RecordingProvider(response)).evaluate_intent(
+            _production_result(),
+            "I wanted to reset.",
+            player_id="p1",
+            decision_id="r2:p1:t500",
+        )
+
+        self.assertIn("Replay evidence:", result["in_depth_coaching"])
+        self.assertNotIn("two-stage", result["in_depth_coaching"])
+
+    def test_rejects_representative_hallucinated_or_invalid_tactical_claims(self) -> None:
+        context = _production_result()
+        context["_intent_source_replay"] = _bounded_replay()
+        invalid_phrases = [
+            "Without replay telemetry, use the line of sight.",
+            "Throw a stun grenade before leaving.",
+            "There was no movement after contact.",
+            "Smoke the chokepoint before escaping.",
+            "You survived the engagement.",
+        ]
+        for phrase in invalid_phrases:
+            with self.subTest(phrase=phrase):
+                response = _valid_response("telemetry:reaction-movement")
+                response["in_depth_coaching"] = phrase
+                with self.assertRaises(IntentMalformedOutputError):
+                    IntentCoachingEngine(RecordingProvider(response)).evaluate_intent(
+                        context,
+                        "I was trying to escape.",
+                        player_id="p1",
+                        decision_id="r2:p1:t500",
+                    )
+
+    def test_backend_renders_public_prose_without_internal_tokens_or_ticks(self) -> None:
+        selected = _decision("r2:p1:t500", "p1", 500, 2)
+        selected["known_before_decision"] = [
+            {
+                "evidence_id": "health-at-contact",
+                "tick": 500,
+                "statement": (
+                    "At tick 500, PLAYER_INTENT and contact_tick said player_01 "
+                    "moved away from player_02 at replay coordinate 660."
+                ),
+            }
+        ]
+        result = IntentCoachingEngine(
+            RecordingProvider(_valid_response("health-at-contact"))
+        ).evaluate_intent(
+            {"selected_decision": selected},
+            "I wanted to reset.",
+            player_id="p1",
+            decision_id="r2:p1:t500",
+        )
+
+        public_text = " ".join(
+            str(result[field])
+            for field in (
+                "intent_feasibility",
+                "coordination_gap",
+                "recommended_cs2_adjustment",
+                "in_depth_coaching",
+            )
+        )
+        self.assertNotIn("PLAYER_INTENT", public_text)
+        self.assertNotIn("player_01", public_text)
+        self.assertNotIn("player_02", public_text)
+        self.assertNotIn("contact_tick", public_text)
+        self.assertNotIn("replay coordinate", public_text)
+        self.assertNotRegex(public_text.lower(), r"\btick\s*\d+\b")
+        self.assertEqual(result["knowledge_cutoff_tick"], 660)
+
+    def test_parser_labels_cannot_disguise_coordinates_aliases_or_schema_names(self) -> None:
+        unsafe_labels = ("0500", "5 00", "5e2", "player-02", "player 02", "contactTick")
+        for label in unsafe_labels:
+            with self.subTest(label=label):
+                replay = _bounded_replay()
+                replay["damages"][0]["victim_place"] = label
+                replay["ticks"][0]["place"] = label
+                context = _production_result()
+                context["_intent_source_replay"] = replay
+                result = IntentCoachingEngine(
+                    RecordingProvider(_valid_response("telemetry:contact-state"))
+                ).evaluate_intent(
+                    context,
+                    "I wanted to reset.",
+                    player_id="p1",
+                    decision_id="r2:p1:t500",
+                )
+
+                public_text = result["in_depth_coaching"]
+                self.assertNotIn(label, public_text)
+                self.assertNotIn("500", public_text)
 
 
 if __name__ == "__main__":

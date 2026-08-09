@@ -95,8 +95,8 @@ accepts only `https://<store-id>.public.blob.vercel-storage.com/...` URLs.
   `in_depth_coaching`, `knowledge_cutoff_tick`, and grounded
   `facts_referenced` IDs.
 - **Summary:** Re-evaluates one completed decision using the player's stated
-  intent and only replay evidence available at or before that decision's
-  knowledge cutoff.
+  intent and only replay evidence available within the bounded contact/reaction
+  window ending at `action_close_tick`.
 
 The route requires a completed analysis for that exact player and decision. It
 does not fall back to the first analyzed moment. Errors are `400` for a path/body
@@ -104,6 +104,18 @@ analysis-ID mismatch, `404` for an unknown analysis/player/decision, `409` when
 the player run is incomplete, `422` for insufficient bounded evidence, `503`
 for an unavailable provider or invalid/ungrounded provider response, and `504`
 for provider timeout. Provider failure never returns fabricated coaching.
+When available, the bounded provider context contains the player's contact
+health, armor, parser region, inventory/utility, immediate movement and
+teammate spacing. It does not expose the complete replay, raw player IDs,
+kill/death outcomes, round results, or events after `action_close_tick`.
+The provider returns conservative assessment markers, one tactical-adjustment
+enum, and structured claim-to-evidence mappings. Intent feasibility and team
+coordination remain `NOT_ESTABLISHED` because current telemetry cannot prove
+them. Public factual prose is rendered by the backend
+from parser-owned evidence statements. Provider-authored factual sentences,
+unknown evidence IDs, internal prompt labels, player aliases, and exact tick
+coordinates in coaching prose fail closed. `knowledge_cutoff_tick` remains
+available as structured response metadata.
 
 ### `GET /api/analysis/{analysis_id}/events`
 
@@ -190,9 +202,10 @@ The frontend can continue with `/api/analysis/{analysis_id}/players`,
   `REDECIDE_COACH_MODE=pi`; that mode requires Node.js and installed
   `agent-harness` dependencies.
 - Direct upload expects the `.dem` file; the separate Blob URL route is disabled by default.
-- A persisted analysis derived from the local Vitality-versus-G2 Inferno `.dem`
-  has completed backend exact-decision intent regression testing. A fresh
-  browser/provider and hosted deployment flow still need smoke testing.
+- The local Vitality-versus-G2 Inferno `.dem` has completed a fresh parse,
+  player-selection, analysis-run, and exact-decision intent API check using a
+  deterministic provider. A fresh browser/live-provider and hosted deployment
+  flow still need smoke testing.
 - On Vercel Services, analysis state and results automatically use the private
   frontend Blob binding and survive function restarts. Set
   `REDECIDE_STORAGE_BACKEND=filesystem` only to opt out explicitly.
