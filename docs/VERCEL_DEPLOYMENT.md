@@ -149,7 +149,7 @@ runtime smoke tests.
 
 - [Current product state](CURRENT_STATE.md)
 - [Backend API](../backend/app/API.md)
-- [Frontend status](../frontend/STATUS.md)
+- [Archived frontend status snapshot](archive/frontend/STATUS.md)
 - [Vercel Services configuration](../vercel.json)
 - [Vercel Services documentation](https://vercel.com/docs/services)
 - [Vercel Functions limits](https://vercel.com/docs/functions/limitations)

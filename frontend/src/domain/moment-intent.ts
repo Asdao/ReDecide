@@ -3,6 +3,7 @@ export type MomentIntentRequest = {
   analysisId: string;
   playerId: string;
   keyPointId: string;
+  decisionId: string;
   intent: string;
 };
 
@@ -16,6 +17,7 @@ export type MomentIntentState =
       status: "generating";
       intent: string;
       requestId: number;
+      coaching?: string;
     }
   | {
       status: "complete";
@@ -28,6 +30,7 @@ export type MomentIntentState =
       intent: string;
       requestId: number;
       message: string;
+      coaching?: string;
     };
 
 export type MomentIntentStates = Readonly<Record<string, MomentIntentState>>;
@@ -57,12 +60,17 @@ export function momentIntentReducer(
   action: MomentIntentAction,
 ): MomentIntentStates {
   if (action.type === "SUBMIT") {
+    const previous = state[action.keyPointId];
+    const previousCoaching = previous && "coaching" in previous
+      ? previous.coaching
+      : undefined;
     return {
       ...state,
       [action.keyPointId]: {
         status: "generating",
         intent: action.intent,
         requestId: action.requestId,
+        ...(previousCoaching ? { coaching: previousCoaching } : {}),
       },
     };
   }
@@ -91,6 +99,7 @@ export function momentIntentReducer(
       intent: current.intent,
       requestId: current.requestId,
       message: action.message,
+      ...(current.coaching ? { coaching: current.coaching } : {}),
     },
   };
 }

@@ -18,8 +18,11 @@ service binding declared in `vercel.json`; local development does not set that
 binding and continues to use the filesystem by default.
 
 These JSON artifacts are server-side application data, not browser cache. A
-successful native replay produces all three files above; analysis jobs separately
-store `analysis/<analysis_id>/state.json` and, after coaching, `result.json`.
+successful native replay produces all three files above. The integrated local
+backend stores restart-safe analysis data separately under
+`data/runtime/analysis-logs/analysis-state/<analysis_id>/state.json` and
+`result.json`. Blob-backed deployments use the
+`analysis/<analysis_id>/state.json` and `result.json` object keys.
 The Vercel deployment runs the authenticated `/api/cron/blob-retention` route
 daily. By default it removes failed analysis groups after 1 day, other analysis
 groups after 14 days, and ordinary replay groups after 30 days. Hosted sample
@@ -145,10 +148,12 @@ The released JSON contains:
 | `events` | Flattened kill, damage, bomb, and parser events sorted by tick. |
 | `ticks` | All player snapshots, including `X`, `Y`, `Z`, health, side, and alive state when available. |
 
-The response is an `application/json` file attachment named
-`<uploaded-name>.replay.json`. Statuses are `200` when released, `403` while
-locked, `202` while generation is running, `404` for an unknown replay, and
-`422` when visualization generation failed.
+In filesystem mode the response is an `application/json` attachment named
+`<uploaded-name>.replay.json`. In Blob mode the endpoint returns a `307`
+redirect to the stored visualization so the serverless function does not relay
+the large payload. Other statuses are `403` while locked, `202` while
+generation is running, `404` for an unknown replay, and `422` when
+visualization generation failed.
 
 Response status: `200` when released; `403` while coaching has not unlocked it;
 `202` while visualization generation is still running; `404` for an unknown
@@ -167,13 +172,21 @@ safe manifest and does not bypass the coaching unlock. New clients should use
 It has the same `multipart/form-data` request and `415`/`422` upload errors as
 `/upload`.
 
-## Coaching handoff
+## Analysis and coaching handoff
 
-Immediately after `/upload` returns, call the Coaching FastAPI with:
+The public product normally runs the unified gateway at
+`backend.app.main:app`. After `/api/replay/upload` returns, start analysis with:
 
 ```json
 {"replay_id":"0123456789abcdef0123456789abcdef"}
 ```
 
-The coaching service reads `coaching.json`. It never receives the frontend
-visualization artifact and never reparses the native `.dem`.
+Send this body to `POST /api/analysis/prepare`, read the available players from
+`GET /api/analysis/{analysis_id}/players`, and submit the selected `player_id`
+to `POST /api/analysis/{analysis_id}/run`. A successful player run unlocks the
+visualization. An optional intent follow-up then uses
+`POST /api/analysis/{analysis_id}/intent` with that completed player and an
+exact analyzed `decision_id`.
+
+The analysis/coaching pipeline reads `coaching.json`; it does not receive the
+frontend visualization artifact and does not reparse the native `.dem`.

@@ -12,10 +12,12 @@ Open the interactive API page at `http://127.0.0.1:8000/docs`.
 
 ```text
 upload .dem -> prepare analysis -> choose player -> run coach -> get result
+            -> optionally submit intent for one analyzed decision
 ```
 
-Player intent and follow-up questions are not supported yet. The frontend should
-not build or send intent data at this stage.
+Intent coaching is an optional follow-up after the selected player's normal
+analysis completes. It is available for uploaded and backend-sample jobs with a
+live `analysis_id`; bundled static processed replays cannot use it.
 
 ## Active APIs
 
@@ -83,6 +85,44 @@ accepts only `https://<store-id>.public.blob.vercel-storage.com/...` URLs.
 - **Output:** JSON containing the completed analysis, or a status response if it is not ready.
 - **Summary:** Retrieves a saved coaching result again without running the coach a second time. Results are retained separately for each analyzed player.
 
+### `POST /api/analysis/{analysis_id}/intent`
+
+- **Input:** `analysis_id` in the URL and JSON containing the same
+  `analysis_id`, the completed analysis's `player_id`, the exact analyzed
+  `decision_id`, and `intent_text` from 1 to 240 characters.
+- **Output:** JSON containing the validated IDs, `user_intent`,
+  `intent_feasibility`, `coordination_gap`, `recommended_cs2_adjustment`,
+  `in_depth_coaching`, `knowledge_cutoff_tick`, and grounded
+  `facts_referenced` IDs.
+- **Summary:** Re-evaluates one completed decision using the player's stated
+  intent and only replay evidence available within the bounded contact/reaction
+  window ending at `action_close_tick`.
+
+The route requires a completed analysis for that exact player and decision. It
+does not fall back to the first analyzed moment. Errors are `400` for a path/body
+analysis-ID mismatch, `404` for an unknown analysis/player/decision, `409` when
+the player run is incomplete, `422` for insufficient bounded evidence, `503`
+for an unavailable provider or invalid/ungrounded provider response, and `504`
+for provider timeout. Provider failure never returns fabricated coaching.
+When available, the bounded provider context contains the player's contact
+health, armor, parser region, inventory/utility, immediate movement and
+teammate spacing. It does not expose the complete replay, raw player IDs,
+kill/death outcomes, round results, or events after `action_close_tick`.
+The provider returns conservative assessment markers, one tactical-adjustment
+enum, and structured claim-to-evidence mappings. Intent feasibility and team
+coordination remain `NOT_ESTABLISHED` because current telemetry cannot prove
+them. Public factual prose is rendered by the backend
+from parser-owned evidence statements. Provider-authored factual sentences,
+unknown evidence IDs, internal prompt labels, player aliases, and exact tick
+coordinates in coaching prose fail closed. `knowledge_cutoff_tick` remains
+available as structured response metadata.
+Explicit user wording is conservatively categorized as information gathering,
+escape/reset, taking a duel, waiting for support, creating space with utility,
+or repositioning. When no tactical goal is clear, the route returns a concise
+clarification request without calling the provider or exposing replay details.
+Player-facing evidence uses normal CS2 language rather than parser fields,
+movement thresholds, or internal action-classifier labels.
+
 ### `GET /api/analysis/{analysis_id}/events`
 
 - **Input:** `analysis_id` in the URL.
@@ -146,13 +186,17 @@ The frontend can continue with `/api/analysis/{analysis_id}/players`,
 
 - **Input:** Not accepted by the public backend.
 - **Output:** HTTP `404`.
-- **Summary:** This old fixture intent route is intentionally disabled and must not be used by the frontend.
+- **Summary:** This old frozen-contract fixture route is intentionally disabled
+  on the public gateway. Use `/api/analysis/{analysis_id}/intent` for the live
+  replay intent flow.
 
 ## IDs to remember
 
 - `replay_id` identifies the uploaded replay and its visualization files.
 - `analysis_id` identifies the preparation and coaching job.
 - `player_id` identifies the selected player inside that replay.
+- `decision_id` identifies one analyzed moment for that player and must match
+  the exact decision being discussed.
 
 ## Current requirements and limits
 
@@ -164,14 +208,20 @@ The frontend can continue with `/api/analysis/{analysis_id}/players`,
   `REDECIDE_COACH_MODE=pi`; that mode requires Node.js and installed
   `agent-harness` dependencies.
 - Direct upload expects the `.dem` file; the separate Blob URL route is disabled by default.
-- No real `.dem` has completed the full flow yet.
+- The local Vitality-versus-G2 Inferno `.dem` has completed a fresh parse,
+  player-selection, analysis-run, and exact-decision intent API check using a
+  deterministic provider. A fresh browser/live-provider and hosted deployment
+  flow still need smoke testing.
 - On Vercel Services, analysis state and results automatically use the private
   frontend Blob binding and survive function restarts. Set
   `REDECIDE_STORAGE_BACKEND=filesystem` only to opt out explicitly.
-  The default local filesystem mode persists under `data/runtime/analysis`.
+  The integrated backend's default local state is under
+  `data/runtime/analysis-logs/analysis-state/<analysis_id>/`.
 - Preparation exceptions retain a generic public job error while their full
   traceback and analysis ID are written to server runtime logs.
-- Player intent and follow-up questions are not implemented.
+- Intent coaching requires a completed per-player analysis and a configured
+  provider. The current UI renders `in_depth_coaching`; the complete structured
+  response remains available in the API response.
 - Each selected player run coaches up to ten distinct moments by default. Set
   `REDECIDE_ANALYSES_PER_PLAYER` to an integer from 1 to 10 to change the quota.
   Results expose an additive `analyses` array; `selected_decision` and

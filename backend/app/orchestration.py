@@ -192,6 +192,10 @@ class PlayerSelectionError(ValueError):
     """Raised when a selected player is not present in the prepared replay."""
 
 
+class DecisionSelectionError(ValueError):
+    """Raised when a decision is not present in a completed player run."""
+
+
 @dataclass
 class AnalysisJob:
     analysis_id: str
@@ -430,6 +434,117 @@ class AnalysisService:
                     raise RuntimeError(job.error or "analysis failed")
                 raise AnalysisNotReady("analysis result is not ready")
             return dict(job.result)
+
+    def run_intent_coaching(
+        self,
+        analysis_id: str,
+        *,
+        player_id: str,
+        decision_id: str,
+        intent_text: str,
+    ) -> dict[str, Any]:
+        job = self.get_job(analysis_id)
+        with job.lock:
+            player_run = job.player_runs.get(str(player_id))
+            if player_run is None:
+                raise PlayerSelectionError(
+                    "no analysis run exists for the requested player"
+                )
+            if player_run.get("status") != "complete":
+                raise AnalysisNotReady(
+                    "the requested player's analysis is not complete"
+                )
+            raw_result = player_run.get("result")
+            if not isinstance(raw_result, Mapping):
+                raise AnalysisNotReady(
+                    "the requested player's analysis result is not ready"
+                )
+
+            selected_decision: Mapping[str, Any] | None = None
+            analyses = raw_result.get("analyses")
+            if isinstance(analyses, list):
+                for entry in analyses:
+                    if not isinstance(entry, Mapping):
+                        continue
+                    candidate = entry.get("selected_decision")
+                    if not isinstance(candidate, Mapping):
+                        continue
+                    if (
+                        str(candidate.get("decision_id") or "") == decision_id
+                        and str(candidate.get("player_id") or "") == player_id
+                    ):
+                        selected_decision = candidate
+                        break
+
+            singular = raw_result.get("selected_decision")
+            if selected_decision is None and isinstance(singular, Mapping):
+                if (
+                    str(singular.get("decision_id") or "") == decision_id
+                    and str(singular.get("player_id") or "") == player_id
+                ):
+                    selected_decision = singular
+
+            if selected_decision is None:
+                raise DecisionSelectionError(
+                    "decision is not present in the requested player's completed analysis"
+                )
+
+            # Take a defensive snapshot while holding the lock, then release it
+            # before calling the provider. Only the exact requested decision is
+            # exposed to the intent engine; the singular first-decision alias and
+            # other players' results are deliberately excluded.
+            source_result = {
+                key: deepcopy(raw_result[key])
+                for key in (
+                    "schema_version",
+                    "replay_id",
+                    "map",
+                    "map_name",
+                    "key_events",
+                    "events",
+                    "win_estimator",
+                    "limitations",
+                )
+                if key in raw_result
+            }
+            source_result["selected_decision"] = deepcopy(selected_decision)
+            # The intent engine receives the authoritative parsed replay only as
+            # an internal evidence source. It projects a compact, bounded
+            # contact/reaction snapshot before constructing the provider prompt;
+            # the full replay and future events are never serialized to the LLM.
+            source_result["_intent_source_replay"] = job.replay
+            adapter = self.coach_adapter
+
+        from backend.app.coach.intent_engine import (
+            IntentCoachingEngine,
+            IntentProviderUnavailableError,
+        )
+
+        if adapter is None or not callable(getattr(adapter, "run_prompt", None)):
+            raise IntentProviderUnavailableError(
+                "intent coaching provider is not configured"
+            )
+
+        engine = IntentCoachingEngine(coach_adapter=adapter)
+        evaluation = engine.evaluate_intent(
+            source_result,
+            intent_text,
+            player_id=player_id,
+            decision_id=decision_id,
+        )
+
+        return {
+            "analysis_id": analysis_id,
+            "player_id": evaluation["player_id"],
+            "decision_id": evaluation["decision_id"],
+            "user_intent": evaluation["user_intent"],
+            "intent_feasibility": evaluation["intent_feasibility"],
+            "coordination_gap": evaluation["coordination_gap"],
+            "recommended_cs2_adjustment": evaluation["recommended_cs2_adjustment"],
+            "in_depth_coaching": evaluation["in_depth_coaching"],
+            "knowledge_cutoff_tick": evaluation["knowledge_cutoff_tick"],
+            "facts_referenced": evaluation["facts_referenced"],
+        }
 
     def logs(self, analysis_id: str) -> str:
         job = self.get_job(analysis_id)

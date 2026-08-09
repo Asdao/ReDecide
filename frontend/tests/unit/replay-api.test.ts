@@ -12,6 +12,7 @@ import {
   prepareReplayAnalysis,
   prepareReplayWorkspace,
   runReplayCoaching,
+  submitPlayerIntent,
   subscribeToAnalysisProgress,
   uploadReplay,
 } from "@/adapters/replay-api";
@@ -518,6 +519,70 @@ describe("replay API adapter", () => {
     await expect(prepareReplayAnalysis("replay-1")).rejects.toMatchObject({
       kind: "network",
       operation: "prepare",
+    });
+  });
+
+  it("submits intent for one decision and validates the contextual coaching response", async () => {
+    const response = {
+      analysis_id: "analysis-1",
+      player_id: "p1",
+      decision_id: "decision-1",
+      user_intent: "I expected my teammate to swing with me.",
+      intent_feasibility: "Score 50/100 — Moderate Risk",
+      coordination_gap: "Support was not confirmed before contact.",
+      recommended_cs2_adjustment: "Wait for an explicit call or utility cue.",
+      in_depth_coaching: "Confirm the trade setup before committing to the duel.",
+      knowledge_cutoff_tick: 20,
+      facts_referenced: ["displacement_below_threshold"],
+    };
+    const controller = new AbortController();
+    const fetchMock = vi.fn().mockResolvedValueOnce(jsonResponse(response));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(submitPlayerIntent(
+      "analysis-1",
+      "p1",
+      "decision-1",
+      "I expected my teammate to swing with me.",
+      controller.signal,
+    )).resolves.toEqual(response);
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/analysis/analysis-1/intent",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({
+          analysis_id: "analysis-1",
+          player_id: "p1",
+          decision_id: "decision-1",
+          intent_text: "I expected my teammate to swing with me.",
+        }),
+        signal: controller.signal,
+      }),
+    );
+  });
+
+  it("rejects contextual coaching returned for a different decision", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValueOnce(jsonResponse({
+      analysis_id: "analysis-1",
+      player_id: "p1",
+      decision_id: "decision-2",
+      user_intent: "I expected support.",
+      intent_feasibility: "Moderate Risk",
+      coordination_gap: "Support was unconfirmed.",
+      recommended_cs2_adjustment: "Wait for confirmation.",
+      in_depth_coaching: "Do not commit until the trade is ready.",
+      knowledge_cutoff_tick: 20,
+      facts_referenced: [],
+    })));
+
+    await expect(submitPlayerIntent(
+      "analysis-1",
+      "p1",
+      "decision-1",
+      "I expected support.",
+    )).rejects.toMatchObject({
+      kind: "invalid-response",
+      operation: "intent-coaching",
     });
   });
 });

@@ -1,124 +1,76 @@
-# RE:DECIDE
+# RE:DECIDE documentation
 
-Upload a Counter-Strike 2 `.dem` replay, choose a player, and receive coaching
-for their post-contact decisions.
+Use this page as the documentation index. For the fastest local start, begin
+with the root [README](../README.md). For implemented behavior and known
+limits, read [Current state](CURRENT_STATE.md).
 
-Maintenance documents:
+## Run and understand the product
 
-- [Current product state](CURRENT_STATE.md)
-- [JavaScript dependency setup](JAVASCRIPT_SETUP.md)
-- [Dependency security policy and checks](DEPENDENCY_SECURITY.md)
-- [Replay maps and demo data](REPLAY_DATA_SETUP.md)
-- [Vercel frontend deployment](VERCEL_DEPLOYMENT.md)
-- [Backend API](../backend/app/API.md)
-- [Frontend implementation status](../frontend/STATUS.md)
-- [Legacy Pi/agent harness setup](../agent-harness/docs/GETTING_STARTED.md)
+- [Project overview and quick start](../README.md) - product purpose,
+  components, environment variables, and the one-command Windows launcher.
+- [Current product state](CURRENT_STATE.md) - implemented flow, known limits,
+  timeline semantics, and latest verification.
+- [Unified FastAPI API](../backend/app/API.md) - active replay, analysis,
+  coaching, intent, sample, and compatibility endpoints.
+- [Vercel deployment](VERCEL_DEPLOYMENT.md) - service routing, Blob bindings,
+  environment configuration, retention, and deployment checks.
 
-## First-time setup
+## Development setup
 
-You need Python 3.12+, `uv`, Node.js 24, and `pnpm` 11 for the frontend.
-Installing the separate `agent-harness` dependencies is optional unless you
-explicitly use the legacy Pi coach (`REDECIDE_COACH_MODE=pi`).
+- [JavaScript setup](JAVASCRIPT_SETUP.md) - Node.js and pnpm requirements,
+  lockfile installation, WSL guidance, and frontend/harness verification.
+- [Replay data setup](REPLAY_DATA_SETUP.md) - map assets, sidecars, native
+  demos, download limits, and reproducible manifests.
+- [Dependency security](DEPENDENCY_SECURITY.md) - lockfile policy, local
+  security commands, CI checks, and update workflow.
+- [Security tooling](../security/README.md) - repository lockfile and source
+  policy enforced by `security/check-lockfiles.mjs`.
 
-Run these commands from the repository root:
+## Backend references
 
-```powershell
-uv sync --extra full --extra test
+- [Replay API component](../backend/replay_api/API.md) - standalone replay
+  ingestion/artifact service and its handoff to the unified gateway.
+- [Replay engine overview](../backend/replay_engine/README.md) - parser,
+  replay-value model, simulator, training, and inference entry points.
+- [Replay extractor](../backend/replay_engine/extractor/README.md) - canonical
+  replay parsing, normalization, segmentation, and storage.
+- [Replay data layout](../backend/replay_engine/docs/DATA_LAYOUT.md) - public,
+  private, runtime, and model-artifact locations.
+- [Replay module API](../backend/replay_engine/docs/MODULE_API.md) - supported
+  Python package boundaries.
+- [Model profiles](../backend/replay_engine/docs/MODEL_PROFILES.md) - model
+  variants and intended usage.
+- [Model training](../backend/replay_engine/docs/TRAINING.md) - reproducible
+  training and evaluation commands.
 
-cd frontend
-pnpm install --frozen-lockfile
-cd ..
+## Frontend and replay assets
 
-Copy-Item .env.example .env
-Set-Content frontend/.env.local 'NEXT_PUBLIC_API_BASE_URL=http://127.0.0.1:8000'
-# Optional: set NEXT_PUBLIC_REPLAY_UPLOAD_MODE=blob only when public Vercel
-# Blob upload and the backend import route are configured.
-```
+- [Processed replay assets](../frontend/public/replays/README.md) - bundled
+  replay/analysis pairs consumed by the viewer.
+- [Radar assets](../frontend/public/radars/README.md) - supported map radar
+  files and metadata.
+- [Public data assets](../data/public/README.md) - checked-in sanitized data
+  and source metadata.
 
-For this Windows checkout, the lockfile-preserving setup helper is:
+## Optional legacy agent harness
 
-```powershell
-.\scripts\install-js-deps.ps1
-```
+The normal local backend uses the Python HTTP coach when provider configuration
+is present. These guides cover the optional Pi/Node harness:
 
-Do not run `pnpm install` or `pnpm dev` from WSL against this same `/mnt/c/...`
-checkout. Windows and Linux native packages cannot safely share one
-`node_modules` tree. Use PowerShell here; use WSL for Python, or create a
-separate clone under the native WSL filesystem for Linux JavaScript work.
+- [Agent harness overview](../agent-harness/README.md)
+- [Getting started](../agent-harness/docs/GETTING_STARTED.md)
+- [Architecture](../agent-harness/docs/ARCHITECTURE.md)
+- [Analysis pipeline](../agent-harness/docs/ANALYSIS_PIPELINE.md)
+- [Tools](../agent-harness/docs/TOOLS.md)
+- [Skills](../agent-harness/docs/SKILLS.md)
+- [Security](../agent-harness/docs/SECURITY.md)
 
-Open `.env` and add your coaching API key:
+## Historical documents
 
-```powershell
-notepad .env
-```
+Implementation diaries and superseded planning documents are stored under
+[docs/archive](archive/README.md). They preserve project history but are not
+current setup, API, architecture, or product requirements.
 
-```text
-DEEPSEEK_API_KEY=your-real-key-here
-```
-
-Never put the API key in `frontend/.env.local`.
-
-## Start the product
-
-From the repository root, the Windows launcher installs missing locked
-dependencies, creates local environment files when absent, reuses healthy
-services already on ports 8000 and 3000, and starts whichever service is
-missing:
-
-```powershell
-.\scripts\start-dev.ps1
-```
-
-Pass `-SkipSetup` when the locked Python and frontend dependencies are already
-installed. The launcher refuses to replace an unrelated process occupying
-either port.
-
-Backend - run from the repository root:
-
-```powershell
-uv run uvicorn backend.app.main:app --env-file .env --reload --port 8000
-```
-
-Run the complete Python suite with the test extra so Starlette's current
-`httpx2` test-client transport is installed:
-
-```powershell
-uv run --extra full --extra test pytest -q
-```
-
-Frontend - run in a second PowerShell window:
-
-```powershell
-cd frontend
-pnpm dev
-```
-
-The frontend runs an environment check before install and development. It
-requires Node 24, pnpm 11, the correct Windows native packages, and refuses the
-unsafe WSL-on-`/mnt/c` combination with a recovery message. The default local
-upload mode is direct multipart upload; Vercel uses the optional Blob mode.
-
-Open:
-
-- Product: `http://localhost:3000`
-- Backend API: `http://127.0.0.1:8000/docs`
-
-Press `Ctrl+C` in both windows to stop.
-
-When the provider base URL and key are configured, the backend selects the
-Python HTTP coach automatically. To use the legacy Pi/Node path instead, set
-`REDECIDE_COACH_MODE=pi` in `.env` and install the optional `agent-harness`
-dependencies with `pnpm install --frozen-lockfile` from that directory.
-
-For a quick browser demo without uploading a native replay, use `Use a sample
-match` or `Open processed replays` from the landing page. The sample path calls
-the backend catalog and enters the same player-selection, coaching, and replay
-viewer flow as a native upload.
-
-For backend tests from WSL, use the Linux virtual environment so native replay
-and HTTP dependencies match the runtime:
-
-```bash
-source .venv-wsl/bin/activate
-pytest backend/tests/test_coach_mode.py -q
-```
+When documents disagree, use the root README for startup, the unified API guide
+for transport, Current State for implemented behavior, and executable code and
+tests as the final authority.

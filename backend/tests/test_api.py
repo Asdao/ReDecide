@@ -52,6 +52,7 @@ class ApiWalkingSkeletonTests(unittest.TestCase):
                 "/api/analysis/{analysis_id}/players",
                 "/api/analysis/{analysis_id}/result",
                 "/api/analysis/{analysis_id}/run",
+                "/api/analysis/{analysis_id}/intent",
                 "/api/replay/convert",
                 "/api/replay/upload",
                 "/api/replay/{replay_id}/json",

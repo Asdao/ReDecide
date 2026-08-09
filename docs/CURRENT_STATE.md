@@ -1,109 +1,160 @@
 # Current state of RE:DECIDE
 
-Last reviewed: 2026-08-07 (Asia/Singapore)
+Last reviewed: 2026-08-09 (Asia/Singapore)
 
-## Product flow now 
+## Current product flow
 
 ```text
-Use a sample match
-  OR upload a native .dem
-  -> backend creates a replay manifest
-  -> analysis preparation discovers players and decision moments
-  -> user selects a player
-  -> coaching runs for that player's eligible moments
-  -> replay visualization unlocks
-  -> frontend shows the radar, timeline, event inspector, win-rate strip, and advice
+Upload a native .dem or choose a backend sample
+  -> FastAPI parses the replay and creates a replay_id
+  -> analysis preparation discovers players and first-contact decisions
+  -> the user selects a player
+  -> the configured coach analyzes up to 10 diverse moments
+  -> the visualization unlocks
+  -> the frontend shows radar playback, timeline events, win-rate estimates,
+     and advice
+  -> the user may submit their intent for one analyzed moment
+  -> the backend returns contextual coaching for that exact decision
 ```
 
-The frontend also has a separate processed-replay catalog for the bundled
-Mirage and Inferno saves. Those saves exercise the viewer without requiring a
-new upload; Inferno includes a saved coaching result.
+The frontend also provides bundled Mirage and Inferno processed replays. They
+exercise the viewer without parsing or calling a provider. They contain saved
+analysis data, but intent submission is disabled because static saves have no
+live `analysis_id`.
 
-## What works now
+## Implemented
 
-- The unified FastAPI gateway exposes health, sample, replay, analysis, SSE,
-  and progress-log routes.
-- Native `.dem` upload parses the replay once and returns a safe replay manifest
-  with stable `replay_id` and `player_id` values.
-- The frontend is connected to the upload, preparation, player-selection,
-  coaching, result-recovery, and visualization APIs.
-- Sample selection calls the backend catalog and enters the same shared analysis
-  lifecycle as an uploaded replay.
-- The replay engine produces win-chance timelines and outcome-blind coaching
-  evidence. A selected player may be analyzed repeatedly; the default quota is
-  ten moments per player.
-- The viewer supports map-aware player positions, round selection, playback,
-  scrubbing, speed controls, event markers, keyboard navigation, and a moment
-  inspector.
-- Local artifacts use the filesystem under `data/runtime/`. Vercel Services
-  can use the private Blob bridge for durable replay and analysis artifacts.
-- The Python HTTP coach is selected by default when a provider base URL and key
-  are configured. The legacy Node/Pi path remains available with
-  `REDECIDE_COACH_MODE=pi`.
+- One public FastAPI gateway exposes health, sample, replay, analysis, progress,
+  result, and intent-coaching routes.
+- Native `.dem` upload parses once and creates separate coaching,
+  visualization, and manifest artifacts.
+- Player selection uses stable `player_id` values discovered from the replay.
+- The replay pipeline detects first-damage contact decisions and selects up to
+  `REDECIDE_ANALYSES_PER_PLAYER` diverse moments (default `10`, range `1-10`).
+- The replay-value engine produces a CT/T win-probability timeline. These are
+  model estimates, not proof that a player made a good or bad decision.
+- The frontend supports upload/sample selection, player selection, progress,
+  result recovery, radar playback, round navigation, timeline markers, event
+  inspection, win-rate display, and coaching advice.
+- Uploaded and backend-sample analyses can submit intent through
+  `POST /api/analysis/{analysis_id}/intent`.
+- Intent coaching resolves the exact completed player and decision, restricts
+  evidence to the bounded contact/reaction window, anonymizes provider-visible
+  identifiers, and requires a strict tactical-adjustment enum plus
+  claim-to-evidence mappings. Feasibility and team coordination remain
+  explicitly unestablished because the current telemetry cannot prove them.
+  The backend—not the provider—renders visible factual text from
+  parser-owned evidence. It rejects unsupported evidence references, internal
+  prompt labels, provider-authored fact text, public player aliases, and exact
+  tick coordinates in coaching prose, then fails closed when output is unsafe
+  or the provider is unavailable.
+- Intent wording is conservatively mapped to information gathering,
+  escape/reset, taking a duel, waiting for support, creating space with utility,
+  or repositioning. Unclear wording receives a clarification request without a
+  provider call. Public evidence is rendered in normal player-facing language;
+  parser regions, thresholds, raw movement units, and classifier labels are not
+  shown.
+- When the parser provides the required telemetry, intent context now includes
+  contact health/armor/location/inventory, held utility, immediate movement,
+  deterministic action signals, and teammate spacing. Missing evidence remains
+  unknown rather than being converted into claims that something did not occur.
+- Local replay and analysis state persists under `data/runtime/`; completed
+  per-player results can be restored after a backend restart.
+- Vercel Services can use private Blob-backed replay/analysis persistence and
+  optional public Blob upload/import.
+
+## Intent response
+
+The intent API returns:
+
+- the validated `analysis_id`, `player_id`, and `decision_id`;
+- the submitted `user_intent`;
+- `intent_feasibility`;
+- `coordination_gap`;
+- `recommended_cs2_adjustment`;
+- `in_depth_coaching`;
+- `knowledge_cutoff_tick`; and
+- grounded `facts_referenced` IDs.
+
+The current UI validates the whole response but displays only
+`in_depth_coaching`. Displaying the remaining structured fields is a frontend
+enhancement, not a missing backend capability.
 
 ## Known limits
 
-- A real native `.dem` has not yet completed the full backend-to-viewer flow in
-  this checkout. Browser QA uses validated replay fixtures for post-upload
-  states.
-- A public Vercel Blob upload/import has not yet completed a hosted end-to-end
-  run. The frontend supports Blob mode, but the backend import route remains
-  disabled by default and accepts public Blob URLs only.
-- Vercel Services automatically use durable Blob restoration when the private
-  frontend service binding is present, so repeat sample runs can cross FastAPI
-  instances without losing replay or analysis state.
-- Player intent and follow-up questions have UI scaffolding, but submission is
-  disabled because no public backend endpoint or response contract exists.
-- Only Inferno currently has a paired saved coaching result in the processed
-  replay catalog.
-- Analysis state is process-local in the default filesystem mode and is lost
-  when the backend restarts. Use the Blob storage backend for deployment
-  durability.
+- A fresh browser upload through a live provider has not been repeated after
+  the latest intent fix. The local Vitality-versus-G2 Inferno `.dem` has been
+  freshly parsed and exercised through player selection, analysis, and the
+  exact-decision intent API using a deterministic provider.
+- Live coaching requires a valid provider URL, supported model name, and API
+  key. Provider availability, latency, cost, and account limits are external
+  deployment concerns.
+- Exact geometry, cover visibility, line of sight, voice communication, and
+  enemy intent are not established by the current parser projection. The
+  backend rejects provider responses that present those as replay facts.
+- Intent results are request responses; they are not currently persisted as a
+  conversation history or cached by intent text.
+- Bundled processed replays cannot submit live intent.
+- Hosted public Blob upload/import and durable restoration still need a full
+  deployed smoke test. Public upload must be protected before untrusted use.
+- There is no reviewed human evaluation set or versioned coaching rubric yet.
+- The replay-job response is not the frozen `DecisionCard` product contract;
+  the frozen fixture contracts remain a separate compatibility surface.
 
 ## Timeline semantics
 
-- The selected-player view marks damage received and deaths, plus the selected
-  analysis point. It does not treat damage dealt or kills as coaching moments
-  for the selected player.
-- A run can contain several analyzed moments, capped by
-  `REDECIDE_ANALYSES_PER_PLAYER` (default `10`, clamped to `1`–`10`).
-- The win-rate strip uses the latest estimate at or before the playback tick in
-  the current round. It shows a muted 50/50 baseline when no current-round
-  estimate is available.
-- Coaching recommendations are model estimates. Unsupported or high-entropy
-  states must remain abstentions rather than definitive instructions.
+- Damage received and deaths are replay markers. First-damage contacts are the
+  analysis anchors; not every marker is an analyzed coaching point.
+- A player run can contain several analyzed moments. The selector spreads them
+  across the match instead of always choosing the first candidate.
+- The win-rate strip uses the latest estimate at or before the current replay
+  tick in the same round. It shows a muted 50/50 baseline when no estimate is
+  available.
+- Intent coaching uses the bounded `action_close_tick` as its knowledge cutoff
+  so it can inspect the immediate post-contact reaction. Kill, death,
+  round-result, match-result, and later events remain excluded.
 
 ## Main folders
 
-- `backend/app/` joins replay preparation, player selection, storage, and
-  coaching orchestration.
-- `backend/replay_api/` receives `.dem` files and creates replay artifacts.
-- `backend/replay_engine/` parses replay data and calculates model signals.
-- `frontend/` contains the Next.js interface, adapters, contracts, and viewer.
-- `agent-harness/` contains the optional legacy Pi/Node coaching process.
-- `data/public/` and `frontend/public/replays/` contain checked-in demo assets;
-  `data/runtime/` is local temporary state and should not be treated as source.
+- `backend/app/` - FastAPI integration, orchestration, contracts, and coaching.
+- `backend/replay_api/` - native upload and replay artifacts.
+- `backend/replay_engine/` - parsing, replay-value models, and analysis signals.
+- `frontend/` - Next.js product, adapters, and replay viewer.
+- `agent-harness/` - optional legacy Pi/Node provider process.
+- `data/public/` and `frontend/public/replays/` - checked-in public assets.
+- `data/runtime/` - ignored local replay and analysis state.
 
-## Configuration references
+## Configuration
 
-- Copy `.env.example` to `.env` for local backend settings.
-- Set `NEXT_PUBLIC_API_BASE_URL=http://127.0.0.1:8000` in
-  `frontend/.env.local` for standalone local development; Vercel Services uses
-  same-origin `/api` routes and normally leaves it unset.
-- Keep `NEXT_PUBLIC_REPLAY_UPLOAD_MODE=direct` locally. Use `blob` only with
-  the Next.js Blob routes, a public Blob store, and
-  `REDECIDE_BLOB_IMPORT_ENABLED=true` configured together.
-- See [the API reference](../backend/app/API.md), [frontend status](../frontend/STATUS.md),
-  and [deployment guide](VERCEL_DEPLOYMENT.md) for the current contracts and
-  verification notes.
+- Copy `.env.example` to `.env`.
+- For normal local coaching, set `REDECIDE_COACH_MODE=http`, a supported
+  `HARNESS_MODEL`, `HARNESS_MODEL_BASE_URL`, and either `DEEPSEEK_API_KEY` or
+  `HARNESS_MODEL_API_KEY`.
+- Set `NEXT_PUBLIC_API_BASE_URL=http://127.0.0.1:8000` and
+  `NEXT_PUBLIC_REPLAY_UPLOAD_MODE=direct` in `frontend/.env.local`.
+- Use Blob mode only when the Next.js Blob routes and FastAPI import route are
+  configured together.
 
-## Latest maintenance verification
+## Latest verification
 
-On 2026-08-07, the frontend passed 138 Vitest tests, TypeScript, ESLint, and a
-production Next.js build. The optional agent harness passed 26 Vitest tests,
-TypeScript, and its production build. The repository dependency-policy check,
-both pnpm high-severity audits, and both uv lockfile checks passed. The Python
-suite passed 280 tests with 3 expected skips and no warnings when installed
-with the `test` extra. One skip covers the absent optional legacy Vercel SDK;
-two require a private processed-replay fixture that is not in this checkout.
-The OIDC service-binding deployment path remains covered.
+On 2026-08-09:
+
+- Python: 331 passed, 3 expected skips, 97 subtests passed.
+- Intent/transport/API focused suite: 78 passed, 91 subtests passed.
+- Frontend: 142 Vitest tests passed; TypeScript, ESLint, and production build
+  passed.
+- Agent harness: 26 Vitest tests passed; TypeScript and production build passed.
+- Endpoint regressions confirm that an unknown decision returns `404`, sparse
+  evidence returns `422`, invalid or ungrounded model output returns `503`, and
+  provider failure returns `503` without fabricated coaching.
+- A fresh full check parsed `vitality-vs-g2-m2-inferno.dem`, found 10 players,
+  analyzed an exact HeavyGoD decision, retained its cutoff as structured
+  metadata, and returned backend-rendered coaching without prompt tokens,
+  player aliases, exact tick prose, raw IDs, or later outcomes.
+
+No paid/live provider call was made during this verification.
+
+Use the [root overview](../README.md) and [local setup guide](README.md) with
+this file as the current project-level documentation. Component status, API,
+deployment, and plan documents are retained for ownership history and may lag
+behind the integrated branch.

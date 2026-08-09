@@ -29,6 +29,10 @@ class PiCoachError(RuntimeError):
     """Stable backend error for Pi configuration or response failures."""
 
 
+class PiCoachTimeoutError(PiCoachError):
+    """Stable transport error when a coaching provider exceeds its deadline."""
+
+
 ProcessRunner = Callable[..., subprocess.CompletedProcess[str]]
 
 
@@ -121,14 +125,14 @@ class HttpCoachAdapter:
         self.timeout_seconds = timeout_seconds
         self._client = client
 
-    def __call__(self, pipeline_result: Mapping[str, Any]) -> str:
+    def run_prompt(self, prompt: str) -> str:
+        """Send a raw prompt string to the HTTP model endpoint."""
         if not self.base_url:
             raise PiCoachError("HARNESS_MODEL_BASE_URL is required for HTTP coaching")
         if not self.api_key:
             raise PiCoachError(
                 "HARNESS_MODEL_API_KEY or DEEPSEEK_API_KEY is required for HTTP coaching"
             )
-        prompt = build_coach_prompt(pipeline_result)
         endpoint = self.base_url.rstrip("/")
         if not endpoint.endswith("/chat/completions"):
             endpoint = f"{endpoint}/chat/completions"
@@ -148,6 +152,10 @@ class HttpCoachAdapter:
             response = client.post(endpoint, headers=headers, json=body)
             response.raise_for_status()
             response_body = response.json()
+        except httpx.TimeoutException as exc:
+            raise PiCoachTimeoutError(
+                "HTTP coaching provider failed: timed out"
+            ) from exc
         except (httpx.HTTPError, ValueError) as exc:
             raise PiCoachError("HTTP coaching provider failed") from exc
         finally:
@@ -159,6 +167,11 @@ class HttpCoachAdapter:
             raise PiCoachError("HTTP coaching provider returned an invalid response") from exc
         if not isinstance(content, str):
             raise PiCoachError("HTTP coaching provider returned non-text content")
+        return content
+
+    def __call__(self, pipeline_result: Mapping[str, Any]) -> str:
+        prompt = build_coach_prompt(pipeline_result)
+        content = self.run_prompt(prompt)
         return normalize_coach_response(content, expected_decision_ids=_expected_decision_ids(pipeline_result))
 
 
@@ -183,8 +196,8 @@ class PiCoachAdapter:
         self.timeout_seconds = timeout_seconds
         self._runner = runner
 
-    def __call__(self, pipeline_result: Mapping[str, Any]) -> str:
-        prompt = build_coach_prompt(pipeline_result)
+    def run_prompt(self, prompt: str) -> str:
+        """Execute a raw prompt string via the Node/harness subprocess runner."""
         executable = self._resolve_node()
         command = [
             executable,
@@ -204,12 +217,17 @@ class PiCoachAdapter:
                 check=False,
             )
         except subprocess.TimeoutExpired as exc:
-            raise PiCoachError("Pi coaching process timed out") from exc
+            raise PiCoachTimeoutError("Pi coaching process timed out") from exc
         except (OSError, subprocess.SubprocessError) as exc:
             raise PiCoachError("Pi coaching process could not be started") from exc
         if completed.returncode != 0:
             raise PiCoachError("Pi coaching process failed")
-        return normalize_coach_response(completed.stdout, expected_decision_ids=_expected_decision_ids(pipeline_result))
+        return completed.stdout
+
+    def __call__(self, pipeline_result: Mapping[str, Any]) -> str:
+        prompt = build_coach_prompt(pipeline_result)
+        stdout = self.run_prompt(prompt)
+        return normalize_coach_response(stdout, expected_decision_ids=_expected_decision_ids(pipeline_result))
 
     def _process_environment(self) -> dict[str, str]:
         """Inherit deployment values and point Pi at the repository dotenv.
@@ -472,6 +490,7 @@ __all__ = [
     "HttpCoachAdapter",
     "PiCoachAdapter",
     "PiCoachError",
+    "PiCoachTimeoutError",
     "build_coach_prompt",
     "normalize_coach_response",
     "validate_coach_response",

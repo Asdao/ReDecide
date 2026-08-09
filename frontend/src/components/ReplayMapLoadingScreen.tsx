@@ -83,7 +83,29 @@ export function ReplayMapLoadingScreen({
                 <h2>{copy.title}</h2>
               </div>
             </div>
-            <div className="radar-frame loading-border replay-map-loading-frame">
+            <div className="radar-indicators replay-map-loading-indicators" aria-hidden="true">
+              <section className="selected-player-health unavailable">
+                <div className="selected-player-health-label">
+                  <span>Health</span>
+                  <strong>—</strong>
+                </div>
+                <div className="selected-player-health-track">
+                  <span style={{ width: "0%" }} />
+                </div>
+              </section>
+              <section className="radar-win-rate baseline">
+                <div className="radar-win-rate-values">
+                  <strong className="friendly-team"><span>CT</span>50.0%</strong>
+                  <p>Win rate</p>
+                  <strong className="enemy-team">50.0%<span>T</span></strong>
+                </div>
+                <div className="win-rate-track">
+                  <span className="win-rate-friendly" style={{ width: "50%" }} />
+                  <span className="win-rate-enemy" style={{ width: "50%" }} />
+                </div>
+              </section>
+            </div>
+            <div className="radar-frame replay-map-loading-frame">
               {overview ? (
                 <Image
                   src={overview.image}
