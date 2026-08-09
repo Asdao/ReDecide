@@ -97,13 +97,14 @@ Keep provider keys only in the root `.env`; never put secrets in a
 `NEXT_PUBLIC_*` variable or commit a real `.env` file. Vercel Blob is not
 required for the local product flow.
 
-## Project guides
+## Documentation
 
-- [Detailed setup and run guide](docs/README.md)
+- [Documentation index](docs/README.md)
 - [Current product state](docs/CURRENT_STATE.md)
+- [Unified FastAPI API](backend/app/API.md)
+- [Vercel deployment](docs/VERCEL_DEPLOYMENT.md)
 - [Dependency security](docs/DEPENDENCY_SECURITY.md)
 
-This root README, `docs/README.md`, and `docs/CURRENT_STATE.md` are the current
-project-level documentation. Component-level `API.md`, `STATUS.md`, plan, and
-deployment notes are useful implementation history but may lag behind the
-integrated branch.
+Historical status snapshots and superseded implementation plans are retained
+under [docs/archive](docs/archive/README.md); they are not current product or
+setup documentation.
