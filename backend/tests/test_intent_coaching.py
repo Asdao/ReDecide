@@ -168,6 +168,7 @@ def _request(
     body_analysis_id: str | None = None,
     player_id: str = PLAYER_ID,
     decision_id: str = SECOND_DECISION_ID,
+    intent_text: str = "I wanted to reset and wait for support.",
 ) -> Any:
     return client.post(
         f"/api/analysis/{analysis_id}/intent",
@@ -175,7 +176,7 @@ def _request(
             "analysis_id": body_analysis_id or analysis_id,
             "player_id": player_id,
             "decision_id": decision_id,
-            "intent_text": "I wanted to reset and wait for support.",
+            "intent_text": intent_text,
         },
     )
 
@@ -195,6 +196,39 @@ def test_endpoint_uses_exact_requested_decision_and_excludes_future_events(
     assert FIRST_DECISION_ID not in provider.prompts[0]
     assert "event-first-contact" not in provider.prompts[0]
     assert "future-death-must-not-leak" not in provider.prompts[0]
+
+
+def test_repeated_mixed_intent_requests_do_not_return_service_unavailable(
+    tmp_path: Path,
+) -> None:
+    provider = PromptProvider(
+        json.dumps(
+            {
+                "intent_assessment": "NOT_ESTABLISHED",
+                "coordination_assessment": "NOT_ESTABLISHED",
+                "recommended_adjustment": "CONTROLLED_REENGAGEMENT",
+                "evidence_claims": [
+                    {
+                        "evidence_id": "decision:observed-action",
+                        "supports": "recommended_cs2_adjustment",
+                    },
+                    {
+                        "evidence_id": "decision:observed-action",
+                        "supports": "in_depth_coaching",
+                    },
+                ],
+            }
+        )
+    )
+    client = _client(tmp_path, provider)
+    intent = "I wanted to deal chip damage, get info, and run away."
+
+    first = _request(client, intent_text=intent)
+    second = _request(client, intent_text=intent)
+
+    assert first.status_code == 200, first.text
+    assert second.status_code == 200, second.text
+    assert first.json()["in_depth_coaching"] == second.json()["in_depth_coaching"]
 
 
 @pytest.mark.parametrize(

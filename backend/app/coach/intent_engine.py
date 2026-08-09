@@ -35,6 +35,7 @@ from backend.app.replay.pipeline import _decode_pi_output
 
 MAX_PROMPT_BYTES = 64 * 1024
 MAX_REACTION_SECONDS = 3.0
+MIN_SEMANTIC_INTENT_CONFIDENCE = 0.65
 
 IntentCategory = Literal[
     "GATHER_INFORMATION",
@@ -120,6 +121,31 @@ class _IntentModelOutput(BaseModel):
     evidence_claims: list[ProviderEvidenceClaim] = Field(min_length=1)
 
 
+class _SemanticIntentEvidence(BaseModel):
+    """One provider interpretation grounded in an exact player-authored quote."""
+
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+    goal: Literal[
+        "GATHER_INFORMATION",
+        "ESCAPE_RESET",
+        "TAKE_DUEL",
+        "HOLD_FOR_SUPPORT",
+        "CREATE_SPACE_WITH_UTILITY",
+        "REPOSITION",
+    ]
+    supporting_text: str = Field(min_length=3, max_length=240)
+
+
+class _SemanticIntentOutput(BaseModel):
+    """Strict semantic fallback used only when phrase matching is inconclusive."""
+
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+    confidence: float = Field(ge=0.0, le=1.0)
+    interpretations: list[_SemanticIntentEvidence] = Field(max_length=4)
+
+
 class IntentCoachingEngine:
     """Evaluate one stated intent using evidence known at one exact decision."""
 
@@ -138,25 +164,27 @@ class IntentCoachingEngine:
         clean_intent = str(user_intent).strip()
         if not clean_intent:
             raise IntentInsufficientEvidenceError("player intent cannot be blank")
-        intent_category = _classify_stated_intent(clean_intent)
+        intent_categories = _classify_stated_intents(clean_intent)
 
         selected, valid_evidence_ids, cutoff_tick = self._extract_decision_context(
             pipeline_result,
             decision_id=decision_id,
             player_id=player_id,
         )
-        if intent_category == "UNCLEAR":
-            return _clarification_response(
-                selected=selected,
-                clean_intent=clean_intent,
-                cutoff_tick=cutoff_tick,
-            )
+        if intent_categories == ("UNCLEAR",):
+            intent_categories = self._interpret_stated_intent(clean_intent)
+            if intent_categories == ("UNCLEAR",):
+                return _clarification_response(
+                    selected=selected,
+                    clean_intent=clean_intent,
+                    cutoff_tick=cutoff_tick,
+                )
 
         prompt = self.build_intent_prompt(
             selected,
             clean_intent,
             cutoff_tick,
-            intent_category=intent_category,
+            intent_categories=intent_categories,
         )
 
         if self.coach_adapter is None:
@@ -178,15 +206,17 @@ class IntentCoachingEngine:
             available_utility=set(selected.get("_intent_available_utility", [])),
             authoritative_evidence=_authoritative_evidence(selected),
         )
-        _validate_adjustment_for_intent(
-            intent_category,
+        resolved_adjustment = _resolve_adjustment_for_intents(
+            intent_categories,
             output.recommended_adjustment,
+            available_utility=set(selected.get("_intent_available_utility", [])),
         )
         public_response = _render_public_response(
             output,
             grounded_claims=grounded_claims,
             available_utility=set(selected.get("_intent_available_utility", [])),
-            intent_category=intent_category,
+            intent_categories=intent_categories,
+            resolved_adjustment=resolved_adjustment,
         )
         result = {
             "decision_id": str(selected["decision_id"]),
@@ -200,6 +230,37 @@ class IntentCoachingEngine:
         }
         return _validate_public_result(result, selected=selected, cutoff_tick=cutoff_tick)
 
+    def _interpret_stated_intent(
+        self,
+        user_intent: str,
+    ) -> tuple[IntentCategory, ...]:
+        """Use a strict LLM classifier when deterministic wording is inconclusive."""
+
+        if self.coach_adapter is None:
+            return ("UNCLEAR",)
+        prompt = _build_semantic_intent_prompt(user_intent)
+        try:
+            raw_response = self.coach_adapter.run_prompt(prompt)
+            payload = _decode_pi_output(raw_response)
+            interpreted = _SemanticIntentOutput.model_validate(payload)
+        except (PiCoachError, OSError, TypeError, ValueError, ValidationError):
+            return ("UNCLEAR",)
+
+        if interpreted.confidence < MIN_SEMANTIC_INTENT_CONFIDENCE:
+            return ("UNCLEAR",)
+
+        normalized_intent = _normalize_intent_language(user_intent)
+        categories: list[IntentCategory] = []
+        for interpretation in interpreted.interpretations:
+            supporting_text = _normalize_intent_language(
+                interpretation.supporting_text
+            )
+            if not supporting_text or supporting_text not in normalized_intent:
+                return ("UNCLEAR",)
+            if interpretation.goal not in categories:
+                categories.append(interpretation.goal)
+        return tuple(categories) if categories else ("UNCLEAR",)
+
     def build_intent_prompt(
         self,
         selected: Mapping[str, Any],
@@ -207,6 +268,7 @@ class IntentCoachingEngine:
         cutoff_tick: int,
         *,
         intent_category: IntentCategory | None = None,
+        intent_categories: tuple[IntentCategory, ...] | None = None,
     ) -> str:
         """Build a compact prompt containing only the bounded evidence projection."""
 
@@ -226,12 +288,17 @@ class IntentCoachingEngine:
         opponent_id = str(selected.get("opponent_id") or "")
         aliases = _context_aliases(player_id, opponent_id, known_events)
 
-        resolved_intent_category = intent_category or _classify_stated_intent(
-            user_intent
+        resolved_intent_categories = (
+            intent_categories
+            or ((intent_category,) if intent_category else None)
+            or _classify_stated_intents(user_intent)
         )
         bounded_payload = {
             "schema_version": "intent_coach_input_v1",
-            "stated_intent_category": resolved_intent_category,
+            # Keep the singular field for older provider prompts while exposing
+            # every explicit, non-overlapping goal to newer providers.
+            "stated_intent_category": resolved_intent_categories[0],
+            "stated_intent_categories": list(resolved_intent_categories),
             "decision": {
                 # The provider never needs the raw Steam ID embedded in the
                 # product decision ID; the API response restores it outside
@@ -297,8 +364,9 @@ class IntentCoachingEngine:
             "different fields, but do not repeat the same ID/field pair. Do not "
             "return coaching prose or factual claim text; "
             "the backend renders public text from the selected evidence IDs. Choose "
-            "a recommended_adjustment that is tactically compatible with the supplied "
-            "stated_intent_category."
+            "a recommended_adjustment that is tactically compatible with at least "
+            "one supplied stated_intent_categories value. When several goals are "
+            "present, prefer an adjustment that safely supports all of them."
         )
         if len(prompt.encode("utf-8")) > MAX_PROMPT_BYTES:
             raise IntentInsufficientEvidenceError(
@@ -518,6 +586,39 @@ _INTENT_ASSESSMENT_TEXT = {
         "was feasible."
     ),
 }
+def _build_semantic_intent_prompt(user_intent: str) -> str:
+    """Ask only for intent classification, never replay analysis or advice."""
+
+    prompt = (
+        "Classify the player's subjective Counter-Strike 2 tactical intent. "
+        "Do not evaluate whether the choice was correct. Do not provide coaching, "
+        "replay facts, player names, ticks, evidence, or outcomes. Select only goals "
+        "explicitly supported by the player's words. supporting_text must be an "
+        "exact contiguous quote copied from PLAYER_INTENT. Use multiple entries "
+        "when the player states multiple goals. If no allowed goal is supported, "
+        "return confidence 0.0 and an empty interpretations list.\n"
+        "Allowed goals: GATHER_INFORMATION, ESCAPE_RESET, TAKE_DUEL, "
+        "HOLD_FOR_SUPPORT, CREATE_SPACE_WITH_UTILITY, REPOSITION.\n"
+        f"PLAYER_INTENT={json.dumps(user_intent, ensure_ascii=True)}\n"
+        "Return ONLY one JSON object with exactly this shape: "
+        '{"confidence":number,"interpretations":['
+        '{"goal":"GATHER_INFORMATION|ESCAPE_RESET|TAKE_DUEL|'
+        'HOLD_FOR_SUPPORT|CREATE_SPACE_WITH_UTILITY|REPOSITION",'
+        '"supporting_text":string}]}'
+    )
+    if len(prompt.encode("utf-8")) > MAX_PROMPT_BYTES:
+        raise IntentInsufficientEvidenceError(
+            "player intent exceeds the semantic interpretation size limit"
+        )
+    return prompt
+
+
+def _normalize_intent_language(value: str) -> str:
+    """Normalize spacing and case while preserving phrase order for quote checks."""
+
+    return re.sub(r"\s+", " ", str(value).casefold()).strip()
+
+
 _INTENT_PHRASES: dict[IntentCategory, tuple[str, ...]] = {
     "GATHER_INFORMATION": (
         "gather information",
@@ -538,6 +639,7 @@ _INTENT_PHRASES: dict[IntentCategory, tuple[str, ...]] = {
         "didn t want to fight",
         "avoid the fight",
         "avoid fighting",
+        "run away",
         "get away",
         "fall back",
         "disengage",
@@ -547,6 +649,9 @@ _INTENT_PHRASES: dict[IntentCategory, tuple[str, ...]] = {
         "survive",
     ),
     "TAKE_DUEL": (
+        "deal chip damage",
+        "chip damage",
+        "deal damage",
         "re-engage",
         "reengage",
         "take the duel",
@@ -674,35 +779,93 @@ _DEFAULT_ADJUSTMENT: dict[IntentCategory, str] = {
 }
 
 
-def _classify_stated_intent(user_intent: str) -> IntentCategory:
-    """Map explicit player wording to a conservative tactical goal."""
+def _classify_stated_intents(user_intent: str) -> tuple[IntentCategory, ...]:
+    """Return every explicit, non-overlapping tactical goal in text order."""
 
     normalized = re.sub(r"[^a-z0-9]+", " ", user_intent.lower()).strip()
-    matches: list[tuple[int, int, IntentCategory]] = []
+    matches: list[tuple[int, int, int, IntentCategory]] = []
     for category, phrases in _INTENT_PHRASES.items():
         for phrase in phrases:
-            match = re.search(
+            for match in re.finditer(
                 rf"(?<![a-z0-9]){re.escape(phrase)}(?![a-z0-9])",
                 normalized,
-            )
-            if match is not None:
-                # Prefer the earliest explicit goal; for the same position,
-                # prefer the more specific phrase.
-                matches.append((match.start(), -len(phrase), category))
+            ):
+                # Prefer a longer phrase when two goals overlap. This prevents
+                # "did not want to fight" from also becoming TAKE_DUEL because
+                # it contains the shorter word "fight".
+                matches.append((match.start(), match.end(), -len(phrase), category))
     if not matches:
-        return "UNCLEAR"
-    matches.sort(key=lambda item: (item[0], item[1], item[2]))
-    return matches[0][2]
+        return ("UNCLEAR",)
 
-
-def _validate_adjustment_for_intent(
-    intent_category: IntentCategory,
-    adjustment: str,
-) -> None:
-    if adjustment not in _ALLOWED_ADJUSTMENTS[intent_category]:
-        raise IntentMalformedOutputError(
-            "intent coaching provider selected an adjustment incompatible with the stated goal"
+    matches.sort(key=lambda item: (item[0], item[2], item[1], item[3]))
+    accepted_spans: list[tuple[int, int]] = []
+    categories: list[IntentCategory] = []
+    for start, end, _specificity, category in matches:
+        overlaps_existing = any(
+            start < accepted_end and end > accepted_start
+            for accepted_start, accepted_end in accepted_spans
         )
+        if overlaps_existing:
+            continue
+        accepted_spans.append((start, end))
+        if category not in categories:
+            categories.append(category)
+    return tuple(categories)
+
+
+def _classify_stated_intent(user_intent: str) -> IntentCategory:
+    """Return the first explicit goal for callers using the legacy singular API."""
+
+    return _classify_stated_intents(user_intent)[0]
+
+
+def _resolve_adjustment_for_intents(
+    intent_categories: tuple[IntentCategory, ...],
+    adjustment: str,
+    *,
+    available_utility: set[str],
+) -> str:
+    """Accept a relevant adjustment or choose one safe for every stated goal."""
+
+    recognised = tuple(
+        category for category in intent_categories if category != "UNCLEAR"
+    )
+    if not recognised:
+        return _DEFAULT_ADJUSTMENT["UNCLEAR"]
+
+    allowed_union = set().union(
+        *(_ALLOWED_ADJUSTMENTS[category] for category in recognised)
+    )
+    if adjustment in allowed_union and (
+        adjustment != "USE_AVAILABLE_UTILITY" or available_utility
+    ):
+        return adjustment
+
+    if len(recognised) == 1:
+        fallback = _DEFAULT_ADJUSTMENT[recognised[0]]
+        if fallback != "USE_AVAILABLE_UTILITY" or available_utility:
+            return fallback
+        return "REASSESS_BEFORE_REENGAGING"
+
+    shared = set.intersection(
+        *[set(_ALLOWED_ADJUSTMENTS[category]) for category in recognised]
+    )
+    for safe_adjustment in (
+        "REASSESS_BEFORE_REENGAGING",
+        "RESET_BEHIND_COVER",
+        "MAINTAIN_CROSSHAIR_WHILE_DISENGAGING",
+        "HOLD_FOR_SUPPORT",
+        "USE_AVAILABLE_UTILITY",
+        "CONTROLLED_REENGAGEMENT",
+    ):
+        if safe_adjustment in shared and (
+            safe_adjustment != "USE_AVAILABLE_UTILITY" or available_utility
+        ):
+            return safe_adjustment
+
+    # Every current category shares REASSESS_BEFORE_REENGAGING. Keep a
+    # conservative final fallback if a future category changes that invariant.
+    return "REASSESS_BEFORE_REENGAGING"
 
 
 def _clarification_response(
@@ -836,11 +999,12 @@ def _render_public_response(
     *,
     grounded_claims: list[GroundedEvidenceClaim],
     available_utility: set[str],
-    intent_category: IntentCategory,
+    intent_categories: tuple[IntentCategory, ...],
+    resolved_adjustment: str,
 ) -> dict[str, str]:
     """Render all public prose from backend-owned templates and evidence."""
 
-    if output.recommended_adjustment == "USE_AVAILABLE_UTILITY" and not available_utility:
+    if resolved_adjustment == "USE_AVAILABLE_UTILITY" and not available_utility:
         raise IntentMalformedOutputError(
             "intent coaching provider recommended unavailable utility"
         )
@@ -855,11 +1019,18 @@ def _render_public_response(
         ) from exc
 
     evidence_text = evidence_summary.removeprefix("Replay evidence: ").strip()
-    adjustment = _ADJUSTMENT_TEXT[output.recommended_adjustment]
-    contextual_adjustment = _INTENT_COACHING_TEXT[intent_category]
-    if output.recommended_adjustment != _DEFAULT_ADJUSTMENT[intent_category]:
-        contextual_adjustment = f"{contextual_adjustment} {adjustment}"
-    public_goal = _INTENT_PUBLIC_GOAL[intent_category]
+    adjustment = _ADJUSTMENT_TEXT[resolved_adjustment]
+    recognised = tuple(
+        category for category in intent_categories if category != "UNCLEAR"
+    )
+    primary_category = recognised[0] if recognised else "UNCLEAR"
+    if len(recognised) > 1:
+        contextual_adjustment = adjustment
+    else:
+        contextual_adjustment = _INTENT_COACHING_TEXT[primary_category]
+        if resolved_adjustment != _DEFAULT_ADJUSTMENT[primary_category]:
+            contextual_adjustment = f"{contextual_adjustment} {adjustment}"
+    public_goal = _format_public_goals(recognised or ("UNCLEAR",))
     response = {
         "intent_feasibility": _INTENT_ASSESSMENT_TEXT[output.intent_assessment],
         "coordination_gap": _COORDINATION_ASSESSMENT_TEXT[
@@ -875,6 +1046,15 @@ def _render_public_response(
         field_name: translate_provider_aliases(value)
         for field_name, value in response.items()
     }
+
+
+def _format_public_goals(intent_categories: tuple[IntentCategory, ...]) -> str:
+    goals = [_INTENT_PUBLIC_GOAL[category] for category in intent_categories]
+    if len(goals) == 1:
+        return goals[0]
+    if len(goals) == 2:
+        return f"{goals[0]} and {goals[1]}"
+    return f"{', '.join(goals[:-1])}, and {goals[-1]}"
 
 
 def _authoritative_evidence(selected: Mapping[str, Any]) -> list[dict[str, Any]]:

@@ -12,6 +12,7 @@ from backend.app.coach.intent_engine import (
     IntentProviderTimeoutError,
     IntentProviderUnavailableError,
     _classify_stated_intent,
+    _classify_stated_intents,
 )
 from backend.app.coach.pi_connector import PiCoachError
 
@@ -26,6 +27,19 @@ class RecordingProvider:
         if isinstance(self.response, Exception):
             raise self.response
         return json.dumps(self.response)
+
+
+class SequenceProvider:
+    def __init__(self, responses: list[dict[str, Any] | Exception]) -> None:
+        self.responses = list(responses)
+        self.prompts: list[str] = []
+
+    def run_prompt(self, prompt: str) -> str:
+        self.prompts.append(prompt)
+        response = self.responses.pop(0)
+        if isinstance(response, Exception):
+            raise response
+        return json.dumps(response)
 
 
 def _valid_response(fact_id: str) -> dict[str, Any]:
@@ -209,6 +223,17 @@ class IntentEngineTests(unittest.TestCase):
         for text, expected in cases.items():
             with self.subTest(text=text):
                 self.assertEqual(_classify_stated_intent(text), expected)
+
+        self.assertEqual(
+            _classify_stated_intents(
+                "I wanted to deal chip damage, get info, and run away."
+            ),
+            ("TAKE_DUEL", "GATHER_INFORMATION", "ESCAPE_RESET"),
+        )
+        self.assertEqual(
+            _classify_stated_intents("I did not want to fight."),
+            ("ESCAPE_RESET",),
+        )
 
     def test_selects_exact_nonfirst_production_analysis_and_bounds_prompt(self) -> None:
         provider = RecordingProvider(_valid_response("decision:observed-action"))
@@ -524,8 +549,10 @@ class IntentEngineTests(unittest.TestCase):
         ):
             self.assertNotIn(internal_word, coaching.lower())
 
-    def test_unclear_intent_asks_for_clarification_without_calling_provider(self) -> None:
-        provider = RecordingProvider(AssertionError("provider must not be called"))
+    def test_unclear_intent_asks_for_clarification_after_safe_interpretation(self) -> None:
+        provider = RecordingProvider(
+            {"confidence": 0.2, "interpretations": []}
+        )
         result = IntentCoachingEngine(provider).evaluate_intent(
             _production_result(),
             "I had a plan.",
@@ -533,22 +560,119 @@ class IntentEngineTests(unittest.TestCase):
             decision_id="r2:p1:t500",
         )
 
-        self.assertEqual(provider.prompts, [])
+        self.assertEqual(len(provider.prompts), 1)
+        self.assertIn("Classify the player's subjective", provider.prompts[0])
+        self.assertNotIn("DECISION_CONTEXT", provider.prompts[0])
         self.assertEqual(result["facts_referenced"], [])
         self.assertIn("Tell us whether you were trying", result["in_depth_coaching"])
         self.assertNotIn("first damage", result["in_depth_coaching"].lower())
 
-    def test_provider_adjustment_must_match_the_stated_goal(self) -> None:
+    def test_semantic_fallback_understands_natural_duel_intent(self) -> None:
+        provider = SequenceProvider(
+            [
+                {
+                    "confidence": 0.92,
+                    "interpretations": [
+                        {
+                            "goal": "TAKE_DUEL",
+                            "supporting_text": "my raw aim is better",
+                        },
+                        {
+                            "goal": "TAKE_DUEL",
+                            "supporting_text": "moving away is too slow",
+                        },
+                    ],
+                },
+                {
+                    **_valid_response("decision:observed-action"),
+                    "recommended_adjustment": "CONTROLLED_REENGAGEMENT",
+                },
+            ]
+        )
+
+        result = IntentCoachingEngine(provider).evaluate_intent(
+            _production_result(),
+            "I believed my raw aim is better and moving away is too slow.",
+            player_id="p1",
+            decision_id="r2:p1:t500",
+        )
+
+        self.assertEqual(len(provider.prompts), 2)
+        self.assertNotIn("DECISION_CONTEXT", provider.prompts[0])
+        self.assertIn(
+            '"stated_intent_categories":["TAKE_DUEL"]',
+            provider.prompts[1],
+        )
+        self.assertIn("wanted to take the duel", result["in_depth_coaching"])
+        self.assertIn("controlled angle", result["in_depth_coaching"])
+
+    def test_semantic_fallback_rejects_an_invented_supporting_quote(self) -> None:
+        provider = RecordingProvider(
+            {
+                "confidence": 0.95,
+                "interpretations": [
+                    {
+                        "goal": "TAKE_DUEL",
+                        "supporting_text": "I explicitly wanted to fight",
+                    }
+                ],
+            }
+        )
+
+        result = IntentCoachingEngine(provider).evaluate_intent(
+            _production_result(),
+            "I believed my raw aim is better.",
+            player_id="p1",
+            decision_id="r2:p1:t500",
+        )
+
+        self.assertEqual(len(provider.prompts), 1)
+        self.assertIn("Tell us whether you were trying", result["in_depth_coaching"])
+
+    def test_incompatible_provider_adjustment_uses_safe_goal_fallback(self) -> None:
         response = _valid_response("decision:observed-action")
         response["recommended_adjustment"] = "CONTROLLED_REENGAGEMENT"
 
-        with self.assertRaises(IntentMalformedOutputError):
-            IntentCoachingEngine(RecordingProvider(response)).evaluate_intent(
-                _production_result(),
-                "I just wanted information.",
-                player_id="p1",
-                decision_id="r2:p1:t500",
-            )
+        result = IntentCoachingEngine(RecordingProvider(response)).evaluate_intent(
+            _production_result(),
+            "I just wanted information.",
+            player_id="p1",
+            decision_id="r2:p1:t500",
+        )
+
+        self.assertIn("shoulder or jiggle peek", result["in_depth_coaching"])
+        self.assertNotIn("controlled duel", result["in_depth_coaching"])
+
+    def test_repeated_mixed_intent_requests_accept_relevant_adjustment(self) -> None:
+        response = _valid_response("decision:observed-action")
+        response["recommended_adjustment"] = "CONTROLLED_REENGAGEMENT"
+        provider = RecordingProvider(response)
+        engine = IntentCoachingEngine(provider)
+        intent = "I wanted to deal chip damage, get info, and run away."
+
+        first = engine.evaluate_intent(
+            _production_result(),
+            intent,
+            player_id="p1",
+            decision_id="r2:p1:t500",
+        )
+        second = engine.evaluate_intent(
+            _production_result(),
+            intent,
+            player_id="p1",
+            decision_id="r2:p1:t500",
+        )
+
+        self.assertEqual(first["in_depth_coaching"], second["in_depth_coaching"])
+        self.assertEqual(len(provider.prompts), 2)
+        self.assertIn(
+            '"stated_intent_categories":["TAKE_DUEL","GATHER_INFORMATION","ESCAPE_RESET"]',
+            provider.prompts[0],
+        )
+        self.assertIn(
+            "wanted to take the duel, gather information, and escape and reset",
+            first["in_depth_coaching"],
+        )
 
     def test_parser_labels_cannot_disguise_coordinates_aliases_or_schema_names(self) -> None:
         unsafe_labels = ("0500", "5 00", "5e2", "player-02", "player 02", "contactTick")
