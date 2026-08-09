@@ -1,6 +1,6 @@
 # RE:DECIDE API
 
-Run the public backend from the repository root:
+Run the public backend from the repository root
 
 ```powershell
 uv run uvicorn backend.app.main:app --env-file .env --reload --port 8000
